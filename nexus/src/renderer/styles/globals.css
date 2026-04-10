@@ -1,0 +1,860 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   NEXUS — Dark Theme (Phase 02 refresh)
+   Aesthetic: obsidian surfaces, cool neutrals, purple accent.
+   Principle: no #000 / #fff, layered backgrounds, muted chroma,
+   comfortable line-height, softened edges.
+   ============================================================ */
+
+:root {
+  /* Layered background scale — each step slightly lifted */
+  --nx-bg-base:         #110f18;
+  --nx-bg-surface:      #171325;
+  --nx-bg-elevated:     #1f1a30;
+  --nx-bg-hover:        #241d39;
+  --nx-bg-active:       #2e2546;
+
+  /* Legacy aliases kept for components that still read old vars */
+  --nx-bg:              var(--nx-bg-base);
+  --nx-bg-secondary:    var(--nx-bg-surface);
+  --nx-bg-tertiary:     var(--nx-bg-elevated);
+
+  --nx-border-subtle:   #241d39;
+  --nx-border-default:  #322951;
+  --nx-border:          var(--nx-border-default);
+
+  /* Text scale — softened, never pure white */
+  --nx-text-primary:    #ece8f7;
+  --nx-text-secondary:  #b5acce;
+  --nx-text-tertiary:   #7e7396;
+
+  --nx-text:            var(--nx-text-primary);
+
+  /* Accent — keep the purple identity, add muted variants */
+  --nx-accent:          #a57bff;
+  --nx-accent-hover:    #b495ff;
+  --nx-accent-muted:    rgba(165, 123, 255, 0.18);
+  --nx-accent-dim:      rgba(165, 123, 255, 0.08);
+
+  --nx-danger:          #ef6874;
+  --nx-danger-hover:    #f58a93;
+
+  --nx-success:         #6cc88f;
+
+  --nx-font-body:       'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --nx-font-mono:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+
+  --nx-radius-sm:       4px;
+  --nx-radius-md:       8px;
+  --nx-radius-lg:       12px;
+  --nx-radius-xl:       16px;
+
+  --nx-sidebar-width:   280px;
+  --nx-titlebar-height: 46px;
+
+  --nx-shadow-sm:       0 1px 2px rgba(0, 0, 0, 0.3);
+  --nx-shadow-md:       0 4px 12px rgba(0, 0, 0, 0.4);
+  --nx-shadow-lg:       0 4px 24px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.2);
+  --nx-shadow-xl:       0 16px 50px rgba(0, 0, 0, 0.55);
+
+  --nx-transition-fast: 120ms ease;
+  --nx-transition:      180ms ease;
+}
+
+/* ============================================================
+   Base resets
+   ============================================================ */
+
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--nx-bg-base);
+  color: var(--nx-text-primary);
+  font-family: var(--nx-font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: none;
+}
+
+/* ============================================================
+   Electron title bar drag region
+   ============================================================ */
+
+.titlebar-drag {
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ============================================================
+   Scrollbar styling — thin, muted, auto-hide
+   ============================================================ */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+  transition: background 180ms ease;
+}
+
+*:hover > ::-webkit-scrollbar-thumb,
+.sidebar-scroll:hover::-webkit-scrollbar-thumb,
+.editor-scroll:hover::-webkit-scrollbar-thumb {
+  background: rgba(180, 170, 210, 0.08);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(180, 170, 210, 0.16) !important;
+}
+
+/* ============================================================
+   Selection
+   ============================================================ */
+
+::selection {
+  background: rgba(165, 123, 255, 0.28);
+  color: var(--nx-text-primary);
+}
+
+/* ============================================================
+   BlockNote overrides — harmonize with Nexus tokens
+   ============================================================ */
+
+.bn-container,
+.bn-editor,
+[data-theming-css-variables-demo] {
+  --bn-colors-editor-background: transparent !important;
+  --bn-colors-editor-text: var(--nx-text-primary) !important;
+  --bn-colors-menu-background: var(--nx-bg-elevated) !important;
+  --bn-colors-menu-text: var(--nx-text-primary) !important;
+  --bn-colors-tooltip-background: var(--nx-bg-elevated) !important;
+  --bn-colors-tooltip-text: var(--nx-text-primary) !important;
+  --bn-colors-hovered-background: var(--nx-bg-hover) !important;
+  --bn-colors-selected-background: var(--nx-bg-active) !important;
+  --bn-colors-disabled-background: var(--nx-bg-surface) !important;
+  --bn-colors-disabled-text: var(--nx-text-tertiary) !important;
+  --bn-colors-side-menu: var(--nx-text-tertiary) !important;
+  --bn-colors-border: var(--nx-border-default) !important;
+  --bn-colors-highlights-gray-background: rgba(255,255,255,0.05) !important;
+  --bn-colors-highlights-gray-text: var(--nx-text-secondary) !important;
+  --bn-font-family: var(--nx-font-body) !important;
+  font-family: var(--nx-font-body) !important;
+}
+
+.nx-editor-root,
+.bn-editor .bn-block-content {
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--nx-text-primary);
+}
+
+.bn-editor [contenteditable="true"]:focus {
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+.bn-editor [data-content-type="heading"] h1 {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.2;
+  margin-top: 1.75rem;
+  margin-bottom: 0.4rem;
+}
+
+.bn-editor [data-content-type="heading"] h2 {
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.3;
+  margin-top: 1.5rem;
+  margin-bottom: 0.3rem;
+}
+
+.bn-editor [data-content-type="heading"] h3 {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.35;
+  margin-top: 1.25rem;
+  margin-bottom: 0.2rem;
+}
+
+.bn-editor [data-content-type="codeBlock"] code,
+.bn-editor code {
+  font-family: var(--nx-font-mono);
+  font-size: 13px;
+  background: var(--nx-bg-elevated);
+  padding: 2px 6px;
+  border-radius: var(--nx-radius-sm);
+  color: #c4b5fd;
+}
+
+.bn-editor [data-content-type="codeBlock"] {
+  background: var(--nx-bg-elevated) !important;
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  margin: 0.75rem 0;
+}
+
+.bn-editor blockquote,
+.bn-editor [data-content-type="quote"] {
+  border-left: 3px solid var(--nx-accent-muted);
+  padding-left: 1rem;
+  color: var(--nx-text-secondary);
+}
+
+.bn-editor [data-content-type="checkListItem"] input[type="checkbox"] {
+  accent-color: var(--nx-accent);
+}
+
+.bn-editor hr {
+  border: none;
+  border-top: 1px solid var(--nx-border-subtle);
+  margin: 1.5rem 0;
+}
+
+.bn-editor .bn-block-content[data-is-empty-and-focused]::before,
+.bn-editor [data-placeholder]::before {
+  color: var(--nx-text-tertiary) !important;
+  font-style: normal;
+}
+
+/* Tables — subtle borders, elevated header row */
+.bn-editor [data-content-type="table"] table {
+  border-collapse: collapse;
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  overflow: hidden;
+}
+
+.bn-editor [data-content-type="table"] td,
+.bn-editor [data-content-type="table"] th {
+  border: 1px solid var(--nx-border-subtle);
+  padding: 7px 10px;
+  min-width: 72px;
+}
+
+.bn-editor [data-content-type="table"] th,
+.bn-editor [data-content-type="table"] tr:first-child td {
+  background: var(--nx-bg-elevated);
+  font-weight: 600;
+}
+
+/* Drop cursor from @blocknote/xl-multi-column uses CSS var */
+.bn-editor .bn-drop-cursor,
+.bn-editor .prosemirror-dropcursor-block,
+.bn-editor .prosemirror-dropcursor-inline {
+  background: var(--nx-accent) !important;
+  border-color: var(--nx-accent) !important;
+}
+
+/* Side menu / drag handle — fade on hover */
+.bn-editor .bn-side-menu {
+  opacity: 0;
+  transition: opacity 150ms ease;
+  color: var(--nx-text-tertiary);
+}
+
+.bn-block-outer:hover > .bn-block > .bn-side-menu,
+.bn-editor:hover .bn-side-menu:hover,
+.bn-editor .bn-side-menu.bn-visible {
+  opacity: 1;
+}
+
+/* Hide BlockNote's default formatting toolbar chrome since we replace it */
+.bn-editor .bn-toolbar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+/* Mantine overrides for remaining BlockNote menus */
+.mantine-Menu-dropdown,
+.mantine-Popover-dropdown {
+  background: var(--nx-bg-elevated) !important;
+  border: 1px solid var(--nx-border-subtle) !important;
+  border-radius: var(--nx-radius-md) !important;
+  box-shadow: var(--nx-shadow-lg) !important;
+}
+
+.mantine-Menu-item {
+  color: var(--nx-text-secondary) !important;
+  font-size: 13px !important;
+  border-radius: var(--nx-radius-sm) !important;
+}
+
+.mantine-Menu-item:hover,
+.mantine-Menu-item[data-hovered] {
+  background: var(--nx-bg-hover) !important;
+  color: var(--nx-text-primary) !important;
+}
+
+.mantine-Menu-itemLabel {
+  font-family: var(--nx-font-body) !important;
+}
+
+/* ============================================================
+   Toggle block
+   ============================================================ */
+
+.nx-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+}
+
+.nx-toggle__chevron {
+  flex-shrink: 0;
+  width: 22px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--nx-text-tertiary);
+  cursor: pointer;
+  border-radius: var(--nx-radius-sm);
+  transition: background var(--nx-transition-fast), transform var(--nx-transition-fast), color var(--nx-transition-fast);
+}
+
+.nx-toggle__chevron:hover {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-secondary);
+}
+
+.nx-toggle[data-open="true"] > .nx-toggle__chevron {
+  transform: rotate(90deg);
+}
+
+.nx-toggle__summary {
+  flex: 1;
+  min-width: 0;
+  padding-top: 2px;
+}
+
+/* Hide child blocks when toggle is closed. Targets the sibling block-group
+   that BlockNote renders below the block content. Uses :has() which is
+   supported in Chromium (Electron). */
+.bn-block-outer:has(> .bn-block > .bn-block-content .nx-toggle[data-open="false"]) > .bn-block-outer {
+  display: none;
+}
+.bn-block:has(> .bn-block-content .nx-toggle[data-open="false"]) + .bn-block-group,
+.bn-block-content:has(.nx-toggle[data-open="false"]) ~ .bn-block-group {
+  display: none;
+}
+.bn-block-container:has(> .bn-block-content .nx-toggle[data-open="false"]) > .bn-block-group {
+  display: none;
+}
+
+/* ============================================================
+   Callout block
+   ============================================================ */
+
+.nx-callout {
+  display: flex;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-callout-bg, rgba(107, 138, 253, 0.10));
+  border-left: 3px solid var(--nx-callout-border, rgba(107, 138, 253, 0.40));
+  width: 100%;
+  color: var(--nx-text-primary);
+}
+
+.nx-callout__icon-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.nx-callout__icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--nx-radius-sm);
+  font-size: 16px;
+  transition: background var(--nx-transition-fast);
+}
+
+.nx-callout__icon:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nx-callout__picker {
+  position: absolute;
+  left: 0;
+  top: 32px;
+  z-index: 100;
+  display: grid;
+  grid-template-columns: repeat(4, 28px);
+  gap: 2px;
+  padding: 6px;
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  box-shadow: var(--nx-shadow-lg);
+  animation: nxMenuIn 120ms ease-out;
+}
+
+.nx-callout__picker-item {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--nx-radius-sm);
+  font-size: 16px;
+  transition: background var(--nx-transition-fast);
+}
+
+.nx-callout__picker-item:hover {
+  background: var(--nx-bg-hover);
+}
+
+.nx-callout__body {
+  flex: 1;
+  min-width: 0;
+  padding-top: 4px;
+  color: var(--nx-text-primary);
+}
+
+/* ============================================================
+   Unified Menu (slash, block context, sidebar ctx, etc.)
+   ============================================================ */
+
+.nx-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  padding: 4px;
+  box-shadow: var(--nx-shadow-lg);
+  font-size: 13px;
+  color: var(--nx-text-primary);
+  animation: nxMenuIn 120ms ease-out;
+  min-width: 220px;
+  max-height: 70vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.nx-menu__section {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 0;
+}
+
+.nx-menu__heading {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nx-text-tertiary);
+  padding: 6px 10px 4px 10px;
+  user-select: none;
+}
+
+.nx-menu__sep {
+  height: 1px;
+  background: var(--nx-border-subtle);
+  margin: 4px 8px;
+}
+
+.nx-menu__item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--nx-radius-sm);
+  cursor: pointer;
+  user-select: none;
+  color: var(--nx-text-secondary);
+  transition: background var(--nx-transition-fast), color var(--nx-transition-fast);
+}
+
+.nx-menu__item.is-highlighted,
+.nx-menu__item:hover {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-primary);
+}
+
+.nx-menu__item.is-active {
+  color: var(--nx-accent);
+}
+
+.nx-menu__item.is-danger {
+  color: var(--nx-danger);
+}
+
+.nx-menu__item.is-danger.is-highlighted,
+.nx-menu__item.is-danger:hover {
+  background: rgba(239, 104, 116, 0.08);
+  color: var(--nx-danger-hover);
+}
+
+.nx-menu__item.is-disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.nx-menu__icon {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nx-text-tertiary);
+}
+
+.nx-menu__item.is-highlighted .nx-menu__icon,
+.nx-menu__item:hover .nx-menu__icon {
+  color: var(--nx-text-secondary);
+}
+
+.nx-menu__icon-text {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--nx-text-tertiary);
+}
+
+.nx-menu__label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.nx-menu__label-title {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-menu__label-sub {
+  font-size: 11px;
+  color: var(--nx-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+.nx-menu__shortcut {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: var(--nx-font-mono);
+  color: var(--nx-text-tertiary);
+  padding-left: 8px;
+}
+
+.nx-menu__chevron {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--nx-text-tertiary);
+}
+
+.nx-menu__swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+}
+
+.nx-menu__empty {
+  padding: 10px 12px;
+  color: var(--nx-text-tertiary);
+  font-size: 12px;
+  text-align: center;
+}
+
+.nx-slash-menu {
+  min-width: 260px;
+}
+
+/* ============================================================
+   Formatting toolbar (floating above text selection)
+   ============================================================ */
+
+.nx-fmt-toolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: var(--nx-shadow-lg);
+  animation: nxFadeIn 100ms ease-out;
+  color: var(--nx-text-secondary);
+}
+
+.nx-fmt-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-secondary);
+  cursor: pointer;
+  transition: background var(--nx-transition-fast), color var(--nx-transition-fast);
+}
+
+.nx-fmt-btn:hover {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-primary);
+}
+
+.nx-fmt-btn.is-on {
+  background: var(--nx-accent-muted);
+  color: var(--nx-accent);
+}
+
+.nx-fmt-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--nx-border-subtle);
+  margin: 0 4px;
+}
+
+.nx-fmt-btn-wrap {
+  position: relative;
+}
+
+.nx-fmt-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  box-shadow: var(--nx-shadow-lg);
+  padding: 10px 12px;
+  animation: nxMenuIn 120ms ease-out;
+  z-index: 10000;
+  min-width: 184px;
+}
+
+.nx-fmt-popover__label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nx-text-tertiary);
+  margin-bottom: 8px;
+}
+
+.nx-fmt-popover__grid {
+  display: grid;
+  grid-template-columns: repeat(4, 32px);
+  gap: 6px;
+}
+
+.nx-fmt-swatch {
+  width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--nx-radius-sm);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 14px;
+  border: 1px solid transparent;
+  transition: transform var(--nx-transition-fast);
+}
+
+.nx-fmt-swatch:hover {
+  transform: scale(1.05);
+}
+
+.nx-fmt-swatch.is-active {
+  outline: 2px solid var(--nx-accent);
+  outline-offset: 2px;
+}
+
+.nx-fmt-popover__clear {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-sm);
+  font-size: 12px;
+  color: var(--nx-text-secondary);
+  cursor: pointer;
+  transition: all var(--nx-transition-fast);
+}
+
+.nx-fmt-popover__clear:hover {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-primary);
+}
+
+/* ============================================================
+   Page title
+   ============================================================ */
+
+.nx-page-title {
+  padding: 2px 0;
+  border-bottom: 1px solid transparent;
+  transition: border-color var(--nx-transition-fast);
+  color: #f1edff;
+}
+
+.nx-page-title:focus {
+  border-bottom-color: var(--nx-border-subtle);
+}
+
+/* ============================================================
+   Text color / highlight (BlockNote style marks).
+   BlockNote emits [data-text-color="key"] / [data-background-color="key"]
+   on inline content spans. Override the default palette with our tokens.
+   ============================================================ */
+
+.bn-editor [data-text-color="blue"]            { color: #8ba2fd; }
+.bn-editor [data-text-color="green"]           { color: #7dd3a0; }
+.bn-editor [data-text-color="yellow"]          { color: #e8c87a; }
+.bn-editor [data-text-color="red"]             { color: #f07e8a; }
+.bn-editor [data-text-color="purple"]          { color: #b495ff; }
+.bn-editor [data-text-color="gray"]            { color: #a6a2b8; }
+.bn-editor [data-text-color="teal"]            { color: #6fd3c8; }
+.bn-editor [data-text-color="orange"]          { color: #f0a36a; }
+
+.bn-editor [data-background-color="blue"]      { background-color: rgba(107, 138, 253, 0.18); }
+.bn-editor [data-background-color="green"]     { background-color: rgba(74, 189, 122, 0.18); }
+.bn-editor [data-background-color="yellow"]    { background-color: rgba(224, 184, 88, 0.22); }
+.bn-editor [data-background-color="red"]       { background-color: rgba(232, 90, 109, 0.18); }
+.bn-editor [data-background-color="purple"]    { background-color: rgba(165, 123, 255, 0.22); }
+.bn-editor [data-background-color="gray"]      { background-color: rgba(180, 175, 200, 0.16); }
+.bn-editor [data-background-color="teal"]      { background-color: rgba(80, 195, 184, 0.18); }
+.bn-editor [data-background-color="orange"]    { background-color: rgba(232, 140, 72, 0.18); }
+
+.bn-editor [data-background-color] {
+  padding: 1px 2px;
+  border-radius: 3px;
+}
+
+/* ============================================================
+   Sidebar highlight (left accent bar on selected page)
+   ============================================================ */
+
+.nx-sidebar-page--selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  background: var(--nx-accent);
+  border-radius: 0 2px 2px 0;
+}
+
+/* ============================================================
+   Save indicator
+   ============================================================ */
+
+.nx-save-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--nx-text-tertiary);
+  animation: nxPulse 1.2s ease-in-out infinite;
+}
+
+.nx-save-check {
+  color: var(--nx-success);
+}
+
+/* ============================================================
+   Animations
+   ============================================================ */
+
+@keyframes nxMenuIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes nxFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes nxPulse {
+  0%, 100% { opacity: 0.5; }
+  50%      { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.18s ease-out;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.18s ease-out;
+}
+
