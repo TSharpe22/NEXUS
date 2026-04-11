@@ -72,13 +72,17 @@ export function LassoSelect({ editorContainerRef }: Props) {
     [selectBlocks],
   )
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      // Only start lasso on left-click in empty editor space
+  // Attach mousedown directly to the editor container element so we don't
+  // block clicks on buttons, inputs, or editable content with an overlay div.
+  useEffect(() => {
+    const container = editorContainerRef.current
+    if (!container) return
+
+    const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return
 
       const target = e.target as HTMLElement
-      // Don't lasso if clicking inside editable content
+      // Don't lasso if clicking inside editable content or interactive elements
       if (
         target.isContentEditable ||
         target.closest('[contenteditable]') ||
@@ -105,9 +109,11 @@ export function LassoSelect({ editorContainerRef }: Props) {
       startPos.current = { x: e.clientX, y: e.clientY }
       setLassoActive(true)
       cacheBlockRects()
-    },
-    [deselectAllBlocks, setLassoActive, cacheBlockRects],
-  )
+    }
+
+    container.addEventListener('mousedown', onMouseDown)
+    return () => container.removeEventListener('mousedown', onMouseDown)
+  }, [editorContainerRef, deselectAllBlocks, setLassoActive, cacheBlockRects])
 
   useEffect(() => {
     if (!isLassoActive) return
@@ -157,30 +163,21 @@ export function LassoSelect({ editorContainerRef }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [selectedBlockIds, deselectAllBlocks])
 
-  return (
-    <>
-      {/* Lasso rectangle overlay */}
-      {lassoRect && (
-        <div
-          className="nx-lasso-rect"
-          style={{
-            position: 'fixed',
-            left: Math.min(lassoRect.x, lassoRect.x + lassoRect.width),
-            top: Math.min(lassoRect.y, lassoRect.y + lassoRect.height),
-            width: Math.abs(lassoRect.width),
-            height: Math.abs(lassoRect.height),
-            pointerEvents: 'none',
-            zIndex: 9998,
-          }}
-        />
-      )}
+  // Only render the lasso rectangle visual — no invisible overlay
+  if (!lassoRect) return null
 
-      {/* Invisible mousedown capture layer */}
-      <div
-        className="absolute inset-0 z-0"
-        onMouseDown={onMouseDown}
-        style={{ pointerEvents: isLassoActive ? 'none' : undefined }}
-      />
-    </>
+  return (
+    <div
+      className="nx-lasso-rect"
+      style={{
+        position: 'fixed',
+        left: Math.min(lassoRect.x, lassoRect.x + lassoRect.width),
+        top: Math.min(lassoRect.y, lassoRect.y + lassoRect.height),
+        width: Math.abs(lassoRect.width),
+        height: Math.abs(lassoRect.height),
+        pointerEvents: 'none',
+        zIndex: 9998,
+      }}
+    />
   )
 }
