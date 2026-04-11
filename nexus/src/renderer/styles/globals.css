@@ -858,3 +858,152 @@ button:focus-visible {
   animation: slideIn 0.18s ease-out;
 }
 
+/* ============================================================
+   Phase 03 — Page Mention (Bidirectional Link Chip)
+   ============================================================ */
+
+.nx-page-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-accent-dim);
+  color: var(--nx-accent);
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background var(--nx-transition-fast);
+  vertical-align: baseline;
+  text-decoration: none;
+}
+
+.nx-page-mention:hover {
+  background: var(--nx-accent-muted);
+}
+
+.nx-page-mention__icon {
+  font-size: 0.85em;
+  line-height: 1;
+}
+
+.nx-page-mention__title {
+  font-weight: 500;
+}
+
+.nx-page-mention--trashed {
+  cursor: default;
+  color: var(--nx-text-tertiary);
+  background: transparent;
+  text-decoration: line-through;
+}
+
+.nx-page-mention--trashed:hover {
+  background: transparent;
+}
+
+.nx-page-mention--deleted {
+  cursor: default;
+  color: var(--nx-text-tertiary);
+  background: transparent;
+}
+
+.nx-page-mention--deleted:hover {
+  background: transparent;
+}
+
+/* ============================================================
+   Phase 03 — Link Menu ([[ suggestion menu)
+   ============================================================ */
+
+.nx-link-menu {
+  min-width: 240px;
+  max-width: 360px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  padding: 4px;
+  box-shadow: var(--nx-shadow-lg);
+  animation: nxMenuIn 120ms ease-out;
+}
+
+.nx-link-menu__header {
+  padding: 6px 8px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--nx-text-tertiary);
+}
+
+.nx-link-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: var(--nx-radius-sm);
+  font-size: 13px;
+  color: var(--nx-text-secondary);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background 75ms ease, color 75ms ease;
+}
+
+.nx-link-menu__item:hover,
+.nx-link-menu__item.is-selected {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-primary);
+}
+
+.nx-link-menu__icon {
+  font-size: 15px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 20px;
+  text-align: center;
+}
+
+.nx-link-menu__icon--create {
+  color: var(--nx-accent);
+}
+
+.nx-link-menu__label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Phase 03 — Backlinks Panel
+   ============================================================ */
+
+.nx-backlinks {
+  opacity: 0.85;
+}
+
+.nx-backlinks:hover {
+  opacity: 1;
+}
+
+/* ============================================================
+   Phase 03 — Block Multi-Select (Lasso)
+   ============================================================ */
+
+.nx-lasso-rect {
+  background: rgba(107, 138, 253, 0.10);
+  border: 1px solid rgba(107, 138, 253, 0.35);
+  border-radius: 2px;
+}
+
+.nx-block-selected {
+  background: rgba(107, 138, 253, 0.08) !important;
+  border-left: 2px solid rgba(165, 123, 255, 0.4);
+  border-radius: var(--nx-radius-sm);
+  transition: background 100ms ease;
+}
+

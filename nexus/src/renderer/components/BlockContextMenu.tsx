@@ -18,6 +18,7 @@ interface Props {
   x: number
   y: number
   onClose: () => void
+  selectedBlockIds?: string[]
 }
 
 type TransformEntry = {
@@ -66,49 +67,61 @@ function blockToPlainText(block: AnyBlock): string {
   return ''
 }
 
-export function BlockContextMenu({ editor, block, x, y, onClose }: Props) {
-  const isCallout = block.type === 'callout'
+export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockIds = [] }: Props) {
+  const isMultiSelect = selectedBlockIds.length > 1
+  const isCallout = !isMultiSelect && block.type === 'callout'
+
+  const targetIds = isMultiSelect ? selectedBlockIds : [block.id]
 
   const actions: MenuItem[] = [
     {
       id: 'delete',
-      label: 'Delete',
+      label: isMultiSelect ? `Delete ${targetIds.length} blocks` : 'Delete',
       icon: iconTrash,
-      shortcut: '⌘⇧⌫',
+      shortcut: isMultiSelect ? undefined : '⌘⇧⌫',
       danger: true,
-      onSelect: () => editor.removeBlocks([block.id]),
+      onSelect: () => editor.removeBlocks(targetIds),
     },
     {
       id: 'duplicate',
-      label: 'Duplicate',
+      label: isMultiSelect ? `Duplicate ${targetIds.length} blocks` : 'Duplicate',
       icon: iconCopy,
       shortcut: '⌘D',
       onSelect: () => {
-        const clone = {
-          type: block.type,
-          props: { ...block.props },
-          content: block.content,
-        } as Parameters<typeof editor.insertBlocks>[0][number]
-        editor.insertBlocks([clone], block.id, 'after')
+        const lastId = targetIds[targetIds.length - 1]
+        const clones = targetIds
+          .map((bid) => {
+            const b = editor.getBlock(bid) as AnyBlock | undefined
+            if (!b) return null
+            return { type: b.type, props: { ...b.props }, content: b.content }
+          })
+          .filter(Boolean) as Parameters<typeof editor.insertBlocks>[0]
+        if (clones.length > 0) editor.insertBlocks(clones as never, lastId, 'after')
       },
     },
     {
       id: 'copy',
-      label: 'Copy',
+      label: isMultiSelect ? `Copy ${targetIds.length} blocks` : 'Copy',
       icon: iconClipboard,
       onSelect: () => {
-        const text = blockToPlainText(block)
-        void navigator.clipboard.writeText(text)
+        const texts = targetIds.map((bid) => {
+          const b = editor.getBlock(bid) as AnyBlock | undefined
+          return b ? blockToPlainText(b) : ''
+        })
+        void navigator.clipboard.writeText(texts.join('\n'))
       },
     },
     {
       id: 'cut',
-      label: 'Cut',
+      label: isMultiSelect ? `Cut ${targetIds.length} blocks` : 'Cut',
       icon: iconScissors,
       onSelect: () => {
-        const text = blockToPlainText(block)
-        void navigator.clipboard.writeText(text)
-        editor.removeBlocks([block.id])
+        const texts = targetIds.map((bid) => {
+          const b = editor.getBlock(bid) as AnyBlock | undefined
+          return b ? blockToPlainText(b) : ''
+        })
+        void navigator.clipboard.writeText(texts.join('\n'))
+        editor.removeBlocks(targetIds)
       },
     },
     {
@@ -135,12 +148,14 @@ export function BlockContextMenu({ editor, block, x, y, onClose }: Props) {
     id: `transform-${entry.id}`,
     label: entry.label,
     icon: <span className="nx-menu__icon-text">{entry.icon}</span>,
-    isActive: isTransformActive(block, entry),
+    isActive: !isMultiSelect && isTransformActive(block, entry),
     onSelect: () => {
-      editor.updateBlock(block.id, {
-        type: entry.type,
-        props: entry.extraProps ? { ...entry.extraProps } : undefined,
-      } as Parameters<typeof editor.updateBlock>[1])
+      for (const bid of targetIds) {
+        editor.updateBlock(bid, {
+          type: entry.type,
+          props: entry.extraProps ? { ...entry.extraProps } : undefined,
+        } as Parameters<typeof editor.updateBlock>[1])
+      }
     },
   }))
 

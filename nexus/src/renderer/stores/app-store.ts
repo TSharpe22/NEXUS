@@ -23,6 +23,11 @@ interface AppState {
   // Command palette
   commandPaletteOpen: boolean
 
+  // Multi-select (Phase 03)
+  selectedBlockIds: string[]
+  isLassoActive: boolean
+  lassoRect: { x: number; y: number; width: number; height: number } | null
+
   // Actions
   loadPages(): Promise<void>
   loadDeletedPages(): Promise<void>
@@ -39,6 +44,13 @@ interface AppState {
   setShowTrash(v: boolean): void
   setCommandPaletteOpen(v: boolean): void
   setSaveStatus(s: 'idle' | 'saving' | 'saved'): void
+
+  // Multi-select actions
+  selectBlocks(ids: string[]): void
+  deselectAllBlocks(): void
+  toggleBlockSelection(id: string): void
+  setLassoActive(active: boolean): void
+  setLassoRect(rect: { x: number; y: number; width: number; height: number } | null): void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -53,6 +65,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   showTrash: false,
   deletedPages: [],
   commandPaletteOpen: false,
+  selectedBlockIds: [],
+  isLassoActive: false,
+  lassoRect: null,
 
   async loadPages() {
     const pages = await window.api.pages.getAll()
@@ -161,5 +176,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setSaveStatus(s) {
     set({ saveStatus: s })
+  },
+
+  selectBlocks(ids) {
+    set({ selectedBlockIds: ids })
+  },
+
+  deselectAllBlocks() {
+    set({ selectedBlockIds: [], isLassoActive: false, lassoRect: null })
+  },
+
+  toggleBlockSelection(id) {
+    set((state) => {
+      const current = state.selectedBlockIds
+      if (current.includes(id)) {
+        return { selectedBlockIds: current.filter((bid) => bid !== id) }
+      }
+      return { selectedBlockIds: [...current, id] }
+    })
+  },
+
+  setLassoActive(active) {
+    set({ isLassoActive: active })
+  },
+
+  setLassoRect(rect) {
+    set({ lassoRect: rect })
   },
 }))
