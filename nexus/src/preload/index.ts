@@ -17,6 +17,33 @@ const api: NexusAPI = {
     getByPageId: (pageId) => ipcRenderer.invoke('blocks:getByPageId', pageId),
     save: (pageId, blocks) => ipcRenderer.invoke('blocks:save', pageId, blocks),
   },
+  links: {
+    getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
+    syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),
+  },
+  io: {
+    exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),
+    exportPageJSON: (pageId) => ipcRenderer.invoke('io:exportPageJSON', pageId),
+    exportAllMarkdown: () => ipcRenderer.invoke('io:exportAllMarkdown'),
+    exportAllJSON: () => ipcRenderer.invoke('io:exportAllJSON'),
+    importMarkdown: (content, filename) => ipcRenderer.invoke('io:importMarkdown', content, filename),
+    importJSON: (content) => ipcRenderer.invoke('io:importJSON', content),
+    importPlainText: (content, filename) => ipcRenderer.invoke('io:importPlainText', content, filename),
+  },
+  dialog: {
+    showSaveDialog: (options) => ipcRenderer.invoke('dialog:showSaveDialog', options),
+    showOpenDialog: (options) => ipcRenderer.invoke('dialog:showOpenDialog', options),
+    showSelectFolder: () => ipcRenderer.invoke('dialog:showSelectFolder'),
+  },
+}
+
+// Additional fs helpers exposed separately
+const fs = {
+  readFile: (path: string) => ipcRenderer.invoke('fs:readFile', path),
+  writeFile: (path: string, content: string) => ipcRenderer.invoke('fs:writeFile', path, content),
+  writeFiles: (folder: string, files: { filename: string; content: string }[]) =>
+    ipcRenderer.invoke('fs:writeFiles', folder, files),
 }
 
 contextBridge.exposeInMainWorld('api', api)
+contextBridge.exposeInMainWorld('fs', fs)

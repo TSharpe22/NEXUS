@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
+import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
 import { relativeTime } from '../hooks/use-relative-time'
 import { ContextMenu } from './ContextMenu'
@@ -45,6 +46,104 @@ export function Sidebar() {
     setRenamingId(null)
     setRenameValue('')
   }
+
+  const handleImport = useCallback(async () => {
+    const paths = await window.api.dialog.showOpenDialog({
+      title: 'Import',
+      filters: [
+        { name: 'All Supported', extensions: ['md', 'txt', 'json'] },
+        { name: 'Markdown', extensions: ['md'] },
+        { name: 'Plain Text', extensions: ['txt'] },
+        { name: 'JSON', extensions: ['json'] },
+      ],
+      properties: ['openFile', 'multiSelections'],
+    })
+    if (!paths || paths.length === 0) return
+
+    let imported = 0
+    let failed = 0
+    let firstPageId: string | null = null
+
+    for (const filePath of paths) {
+      try {
+        const content = await window.fs.readFile(filePath)
+        const filename = filePath.split(/[/\\]/).pop() || 'import'
+        const ext = filename.split('.').pop()?.toLowerCase()
+
+        let result: any
+        if (ext === 'json') {
+          result = await window.api.io.importJSON(content)
+        } else if (ext === 'md') {
+          result = await window.api.io.importMarkdown(content, filename)
+        } else {
+          result = await window.api.io.importPlainText(content, filename)
+        }
+
+        if (result?.id && !firstPageId) firstPageId = result.id
+        if (result?.imported) imported += result.imported
+        else imported++
+      } catch {
+        failed++
+      }
+    }
+
+    await loadPages()
+    if (firstPageId) selectPage(firstPageId)
+
+    if (failed > 0) {
+      toast.error(`Imported ${imported} page(s). ${failed} file(s) could not be parsed.`)
+    } else {
+      toast.success(`Imported ${imported} page(s)`)
+    }
+  }, [loadPages, selectPage])
+
+  const handleDrop = useCallback(
+    async (e: React.DragEvent) => {
+      e.preventDefault()
+      e.stopPropagation()
+      const files = Array.from(e.dataTransfer.files)
+      const supported = files.filter((f) =>
+        /\.(md|txt|json)$/i.test(f.name),
+      )
+      if (supported.length === 0) return
+
+      let imported = 0
+      let failed = 0
+      let firstPageId: string | null = null
+
+      for (const file of supported) {
+        try {
+          const content = await file.text()
+          const ext = file.name.split('.').pop()?.toLowerCase()
+
+          let result: any
+          if (ext === 'json') {
+            result = await window.api.io.importJSON(content)
+          } else if (ext === 'md') {
+            result = await window.api.io.importMarkdown(content, file.name)
+          } else {
+            result = await window.api.io.importPlainText(content, file.name)
+          }
+
+          if (result?.id && !firstPageId) firstPageId = result.id
+          if (result?.imported) imported += result.imported
+          else imported++
+        } catch {
+          failed++
+        }
+      }
+
+      await loadPages()
+      if (firstPageId) selectPage(firstPageId)
+
+      if (failed > 0) {
+        toast.error(`Imported ${imported} page(s). ${failed} file(s) could not be parsed.`)
+      } else {
+        toast.success(`Imported ${imported} page(s)`)
+      }
+    },
+    [loadPages, selectPage],
+  )
 
   const onMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -99,6 +198,8 @@ export function Sidebar() {
       <div
         className="relative flex flex-col h-full shrink-0 border-r border-[var(--nx-border-subtle)] bg-[var(--nx-bg-secondary)] select-none"
         style={{ width: sidebarWidth, minWidth: sidebarWidth }}
+        onDrop={handleDrop}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation() }}
       >
         {/* Titlebar area with app name */}
         <div className="h-[var(--nx-titlebar-height)] titlebar-drag shrink-0 flex items-end px-4 pb-2">
@@ -121,6 +222,18 @@ export function Sidebar() {
             <kbd className="ml-auto text-[10px] text-[var(--nx-text-tertiary)] bg-[var(--nx-bg-tertiary)] px-1.5 py-0.5 rounded font-mono">
               {shortcutLabel('N')}
             </kbd>
+          </button>
+
+          <button
+            onClick={handleImport}
+            className="w-full flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150"
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Import</span>
           </button>
 
           <div className="relative">
@@ -357,6 +470,43 @@ export function Sidebar() {
               action: () => {
                 duplicatePage(ctxMenu.pageId)
                 setCtxMenu(null)
+              },
+            },
+            { type: 'separator' },
+            {
+              label: 'Export as Markdown',
+              action: async () => {
+                setCtxMenu(null)
+                try {
+                  const md = await window.api.io.exportPageMarkdown(ctxMenu.pageId)
+                  const path = await window.api.dialog.showSaveDialog({
+                    title: 'Export as Markdown',
+                    defaultPath: 'page.md',
+                    filters: [{ name: 'Markdown', extensions: ['md'] }],
+                  })
+                  if (path) {
+                    await window.fs.writeFile(path, md)
+                    toast.success('Exported as Markdown')
+                  }
+                } catch { toast.error('Export failed') }
+              },
+            },
+            {
+              label: 'Export as JSON',
+              action: async () => {
+                setCtxMenu(null)
+                try {
+                  const json = await window.api.io.exportPageJSON(ctxMenu.pageId)
+                  const path = await window.api.dialog.showSaveDialog({
+                    title: 'Export as JSON',
+                    defaultPath: 'page.json',
+                    filters: [{ name: 'JSON', extensions: ['json'] }],
+                  })
+                  if (path) {
+                    await window.fs.writeFile(path, json)
+                    toast.success('Exported as JSON')
+                  }
+                } catch { toast.error('Export failed') }
               },
             },
             { type: 'separator' },

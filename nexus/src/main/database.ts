@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync, existsSync } from 'fs'
 import { v4 as uuidv4 } from 'uuid'
-import type { Page, Block } from '../shared/types'
+import type { Page, Block, BacklinkResult, LinkTarget } from '../shared/types'
 
 let db: Database.Database
 
@@ -35,6 +35,11 @@ export function closeDatabase(): void {
 // ============================================================
 // Schema / Migrations
 // ============================================================
+
+function columnExists(table: string, column: string): boolean {
+  const cols = db.pragma(`table_info(${table})`) as { name: string }[]
+  return cols.some((c) => c.name === column)
+}
 
 function runMigrations(): void {
   db.exec(`
@@ -117,6 +122,11 @@ function runMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_page_id);
     CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_page_id);
   `)
+
+  // Phase 03 migration: page_width column
+  if (!columnExists('pages', 'page_width')) {
+    db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT 'default'`)
+  }
 }
 
 // ============================================================
@@ -146,7 +156,7 @@ export function getPageById(id: string): Page | null {
 }
 
 export function updatePage(id: string, data: Partial<Page>): void {
-  const allowed = ['title', 'icon', 'cover', 'is_archived'] as const
+  const allowed = ['title', 'icon', 'cover', 'is_archived', 'page_width'] as const
   const sets: string[] = []
   const values: unknown[] = []
 
@@ -257,4 +267,76 @@ export function saveBlocks(pageId: string, blocks: Block[]): void {
   })
 
   trx()
+}
+
+// ============================================================
+// Link queries
+// ============================================================
+
+export function getBacklinks(pageId: string): BacklinkResult[] {
+  const rows = db.prepare(`
+    SELECT l.context, p.id AS source_page_id, p.title, p.icon
+    FROM links l
+    JOIN pages p ON p.id = l.source_page_id
+    WHERE l.target_page_id = ? AND p.is_deleted = 0
+    ORDER BY l.created_at DESC
+  `).all(pageId) as { source_page_id: string; title: string; icon: string | null; context: string | null }[]
+
+  return rows.map((r) => ({
+    sourcePageId: r.source_page_id,
+    sourcePageTitle: r.title,
+    sourcePageIcon: r.icon,
+    context: r.context,
+  }))
+}
+
+export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
+  const trx = db.transaction(() => {
+    const existing = db.prepare(
+      'SELECT id, target_page_id FROM links WHERE source_page_id = ?'
+    ).all(pageId) as { id: string; target_page_id: string }[]
+
+    const existingTargets = new Set(existing.map((e) => e.target_page_id))
+    const newTargets = new Map(linkTargets.map((lt) => [lt.targetPageId, lt.context]))
+
+    // Delete links that no longer exist in the editor content
+    for (const row of existing) {
+      if (!newTargets.has(row.target_page_id)) {
+        db.prepare('DELETE FROM links WHERE id = ?').run(row.id)
+      }
+    }
+
+    // Insert new links
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, context, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `)
+    const timestamp = now()
+    for (const [targetId, context] of newTargets) {
+      if (!existingTargets.has(targetId)) {
+        insert.run(uuidv4(), pageId, targetId, context, timestamp)
+      }
+    }
+
+    // Update context for existing links that changed
+    const updateCtx = db.prepare('UPDATE links SET context = ? WHERE source_page_id = ? AND target_page_id = ?')
+    for (const [targetId, context] of newTargets) {
+      if (existingTargets.has(targetId)) {
+        updateCtx.run(context, pageId, targetId)
+      }
+    }
+  })
+
+  trx()
+}
+
+export function searchPagesForLink(query: string): Page[] {
+  if (!query.trim()) {
+    return db.prepare(
+      'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC LIMIT 20'
+    ).all() as Page[]
+  }
+  return db.prepare(
+    'SELECT * FROM pages WHERE is_deleted = 0 AND title LIKE ? ORDER BY updated_at DESC LIMIT 20'
+  ).all(`%${query}%`) as Page[]
 }

@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useCallback } from 'react'
 import { Toaster } from 'react-hot-toast'
+import toast from 'react-hot-toast'
 import { Sidebar } from './components/Sidebar'
 import { Editor } from './components/Editor'
 import { EmptyState } from './components/EmptyState'
@@ -13,6 +14,7 @@ export function App() {
     selectedPageId,
     sidebarCollapsed, setSidebarCollapsed,
     createPage, deletePage,
+    loadPages, selectPage,
     loadDeletedPages,
   } = useAppStore()
 
@@ -34,6 +36,59 @@ export function App() {
       if (mod && e.key === '\\') {
         e.preventDefault()
         setSidebarCollapsed(!sidebarCollapsed)
+      }
+
+      // Cmd+Shift+E — Export current page
+      if (mod && e.shiftKey && (e.key === 'e' || e.key === 'E') && selectedPageId) {
+        e.preventDefault()
+        ;(async () => {
+          try {
+            const md = await window.api.io.exportPageMarkdown(selectedPageId)
+            const path = await window.api.dialog.showSaveDialog({
+              title: 'Export as Markdown',
+              defaultPath: 'page.md',
+              filters: [{ name: 'Markdown', extensions: ['md'] }],
+            })
+            if (path) {
+              await window.fs.writeFile(path, md)
+              toast.success('Exported as Markdown')
+            }
+          } catch { toast.error('Export failed') }
+        })()
+        return
+      }
+
+      // Cmd+Shift+I — Import
+      if (mod && e.shiftKey && (e.key === 'i' || e.key === 'I')) {
+        e.preventDefault()
+        ;(async () => {
+          const paths = await window.api.dialog.showOpenDialog({
+            title: 'Import',
+            filters: [{ name: 'All Supported', extensions: ['md', 'txt', 'json'] }],
+            properties: ['openFile', 'multiSelections'],
+          })
+          if (!paths || paths.length === 0) return
+          let imported = 0; let failed = 0; let firstPageId: string | null = null
+          for (const filePath of paths) {
+            try {
+              const content = await window.fs.readFile(filePath)
+              const filename = filePath.split(/[/\\]/).pop() || 'import'
+              const ext = filename.split('.').pop()?.toLowerCase()
+              let result: any
+              if (ext === 'json') result = await window.api.io.importJSON(content)
+              else if (ext === 'md') result = await window.api.io.importMarkdown(content, filename)
+              else result = await window.api.io.importPlainText(content, filename)
+              if (result?.id && !firstPageId) firstPageId = result.id
+              if (result?.imported) imported += result.imported
+              else imported++
+            } catch { failed++ }
+          }
+          await loadPages()
+          if (firstPageId) selectPage(firstPageId)
+          if (failed > 0) toast.error(`Imported ${imported} page(s). ${failed} failed.`)
+          else toast.success(`Imported ${imported} page(s)`)
+        })()
+        return
       }
 
       // Delete PAGE via Cmd+Backspace. Cmd+Shift+Backspace is reserved for

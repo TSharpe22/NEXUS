@@ -2,12 +2,15 @@
 // Core domain types — shared between main and renderer
 // ============================================================
 
+export type PageWidth = 'narrow' | 'default' | 'wide' | 'full'
+
 export interface Page {
   id: string
   type_id: string
   title: string
   icon: string | null
   cover: string | null
+  page_width: PageWidth
   is_archived: number
   is_deleted: number
   created_at: string
@@ -103,6 +106,18 @@ export interface Link {
   created_at: string
 }
 
+export interface BacklinkResult {
+  sourcePageId: string
+  sourcePageTitle: string
+  sourcePageIcon: string | null
+  context: string | null
+}
+
+export interface LinkTarget {
+  targetPageId: string
+  context: string | null
+}
+
 // ============================================================
 // IPC API contract
 // ============================================================
@@ -112,7 +127,7 @@ export interface NexusAPI {
     create(): Promise<Page>
     getAll(): Promise<Page[]>
     getById(id: string): Promise<Page | null>
-    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived'>>): Promise<void>
+    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived' | 'page_width'>>): Promise<void>
     softDelete(id: string): Promise<void>
     restore(id: string): Promise<void>
     hardDelete(id: string): Promise<void>
@@ -122,6 +137,32 @@ export interface NexusAPI {
   blocks: {
     getByPageId(pageId: string): Promise<Block[]>
     save(pageId: string, blocks: Block[]): Promise<void>
+  }
+  links: {
+    getBacklinks(pageId: string): Promise<BacklinkResult[]>
+    syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
+  }
+  io: {
+    exportPageMarkdown(pageId: string): Promise<string>
+    exportPageJSON(pageId: string): Promise<string>
+    exportAllMarkdown(): Promise<{ filename: string; content: string }[]>
+    exportAllJSON(): Promise<string>
+    importMarkdown(content: string, filename: string): Promise<Page>
+    importJSON(content: string): Promise<Page | { imported: number }>
+    importPlainText(content: string, filename: string): Promise<Page>
+  }
+  dialog: {
+    showSaveDialog(options: {
+      title?: string
+      defaultPath?: string
+      filters?: { name: string; extensions: string[] }[]
+    }): Promise<string | null>
+    showOpenDialog(options: {
+      title?: string
+      filters?: { name: string; extensions: string[] }[]
+      properties?: string[]
+    }): Promise<string[] | null>
+    showSelectFolder(): Promise<string | null>
   }
 }
 
