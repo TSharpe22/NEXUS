@@ -78,7 +78,8 @@ export function LassoSelect({ editorContainerRef }: Props) {
       if (e.button !== 0) return
 
       const target = e.target as HTMLElement
-      // Don't lasso if clicking inside editable content
+
+      // Don't lasso if clicking on interactive elements or editable content
       if (
         target.isContentEditable ||
         target.closest('[contenteditable]') ||
@@ -86,16 +87,20 @@ export function LassoSelect({ editorContainerRef }: Props) {
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'BUTTON' ||
-        target.tagName === 'A'
+        target.tagName === 'A' ||
+        target.tagName === 'SELECT'
       ) {
         return
       }
 
-      // Also skip if inside a block's main content area (but not the margin/wrapper)
+      // Skip if inside a block's inline content area (.bn-block-content or .bn-block-outer)
+      // but allow clicking in the side gutter / block margins.
       const blockContainer = target.closest('[data-node-type="blockContainer"]')
       if (blockContainer) {
-        const blockContent = blockContainer.querySelector('.bn-block-content')
-        if (blockContent && blockContent.contains(target)) {
+        const inner =
+          blockContainer.querySelector('.bn-block-content') ||
+          blockContainer.querySelector('[data-content-type]')
+        if (inner && inner.contains(target)) {
           return
         }
       }
@@ -175,11 +180,12 @@ export function LassoSelect({ editorContainerRef }: Props) {
         />
       )}
 
-      {/* Invisible mousedown capture layer */}
+      {/* Invisible mousedown capture layer — sits behind block content (z-0)
+          so normal block interaction is unaffected, but catches empty-space clicks. */}
       <div
-        className="absolute inset-0 z-0"
+        className="absolute inset-0"
+        style={{ zIndex: 0, pointerEvents: isLassoActive ? 'none' : 'auto' }}
         onMouseDown={onMouseDown}
-        style={{ pointerEvents: isLassoActive ? 'none' : undefined }}
       />
     </>
   )

@@ -649,7 +649,7 @@ button:focus-visible {
   border-radius: var(--nx-radius-sm);
   color: var(--nx-text-secondary);
   cursor: pointer;
-  transition: background var(--nx-transition-fast), color var(--nx-transition-fast);
+  transition: background 80ms ease, color 80ms ease, transform 60ms ease;
 }
 
 .nx-fmt-btn:hover {
@@ -657,9 +657,23 @@ button:focus-visible {
   color: var(--nx-text-primary);
 }
 
+.nx-fmt-btn:active {
+  background: var(--nx-bg-active);
+  color: var(--nx-text-primary);
+  transform: scale(0.93);
+  transition: none;
+}
+
 .nx-fmt-btn.is-on {
   background: var(--nx-accent-muted);
   color: var(--nx-accent);
+}
+
+.nx-fmt-btn.is-on:active {
+  background: var(--nx-accent-muted);
+  filter: brightness(1.15);
+  transform: scale(0.93);
+  transition: none;
 }
 
 .nx-fmt-sep {
@@ -1004,6 +1018,135 @@ button:focus-visible {
   background: rgba(107, 138, 253, 0.08) !important;
   border-left: 2px solid rgba(165, 123, 255, 0.4);
   border-radius: var(--nx-radius-sm);
-  transition: background 100ms ease;
+  transition: background 80ms ease;
+}
+
+/* ============================================================
+   Nexus:// page links (inline word links created via toolbar)
+   ============================================================ */
+
+.bn-editor a[href^="nexus://"] {
+  color: var(--nx-accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(165, 123, 255, 0.45);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 80ms ease, text-decoration-color 80ms ease;
+}
+
+.bn-editor a[href^="nexus://"]:hover {
+  color: var(--nx-accent-hover);
+  text-decoration-color: var(--nx-accent-hover);
+}
+
+/* ============================================================
+   Width slider
+   ============================================================ */
+
+.nx-width-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--nx-bg-hover);
+  outline: none;
+  accent-color: var(--nx-accent);
+  cursor: pointer;
+}
+
+.nx-width-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--nx-accent);
+  cursor: pointer;
+  transition: transform 80ms ease, background 80ms ease;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.nx-width-slider::-webkit-slider-thumb:hover {
+  background: var(--nx-accent-hover);
+  transform: scale(1.2);
+}
+
+.nx-width-slider::-webkit-slider-thumb:active {
+  transform: scale(1.1);
+}
+
+.nx-width-slider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--nx-accent);
+  cursor: pointer;
+  border: none;
+}
+
+/* ============================================================
+   Callout icon picker — SVG icon buttons
+   ============================================================ */
+
+.nx-callout__picker-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: var(--nx-radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--nx-text-secondary);
+  cursor: pointer;
+  transition: background 80ms ease, color 80ms ease, transform 60ms ease;
+}
+
+.nx-callout__picker-item:hover {
+  background: var(--nx-bg-hover);
+  color: var(--nx-text-primary);
+}
+
+.nx-callout__picker-item:active {
+  background: var(--nx-bg-active);
+  transform: scale(0.9);
+  transition: none;
+}
+
+.nx-callout__picker-item.is-active {
+  background: var(--nx-accent-muted);
+  color: var(--nx-accent);
+}
+
+/* ============================================================
+   Global snappy active states
+   ============================================================ */
+
+/* Sidebar page list items */
+.nx-sidebar-page-item:active,
+[class*="nx-sidebar"] button:active {
+  background: var(--nx-bg-active) !important;
+  transition: none !important;
+}
+
+/* Menu items */
+.nx-menu__item:active,
+.mantine-Menu-item:active {
+  background: var(--nx-bg-active) !important;
+  transition: none !important;
+}
+
+/* Link menu items */
+.nx-link-menu__item:active {
+  background: var(--nx-bg-active) !important;
+  transition: none !important;
+}
+
+/* Page mention chip press feedback */
+.nx-page-mention:active {
+  background: var(--nx-accent-muted);
+  transform: scale(0.97);
+  transition: none;
 }
 

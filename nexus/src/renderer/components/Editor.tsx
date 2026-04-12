@@ -11,7 +11,7 @@ import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 import { useAppStore } from '../stores/app-store'
 import { useDebounce } from '../hooks/use-debounce'
-import type { Block as NexusBlock, PageWidth, Page } from '../../shared/types'
+import type { Block as NexusBlock, Page } from '../../shared/types'
 import { v4 as uuidv4 } from 'uuid'
 import { nexusSchema, type NexusEditor } from '../blocks/schema'
 import { getNexusSlashMenuItems } from '../blocks/slash-items'
@@ -23,50 +23,52 @@ import { BacklinksPanel } from './BacklinksPanel'
 import { LassoSelect } from './LassoSelect'
 import type { LinkTarget } from '../../shared/types'
 
-const PAGE_WIDTHS: { key: PageWidth; label: string; maxWidth: string }[] = [
-  { key: 'narrow', label: 'Narrow', maxWidth: '640px' },
-  { key: 'default', label: 'Default', maxWidth: '720px' },
-  { key: 'wide', label: 'Wide', maxWidth: '900px' },
-  { key: 'full', label: 'Full', maxWidth: '100%' },
-]
+const WIDTH_ICON = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+    <line x1="2" y1="4" x2="14" y2="4" />
+    <line x1="4" y1="8" x2="12" y2="8" />
+    <line x1="3" y1="12" x2="13" y2="12" />
+  </svg>
+)
 
-const WIDTH_ICONS: Record<PageWidth, React.ReactNode> = {
-  narrow: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="5" y1="4" x2="11" y2="4" /><line x1="4" y1="8" x2="12" y2="8" /><line x1="5" y1="12" x2="11" y2="12" />
-    </svg>
-  ),
-  default: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="4" y1="4" x2="12" y2="4" /><line x1="3" y1="8" x2="13" y2="8" /><line x1="4" y1="12" x2="12" y2="12" />
-    </svg>
-  ),
-  wide: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="3" y1="4" x2="13" y2="4" /><line x1="2" y1="8" x2="14" y2="8" /><line x1="3" y1="12" x2="13" y2="12" />
-    </svg>
-  ),
-  full: (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-      <line x1="2" y1="4" x2="14" y2="4" /><line x1="1" y1="8" x2="15" y2="8" /><line x1="2" y1="12" x2="14" y2="12" />
-    </svg>
-  ),
-}
+const WIDTH_MIN = 400
+const WIDTH_MAX = 1400
+const WIDTH_DEFAULT = 720
 
-// Walk BlockNote document tree and extract all pageMention inline content nodes.
+// Walk BlockNote document tree and extract all pageMention inline content nodes
+// as well as nexus:// text links.
 function extractLinkTargets(blocks: unknown[]): LinkTarget[] {
   const targets = new Map<string, string | null>()
 
   function walkInlineContent(content: unknown, blockText: string) {
     if (!Array.isArray(content)) return
     for (const item of content) {
-      if (item && typeof item === 'object' && 'type' in item) {
-        const node = item as { type: string; props?: Record<string, string>; content?: unknown }
-        if (node.type === 'pageMention' && node.props?.pageId) {
-          if (!targets.has(node.props.pageId)) {
-            targets.set(node.props.pageId, blockText.slice(0, 200) || null)
-          }
+      if (!item || typeof item !== 'object') continue
+      const node = item as {
+        type?: string
+        props?: Record<string, string>
+        href?: string
+        styles?: Record<string, string>
+        content?: unknown
+        text?: string
+      }
+      // pageMention chip
+      if (node.type === 'pageMention' && node.props?.pageId) {
+        if (!targets.has(node.props.pageId)) {
+          targets.set(node.props.pageId, blockText.slice(0, 200) || null)
         }
+      }
+      // nexus:// text link (BlockNote "link" inline type)
+      const href = node.href || node.styles?.link || node.props?.url
+      if (href && typeof href === 'string' && href.startsWith('nexus://')) {
+        const pageId = href.replace('nexus://', '').split('/')[0]
+        if (pageId && !targets.has(pageId)) {
+          targets.set(pageId, blockText.slice(0, 200) || null)
+        }
+      }
+      // Recurse into link content
+      if (node.type === 'link' && Array.isArray(node.content)) {
+        walkInlineContent(node.content, blockText)
       }
     }
   }
@@ -75,7 +77,6 @@ function extractLinkTargets(blocks: unknown[]): LinkTarget[] {
     for (const raw of items) {
       if (!raw || typeof raw !== 'object') continue
       const block = raw as { content?: unknown; children?: unknown[] }
-      // Gather block text for context
       let blockText = ''
       if (Array.isArray(block.content)) {
         for (const c of block.content) {
@@ -131,24 +132,18 @@ export function Editor({ pageId }: Props) {
   const isMountedRef = useRef(true)
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
-  const [widthDropdownOpen, setWidthDropdownOpen] = useState(false)
+  const [widthSliderOpen, setWidthSliderOpen] = useState(false)
 
-  const currentWidth = (currentPage?.page_width as PageWidth) || 'default'
-  const widthConfig = useMemo(
-    () => PAGE_WIDTHS.find((w) => w.key === currentWidth) || PAGE_WIDTHS[1],
-    [currentWidth],
-  )
+  // Numeric pixel width. 0 = full/unconstrained.
+  const storedWidth = currentPage?.page_width
+  const widthPx: number = (typeof storedWidth === 'number' && storedWidth > 0)
+    ? storedWidth
+    : (typeof storedWidth === 'number' && storedWidth === 0 ? 0 : WIDTH_DEFAULT)
+  const maxWidthStyle = widthPx === 0 ? '100%' : `${widthPx}px`
 
-  const cycleWidth = useCallback(() => {
-    const idx = PAGE_WIDTHS.findIndex((w) => w.key === currentWidth)
-    const next = PAGE_WIDTHS[(idx + 1) % PAGE_WIDTHS.length]
-    updatePage(pageId, { page_width: next.key })
-  }, [currentWidth, pageId, updatePage])
-
-  const setWidth = useCallback(
-    (width: PageWidth) => {
-      updatePage(pageId, { page_width: width })
-      setWidthDropdownOpen(false)
+  const handleWidthChange = useCallback(
+    (val: number) => {
+      updatePage(pageId, { page_width: val })
     },
     [pageId, updatePage],
   )
@@ -170,7 +165,7 @@ export function Editor({ pageId }: Props) {
           props: {
             pageId: targetPage.id,
             pageTitle: targetPage.title || title,
-            pageIcon: targetPage.icon || '\u{1F4DD}',
+            pageIcon: targetPage.icon || 'doc',
           },
         } as never,
         ' ',
@@ -193,6 +188,24 @@ export function Editor({ pageId }: Props) {
       }),
     [pages, editor, handleLinkSelect],
   )
+
+  // Intercept nexus:// link clicks and navigate within the app
+  useEffect(() => {
+    const container = editorContainerRef.current
+    if (!container) return
+    const onClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement).closest('a')
+      if (!target) return
+      const href = target.getAttribute('href') || ''
+      if (!href.startsWith('nexus://')) return
+      e.preventDefault()
+      e.stopPropagation()
+      const targetPageId = href.replace('nexus://', '').split('/')[0]
+      if (targetPageId) selectPage(targetPageId)
+    }
+    container.addEventListener('click', onClick)
+    return () => container.removeEventListener('click', onClick)
+  }, [selectPage])
 
   // Load blocks from DB when pageId changes
   useEffect(() => {
@@ -591,10 +604,10 @@ export function Editor({ pageId }: Props) {
   )
 
   return (
-    <div className="h-full overflow-y-auto editor-scroll">
+    <div className="h-full overflow-y-auto relative editor-scroll">
       <div
         className="mx-auto px-8 pt-6 pb-32"
-        style={{ maxWidth: widthConfig.maxWidth, transition: 'max-width 200ms ease-out' }}
+        style={{ maxWidth: maxWidthStyle, transition: 'max-width 200ms ease-out' }}
       >
         {/* Page title row with width toggle */}
         <div className="flex items-start gap-2">
@@ -607,35 +620,47 @@ export function Editor({ pageId }: Props) {
             className="nx-page-title flex-1 bg-transparent text-[2rem] font-bold leading-[1.15] tracking-[-0.02em] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] resize-none outline-none border-none mb-3 overflow-hidden"
           />
 
-          {/* Width toggle */}
+          {/* Width slider toggle */}
           <div className="relative shrink-0 mt-2">
             <button
-              onClick={() => setWidthDropdownOpen((v) => !v)}
-              onDoubleClick={cycleWidth}
-              title={`Page width: ${widthConfig.label}`}
-              className="flex items-center justify-center w-7 h-7 rounded-[var(--nx-radius-sm)] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150"
+              onClick={() => setWidthSliderOpen((v) => !v)}
+              title={widthPx === 0 ? 'Page width: Full' : `Page width: ${widthPx}px`}
+              className={`flex items-center justify-center w-7 h-7 rounded-[var(--nx-radius-sm)] transition-all duration-100 active:scale-95 ${widthSliderOpen ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)]'}`}
             >
-              {WIDTH_ICONS[currentWidth]}
+              {WIDTH_ICON}
             </button>
-            {widthDropdownOpen && (
+            {widthSliderOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setWidthDropdownOpen(false)} />
-                <div className="absolute right-0 top-8 z-50 min-w-[140px] bg-[var(--nx-bg-elevated)] border border-[var(--nx-border-subtle)] rounded-[var(--nx-radius-md)] py-1 animate-fade-in" style={{ boxShadow: 'var(--nx-shadow-md)' }}>
-                  {PAGE_WIDTHS.map((w) => (
+                <div className="fixed inset-0 z-40" onClick={() => setWidthSliderOpen(false)} />
+                <div className="absolute right-0 top-8 z-50 w-[220px] bg-[var(--nx-bg-elevated)] border border-[var(--nx-border-subtle)] rounded-[var(--nx-radius-md)] p-3 animate-fade-in" style={{ boxShadow: 'var(--nx-shadow-md)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] text-[var(--nx-text-tertiary)] uppercase tracking-wide">Page width</span>
+                    <span className="text-[12px] font-medium text-[var(--nx-accent)] tabular-nums">
+                      {widthPx === 0 ? 'Full' : `${widthPx}px`}
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min={WIDTH_MIN}
+                    max={WIDTH_MAX}
+                    step={10}
+                    value={widthPx === 0 ? WIDTH_MAX : widthPx}
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10)
+                      handleWidthChange(v >= WIDTH_MAX ? 0 : v)
+                    }}
+                    className="nx-width-slider w-full"
+                  />
+                  <div className="flex justify-between mt-1.5">
+                    <span className="text-[10px] text-[var(--nx-text-tertiary)]">{WIDTH_MIN}px</span>
                     <button
-                      key={w.key}
-                      onClick={() => setWidth(w.key)}
-                      className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-[12px] transition-colors duration-75 ${
-                        currentWidth === w.key
-                          ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]'
-                          : 'text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] hover:text-[var(--nx-text-primary)]'
-                      }`}
+                      onClick={() => handleWidthChange(0)}
+                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors duration-75 ${widthPx === 0 ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)]'}`}
                     >
-                      <span className="shrink-0">{WIDTH_ICONS[w.key]}</span>
-                      <span>{w.label}</span>
-                      <span className="ml-auto text-[10px] text-[var(--nx-text-tertiary)]">{w.maxWidth}</span>
+                      Full
                     </button>
-                  ))}
+                    <span className="text-[10px] text-[var(--nx-text-tertiary)]">{WIDTH_MAX}px</span>
+                  </div>
                 </div>
               </>
             )}

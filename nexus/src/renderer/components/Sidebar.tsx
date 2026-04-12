@@ -4,6 +4,7 @@ import { useAppStore } from '../stores/app-store'
 import { relativeTime } from '../hooks/use-relative-time'
 import { ContextMenu } from './ContextMenu'
 import { shortcutLabel } from '../utils/shortcuts'
+import { PageIcon } from '../blocks/icons'
 
 export function Sidebar() {
   const {
@@ -305,7 +306,9 @@ export function Sidebar() {
                     key={page.id}
                     className="group flex items-center gap-2.5 px-2.5 py-[7px] rounded-[var(--nx-radius-md)] text-[13px] hover:bg-[var(--nx-bg-hover)] transition-all duration-100"
                   >
-                    <span className="text-[15px] leading-none opacity-60">{page.icon || ''}</span>
+                    <span className="text-[var(--nx-text-tertiary)] opacity-60 shrink-0">
+                      <PageIcon iconKey={page.icon} size={14} />
+                    </span>
                     <span className="flex-1 truncate text-[var(--nx-text-secondary)]">
                       {page.title || 'Untitled'}
                     </span>
@@ -380,7 +383,9 @@ export function Sidebar() {
                       }
                     `}
                   >
-                    <span className="text-[15px] leading-none shrink-0">{page.icon || ''}</span>
+                    <span className="text-[var(--nx-text-tertiary)] shrink-0">
+                      <PageIcon iconKey={page.icon} size={14} />
+                    </span>
 
                     {renamingId === page.id ? (
                       <input

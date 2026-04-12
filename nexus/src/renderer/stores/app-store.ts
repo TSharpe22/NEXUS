@@ -28,6 +28,9 @@ interface AppState {
   isLassoActive: boolean
   lassoRect: { x: number; y: number; width: number; height: number } | null
 
+  // Backlinks panel — persist expanded state across page navigation
+  backlinksExpanded: boolean
+
   // Actions
   loadPages(): Promise<void>
   loadDeletedPages(): Promise<void>
@@ -51,6 +54,7 @@ interface AppState {
   toggleBlockSelection(id: string): void
   setLassoActive(active: boolean): void
   setLassoRect(rect: { x: number; y: number; width: number; height: number } | null): void
+  setBacklinksExpanded(v: boolean): void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -68,6 +72,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   selectedBlockIds: [],
   isLassoActive: false,
   lassoRect: null,
+  backlinksExpanded: false,
 
   async loadPages() {
     const pages = await window.api.pages.getAll()
@@ -202,5 +207,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setLassoRect(rect) {
     set({ lassoRect: rect })
+  },
+
+  setBacklinksExpanded(v) {
+    set({ backlinksExpanded: v })
   },
 }))
