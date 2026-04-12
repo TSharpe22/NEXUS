@@ -2,7 +2,9 @@
 // Core domain types — shared between main and renderer
 // ============================================================
 
-export type PageWidth = 'narrow' | 'default' | 'wide' | 'full'
+// Numeric pixel width for page content (0 = full / unconstrained).
+// Legacy string presets are converted on read: narrow→640, default→720, wide→900, full→0.
+export type PageWidth = number
 
 export interface Page {
   id: string

@@ -123,10 +123,35 @@ function runMigrations(): void {
     CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_page_id);
   `)
 
-  // Phase 03 migration: page_width column
+  // Phase 03 migration: page_width column (TEXT, stores legacy preset names or numeric px values)
   if (!columnExists('pages', 'page_width')) {
-    db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT 'default'`)
+    db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT '720'`)
   }
+}
+
+// Map legacy string preset names to pixel values.
+const LEGACY_WIDTH_MAP: Record<string, number> = {
+  narrow: 640,
+  default: 720,
+  wide: 900,
+  full: 0,
+}
+
+/** Coerce stored page_width value (legacy string or numeric string) to a number. */
+function coercePageWidth(raw: unknown): number {
+  if (typeof raw === 'number') return raw
+  if (typeof raw === 'string') {
+    if (raw in LEGACY_WIDTH_MAP) return LEGACY_WIDTH_MAP[raw]
+    const n = parseInt(raw, 10)
+    if (!isNaN(n)) return n
+  }
+  return 720
+}
+
+/** Map a Page row from SQLite, normalising page_width to a number. */
+function mapPage(row: unknown): Page {
+  const r = row as Record<string, unknown>
+  return { ...r, page_width: coercePageWidth(r.page_width) } as unknown as Page
 }
 
 // ============================================================
@@ -142,17 +167,18 @@ export function createPage(): Page {
     INSERT INTO pages (id, type_id, title, created_at, updated_at)
     VALUES (?, 'note', '', ?, ?)
   `).run(id, timestamp, timestamp)
-  return db.prepare('SELECT * FROM pages WHERE id = ?').get(id) as Page
+  return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(id))
 }
 
 export function getAllPages(): Page[] {
-  return db.prepare(
+  return (db.prepare(
     'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC'
-  ).all() as Page[]
+  ).all() as unknown[]).map(mapPage)
 }
 
 export function getPageById(id: string): Page | null {
-  return (db.prepare('SELECT * FROM pages WHERE id = ?').get(id) as Page) || null
+  const row = db.prepare('SELECT * FROM pages WHERE id = ?').get(id)
+  return row ? mapPage(row) : null
 }
 
 export function updatePage(id: string, data: Partial<Page>): void {
@@ -163,7 +189,8 @@ export function updatePage(id: string, data: Partial<Page>): void {
   for (const key of allowed) {
     if (key in data) {
       sets.push(`${key} = ?`)
-      values.push(data[key])
+      // page_width is stored as TEXT; store numeric value as string
+      values.push(key === 'page_width' ? String(data[key]) : data[key])
     }
   }
 
@@ -189,9 +216,9 @@ export function hardDeletePage(id: string): void {
 }
 
 export function getDeletedPages(): Page[] {
-  return db.prepare(
+  return (db.prepare(
     'SELECT * FROM pages WHERE is_deleted = 1 ORDER BY updated_at DESC'
-  ).all() as Page[]
+  ).all() as unknown[]).map(mapPage)
 }
 
 export function duplicatePage(id: string): Page {
@@ -230,7 +257,7 @@ export function duplicatePage(id: string): Page {
     )
   }
 
-  return db.prepare('SELECT * FROM pages WHERE id = ?').get(newId) as Page
+  return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(newId))
 }
 
 // ============================================================
@@ -332,11 +359,11 @@ export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
 
 export function searchPagesForLink(query: string): Page[] {
   if (!query.trim()) {
-    return db.prepare(
+    return (db.prepare(
       'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC LIMIT 20'
-    ).all() as Page[]
+    ).all() as unknown[]).map(mapPage)
   }
-  return db.prepare(
+  return (db.prepare(
     'SELECT * FROM pages WHERE is_deleted = 0 AND title LIKE ? ORDER BY updated_at DESC LIMIT 20'
-  ).all(`%${query}%`) as Page[]
+  ).all(`%${query}%`) as unknown[]).map(mapPage)
 }

@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react'
 import { useAppStore } from '../stores/app-store'
 import type { BacklinkResult } from '../../shared/types'
+import { PageIcon } from '../blocks/icons'
 
 interface Props {
   pageId: string
@@ -8,8 +9,9 @@ interface Props {
 
 export function BacklinksPanel({ pageId }: Props) {
   const selectPage = useAppStore((s) => s.selectPage)
+  const expanded = useAppStore((s) => s.backlinksExpanded)
+  const setExpanded = useAppStore((s) => s.setBacklinksExpanded)
   const [backlinks, setBacklinks] = useState<BacklinkResult[]>([])
-  const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const fetchBacklinks = useCallback(async () => {
@@ -30,8 +32,8 @@ export function BacklinksPanel({ pageId }: Props) {
   return (
     <div className="nx-backlinks mt-8 border-t border-[var(--nx-border-subtle)] pt-4">
       <button
-        className="flex items-center gap-2 text-[12px] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] transition-colors duration-150"
-        onClick={() => setExpanded((v) => !v)}
+        className="flex items-center gap-2 text-[12px] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] transition-colors duration-100 cursor-pointer active:text-[var(--nx-text-primary)]"
+        onClick={() => setExpanded(!expanded)}
       >
         <svg
           width="12"
@@ -48,11 +50,11 @@ export function BacklinksPanel({ pageId }: Props) {
             strokeLinejoin="round"
           />
         </svg>
-        <span>Backlinks ({backlinks.length})</span>
+        <span>Backlinks ({loading ? '…' : backlinks.length})</span>
       </button>
 
       {expanded && (
-        <div className="mt-3 space-y-1 animate-fade-in">
+        <div className="mt-3 space-y-0.5 animate-fade-in">
           {backlinks.length === 0 ? (
             <p className="text-[12px] text-[var(--nx-text-tertiary)] pl-5">
               No other pages link here.
@@ -62,10 +64,10 @@ export function BacklinksPanel({ pageId }: Props) {
               <button
                 key={bl.sourcePageId}
                 onClick={() => selectPage(bl.sourcePageId)}
-                className="w-full flex items-start gap-2.5 px-3 py-2 rounded-[var(--nx-radius-md)] text-left hover:bg-[var(--nx-bg-hover)] transition-colors duration-100 group"
+                className="w-full flex items-start gap-2.5 px-3 py-2 rounded-[var(--nx-radius-md)] text-left hover:bg-[var(--nx-bg-hover)] active:bg-[var(--nx-bg-active)] transition-colors duration-75 cursor-pointer group"
               >
-                <span className="text-[14px] leading-none mt-0.5 shrink-0">
-                  {bl.sourcePageIcon || '\u{1F4DD}'}
+                <span className="text-[var(--nx-text-tertiary)] shrink-0 mt-0.5">
+                  <PageIcon iconKey={bl.sourcePageIcon} size={13} />
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="text-[13px] text-[var(--nx-text-primary)] truncate">

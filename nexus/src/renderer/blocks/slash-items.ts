@@ -68,7 +68,7 @@ export function getNexusSlashMenuItems(editor: NexusEditor): SlashItem[] {
     onItemClick: () => {
       insertOrUpdateBlock(anyEditor, {
         type: 'callout',
-        props: { icon: '💡', color: 'blue' },
+        props: { icon: 'bulb', color: 'blue' },
       } as unknown as AnyPartialBlock)
     },
   })

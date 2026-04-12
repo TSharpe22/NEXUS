@@ -1,25 +1,21 @@
-import { useState, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { createReactBlockSpec } from '@blocknote/react'
 import { COLORS, COLOR_KEYS, type ColorKey } from './callout-colors'
+import { PageIcon, CALLOUT_ICON_KEYS, type PageIconKey } from './icons'
 
-// Callout block: a tinted rounded box with an emoji + editable inline header.
+// Callout block: a tinted rounded box with an SVG icon + editable inline header.
 // Nested child blocks render below the header automatically (sibling blockGroup).
 //
-// props.icon — the emoji shown on the left. Default 💡.
+// props.icon — icon key from PageIconKey. Default 'bulb'.
+//              Legacy emoji values fall back to 'bulb' via PageIcon component.
 // props.color — one of the keys in callout-colors.ts. Default 'blue'.
-//
-// The color token drives three CSS custom properties (set inline) so the
-// surrounding globals.css rules can reference them without hard-coding
-// per-color selectors.
-
-const PRESET_ICONS = ['💡', '📝', '⚠️', '✅', '❌', '🔥', '⭐', '📌']
 
 export const calloutBlock = createReactBlockSpec(
   {
     type: 'callout',
     content: 'inline',
     propSchema: {
-      icon: { default: '💡' },
+      icon: { default: 'bulb' },
       color: { default: 'blue' },
     },
   },
@@ -29,7 +25,7 @@ export const calloutBlock = createReactBlockSpec(
         ? block.props.color
         : 'blue') as ColorKey
       const token = COLORS[colorKey]
-      const icon = block.props.icon || '💡'
+      const icon = block.props.icon || 'bulb'
 
       const [pickerOpen, setPickerOpen] = useState(false)
       const pickerRef = useRef<HTMLDivElement | null>(null)
@@ -45,7 +41,7 @@ export const calloutBlock = createReactBlockSpec(
         return () => window.removeEventListener('mousedown', onDown)
       }, [pickerOpen])
 
-      const pickIcon = (next: string) => {
+      const pickIcon = (next: PageIconKey) => {
         editor.updateBlock(block, {
           type: 'callout',
           props: { ...block.props, icon: next },
@@ -73,21 +69,20 @@ export const calloutBlock = createReactBlockSpec(
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => setPickerOpen((v) => !v)}
             >
-              <span role="img" aria-label="callout icon">
-                {icon}
-              </span>
+              <PageIcon iconKey={icon} size={16} />
             </button>
             {pickerOpen ? (
               <div ref={pickerRef} className="nx-callout__picker">
-                {PRESET_ICONS.map((emoji) => (
+                {CALLOUT_ICON_KEYS.map((key) => (
                   <button
-                    key={emoji}
+                    key={key}
                     type="button"
-                    className="nx-callout__picker-item"
+                    className={`nx-callout__picker-item ${icon === key ? 'is-active' : ''}`}
+                    title={key}
                     onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => pickIcon(emoji)}
+                    onClick={() => pickIcon(key)}
                   >
-                    {emoji}
+                    <PageIcon iconKey={key} size={15} />
                   </button>
                 ))}
               </div>

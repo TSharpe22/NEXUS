@@ -1,12 +1,13 @@
 import React from 'react'
 import type { Page } from '../../shared/types'
+import { PageIcon } from '../blocks/icons'
 
 // LinkMenu items returned by getItems. Each either references an existing page
 // or is the "create new" sentinel.
 export interface LinkMenuItem {
   id: string
   title: string
-  icon: string
+  icon: string | null
   isCreate?: boolean
   page?: Page
   onItemClick: (editor: any) => void
@@ -43,7 +44,7 @@ export function getLinkMenuItems(
     const items: LinkMenuItem[] = filtered.map((page) => ({
       id: page.id,
       title: page.title || 'Untitled',
-      icon: page.icon || '\u{1F4DD}',
+      icon: page.icon,
       page,
       onItemClick: () => onSelect(page, page.title || 'Untitled'),
     }))
@@ -57,7 +58,7 @@ export function getLinkMenuItems(
         items.push({
           id: '__create__',
           title: search,
-          icon: '+',
+          icon: null,
           isCreate: true,
           onItemClick: () => onSelect(null, search),
         })
@@ -93,9 +94,6 @@ export function LinkMenu({ items, onItemClick, selectedIndex }: LinkMenuProps) {
           key={item.id}
           className={`nx-link-menu__item ${index === selectedIndex ? 'is-selected' : ''}`}
           onClick={() => onItemClick?.(item)}
-          onMouseEnter={(e) => {
-            // selectedIndex is managed by BlockNote's SuggestionMenuWrapper
-          }}
         >
           {item.isCreate ? (
             <>
@@ -111,7 +109,9 @@ export function LinkMenu({ items, onItemClick, selectedIndex }: LinkMenuProps) {
             </>
           ) : (
             <>
-              <span className="nx-link-menu__icon">{item.icon}</span>
+              <span className="nx-link-menu__icon">
+                <PageIcon iconKey={item.icon} size={14} />
+              </span>
               <span className="nx-link-menu__label">{item.title}</span>
             </>
           )}
