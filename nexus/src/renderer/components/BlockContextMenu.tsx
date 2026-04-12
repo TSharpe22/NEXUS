@@ -1,6 +1,7 @@
 import { Menu, type MenuSection, type MenuItem } from './Menu'
 import { COLOR_KEYS, COLORS } from '../blocks/callout-colors'
 import type { NexusEditor } from '../blocks/schema'
+import { useAppStore } from '../stores/app-store'
 
 // Right-click menu for blocks inside the editor. Two primary sections:
 //   1. Block actions (delete, duplicate, copy, cut, move up/down)
@@ -68,6 +69,7 @@ function blockToPlainText(block: AnyBlock): string {
 }
 
 export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockIds = [] }: Props) {
+  const currentPageId = useAppStore((s) => s.currentPage?.id)
   const isMultiSelect = selectedBlockIds.length > 1
   const isCallout = !isMultiSelect && block.type === 'callout'
 
@@ -122,6 +124,16 @@ export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockId
         })
         void navigator.clipboard.writeText(texts.join('\n'))
         editor.removeBlocks(targetIds)
+      },
+    },
+    {
+      id: 'copy-link',
+      label: 'Copy link to page',
+      icon: iconLink,
+      onSelect: () => {
+        if (currentPageId) {
+          void navigator.clipboard.writeText(`nexus://${currentPageId}`)
+        }
       },
     },
     {
@@ -255,5 +267,11 @@ const iconArrowDown = (
   <svg width="14" height="14" viewBox="0 0 24 24" {...iconStroke}>
     <line x1="12" y1="5" x2="12" y2="19" />
     <polyline points="19 12 12 19 5 12" />
+  </svg>
+)
+const iconLink = (
+  <svg width="14" height="14" viewBox="0 0 24 24" {...iconStroke}>
+    <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+    <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
   </svg>
 )

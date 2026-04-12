@@ -71,24 +71,22 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
 
       const target = e.target as HTMLElement
 
-      // Ignore clicks on interactive or directly editable content.
-      // We do NOT filter on .bn-block-content / [data-content-type] because those
-      // cover the entire block visual area — filtering them prevents the lasso from
-      // starting anywhere near actual blocks. The guards below (isContentEditable,
-      // [contenteditable], .bn-inline-content) are sufficient to protect text-cursor
-      // zones while allowing clicks on block chrome (padding, handle gutter) to
-      // initiate a drag. The 5px threshold below prevents accidental lasso on clicks.
+      // Only start lasso from truly empty space — not from inside any block.
+      // Allowing lasso starts inside blocks causes the entire vertical swath of
+      // blocks to be selected (all blocks span full width, so any downward drag
+      // intersects them all). Restricting to empty space makes selection intentional:
+      // the user drags from the padding below blocks upward to sweep across them.
+      if (target.closest('[data-node-type="blockContainer"]')) return
+
+      // Also guard interactive / editable elements in the container padding area.
       if (
         target.isContentEditable ||
         target.closest('[contenteditable]') ||
-        target.closest('.bn-inline-content') ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'BUTTON' ||
         target.tagName === 'A' ||
         target.tagName === 'SELECT' ||
-        target.closest('.nx-fmt-toolbar') ||
-        target.closest('.nx-link-menu') ||
         target.closest('[role="menu"]')
       ) {
         return

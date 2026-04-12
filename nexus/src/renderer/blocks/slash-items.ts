@@ -3,6 +3,7 @@ import {
   type DefaultReactSuggestionItem,
 } from '@blocknote/react'
 import { insertOrUpdateBlock } from '@blocknote/core'
+import { getMultiColumnSlashMenuItems } from '@blocknote/xl-multi-column'
 import type { NexusEditor } from './schema'
 
 // Build the slash menu items list:
@@ -11,9 +12,9 @@ import type { NexusEditor } from './schema'
 //    and external-url prompts that haven't been designed yet).
 // 3. Drop `emoji` — the spec doesn't call for it and we already have emoji
 //    picker in the callout block.
-// 4. Append our two custom blocks (Toggle, Callout).
-// Column blocks are intentionally excluded: the spec says columns are
-// drag-only, so we don't merge in getMultiColumnSlashMenuItems.
+// 4. Append our custom blocks (Toggle, Callout).
+// 5. Append multi-column layout items (2-col, 3-col) — also available via
+//    drag, but slash menu makes the feature discoverable.
 
 const DROP_KEYS = new Set([
   'file',
@@ -72,6 +73,12 @@ export function getNexusSlashMenuItems(editor: NexusEditor): SlashItem[] {
       } as unknown as AnyPartialBlock)
     },
   })
+
+  // Multi-column layout items (2-col and 3-col)
+  const columnItems = getMultiColumnSlashMenuItems(
+    editor as unknown as Parameters<typeof getMultiColumnSlashMenuItems>[0],
+  )
+  items.push(...(columnItems as unknown as SlashItem[]))
 
   return items
 }

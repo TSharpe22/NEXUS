@@ -19,7 +19,6 @@ import { SlashMenu } from './SlashMenu'
 import { CustomFormattingToolbar } from './FormattingToolbar'
 import { BlockContextMenu } from './BlockContextMenu'
 import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
-import { BacklinksPanel } from './BacklinksPanel'
 import { LassoSelect } from './LassoSelect'
 import type { LinkTarget } from '../../shared/types'
 
@@ -145,7 +144,8 @@ export function Editor({ pageId }: Props) {
     : (typeof storedWidth === 'number' && storedWidth === 0 ? 0 : WIDTH_DEFAULT)
   // Display value: prefer local state (instant) over store value (async)
   const displayWidthPx = localWidthPx ?? widthPx
-  const maxWidthStyle = displayWidthPx === 0 ? '100%' : `${displayWidthPx}px`
+  // Full (0) gets 24px breathing room on each side beyond the existing px-8 padding
+  const maxWidthStyle = displayWidthPx === 0 ? 'calc(100% - 48px)' : `${displayWidthPx}px`
 
   // Clear local state when navigating to a different page
   useEffect(() => {
@@ -657,14 +657,12 @@ export function Editor({ pageId }: Props) {
                     step={10}
                     value={displayWidthPx === 0 ? WIDTH_MAX : displayWidthPx}
                     onChange={(e) => {
-                      const v = parseInt(e.target.value, 10)
-                      setLocalWidthPx(v >= WIDTH_MAX ? 0 : v)
+                      setLocalWidthPx(parseInt(e.target.value, 10))
                     }}
                     onMouseUp={(e) => {
                       const v = parseInt((e.target as HTMLInputElement).value, 10)
-                      const final = v >= WIDTH_MAX ? 0 : v
-                      setLocalWidthPx(final)
-                      handleWidthChange(final)
+                      setLocalWidthPx(v)
+                      handleWidthChange(v)
                     }}
                     className="nx-width-slider w-full"
                   />
@@ -721,8 +719,6 @@ export function Editor({ pageId }: Props) {
           </BlockNoteView>
         </div>
 
-        {/* Backlinks panel */}
-        <BacklinksPanel pageId={pageId} />
       </div>
 
       <LassoSelect scrollContainerRef={scrollContainerRef} editorContainerRef={editorContainerRef} />
