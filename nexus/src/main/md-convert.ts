@@ -2,7 +2,6 @@
  * Markdown <-> Nexus Block conversion utilities.
  * Used by the import/export system in the main process.
  */
-import { marked } from 'marked'
 import { v4 as uuidv4 } from 'uuid'
 import type { Block } from '../shared/types'
 
@@ -194,21 +193,144 @@ export interface ImportResult {
   wikiLinks: string[] // page titles referenced via [[...]]
 }
 
+// ============================================================
+// Minimal synchronous Markdown tokenizer (replaces marked dependency)
+// Handles: headings, paragraphs, fenced code, blockquotes, ordered/
+// unordered/task lists, horizontal rules, HTML blocks, tables, spaces.
+// ============================================================
+
+type MdToken =
+  | { type: 'heading'; depth: number; text: string }
+  | { type: 'paragraph'; text: string }
+  | { type: 'code'; text: string; lang: string }
+  | { type: 'blockquote'; text: string }
+  | { type: 'hr' }
+  | { type: 'space' }
+  | { type: 'html'; text: string }
+  | { type: 'table'; header: string[]; rows: string[][] }
+  | { type: 'list'; ordered: boolean; items: { text: string; task: boolean; checked: boolean }[] }
+
+function lexMarkdown(md: string): MdToken[] {
+  const lines = md.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const tokens: MdToken[] = []
+  let i = 0
+
+  while (i < lines.length) {
+    const line = lines[i]
+
+    // Blank line
+    if (/^\s*$/.test(line)) { tokens.push({ type: 'space' }); i++; continue }
+
+    // Fenced code block
+    const fenceMatch = line.match(/^(`{3,}|~{3,})\s*(\S*)/)
+    if (fenceMatch) {
+      const fence = fenceMatch[1]; const lang = fenceMatch[2] || ''
+      const codeLines: string[] = []; i++
+      while (i < lines.length && !lines[i].startsWith(fence)) { codeLines.push(lines[i]); i++ }
+      i++ // consume closing fence
+      tokens.push({ type: 'code', text: codeLines.join('\n'), lang })
+      continue
+    }
+
+    // ATX heading
+    const headingMatch = line.match(/^(#{1,6})\s+(.*)/)
+    if (headingMatch) {
+      tokens.push({ type: 'heading', depth: headingMatch[1].length, text: headingMatch[2].trim() })
+      i++; continue
+    }
+
+    // Setext heading (=== or ---)
+    if (i + 1 < lines.length) {
+      const next = lines[i + 1]
+      if (/^={2,}\s*$/.test(next)) { tokens.push({ type: 'heading', depth: 1, text: line.trim() }); i += 2; continue }
+      if (/^-{2,}\s*$/.test(next) && line.trim()) { tokens.push({ type: 'heading', depth: 2, text: line.trim() }); i += 2; continue }
+    }
+
+    // Horizontal rule
+    if (/^[-*_]{3,}\s*$/.test(line)) { tokens.push({ type: 'hr' }); i++; continue }
+
+    // Blockquote
+    if (/^>/.test(line)) {
+      const bqLines: string[] = []
+      while (i < lines.length && /^>\s?/.test(lines[i])) {
+        bqLines.push(lines[i].replace(/^>\s?/, '')); i++
+      }
+      tokens.push({ type: 'blockquote', text: bqLines.join('\n') })
+      continue
+    }
+
+    // HTML block
+    if (/^<\w/.test(line)) {
+      const htmlLines: string[] = []
+      while (i < lines.length && !/^\s*$/.test(lines[i])) { htmlLines.push(lines[i]); i++ }
+      tokens.push({ type: 'html', text: htmlLines.join('\n') })
+      continue
+    }
+
+    // Table (GFM: has |---|)
+    if (i + 1 < lines.length && /^\|?[-:| ]+\|[-:| ]*$/.test(lines[i + 1])) {
+      const parseCells = (row: string) =>
+        row.replace(/^\||\|$/g, '').split('|').map((c) => c.trim())
+      const header = parseCells(line)
+      i += 2 // skip header + separator
+      const rows: string[][] = []
+      while (i < lines.length && /\|/.test(lines[i]) && !/^\s*$/.test(lines[i])) {
+        rows.push(parseCells(lines[i])); i++
+      }
+      tokens.push({ type: 'table', header, rows })
+      continue
+    }
+
+    // List
+    const ulMatch = line.match(/^(\s*)([-*+])\s+(.*)/)
+    const olMatch = line.match(/^(\s*)(\d+)[.)]\s+(.*)/)
+    if (ulMatch || olMatch) {
+      const ordered = Boolean(olMatch)
+      const indent = (ulMatch || olMatch)![1].length
+      const items: { text: string; task: boolean; checked: boolean }[] = []
+      const listRe = ordered ? /^\s*\d+[.)]\s+(.*)/ : /^\s*[-*+]\s+(.*)/
+      while (i < lines.length) {
+        const lm = lines[i].match(listRe)
+        if (!lm && /^\s*$/.test(lines[i])) { i++; break }
+        if (!lm) break
+        let text = lm[1]
+        const taskMatch = text.match(/^\[([xX ])\]\s+(.*)/)
+        const task = Boolean(taskMatch)
+        const checked = task && taskMatch![1].toLowerCase() === 'x'
+        if (task) text = taskMatch![2]
+        items.push({ text, task, checked }); i++
+      }
+      tokens.push({ type: 'list', ordered, items })
+      continue
+    }
+
+    // Paragraph — collect until blank line or block element
+    const paraLines: string[] = []
+    while (i < lines.length) {
+      const l = lines[i]
+      if (/^\s*$/.test(l)) break
+      if (/^#{1,6}\s/.test(l) || /^[-*_]{3,}\s*$/.test(l) || /^>/.test(l) || /^(`{3,}|~{3,})/.test(l)) break
+      if (/^\s*[-*+]\s/.test(l) || /^\s*\d+[.)]\s/.test(l)) break
+      paraLines.push(l); i++
+    }
+    if (paraLines.length) tokens.push({ type: 'paragraph', text: paraLines.join(' ') })
+  }
+
+  return tokens
+}
+
 export function markdownToBlocks(md: string, pageId: string): ImportResult {
-  const tokens = marked.lexer(md)
+  const tokens = lexMarkdown(md)
   const blocks: Block[] = []
   let title = ''
   let sortOrder = 0
   const wikiLinks: string[] = []
 
-  // Extract [[wiki-links]] from text
   const extractWikiLinks = (text: string): string => {
     const regex = /\[\[([^\]]+)\]\]/g
     let match
     while ((match = regex.exec(text)) !== null) {
-      if (!wikiLinks.includes(match[1])) {
-        wikiLinks.push(match[1])
-      }
+      if (!wikiLinks.includes(match[1])) wikiLinks.push(match[1])
     }
     return text
   }
@@ -217,17 +339,12 @@ export function markdownToBlocks(md: string, pageId: string): ImportResult {
     switch (token.type) {
       case 'heading': {
         const headingText = extractWikiLinks(token.text)
-        if (token.depth === 1 && !title) {
-          title = headingText
-        } else {
-          blocks.push(createBlock('heading', headingText, { level: token.depth }, sortOrder++, pageId))
-        }
+        if (token.depth === 1 && !title) { title = headingText }
+        else { blocks.push(createBlock('heading', headingText, { level: token.depth }, sortOrder++, pageId)) }
         break
       }
-
       case 'paragraph': {
         const text = extractWikiLinks(token.text)
-        // Check for image placeholders
         if (text.startsWith('![')) {
           const altMatch = text.match(/!\[([^\]]*)\]/)
           blocks.push(createBlock('paragraph', `[Image: ${altMatch?.[1] || 'image'}]`, {}, sortOrder++, pageId))
@@ -236,7 +353,6 @@ export function markdownToBlocks(md: string, pageId: string): ImportResult {
         }
         break
       }
-
       case 'list': {
         const listType = token.ordered ? 'numberedListItem' : 'bulletListItem'
         for (const item of token.items) {
@@ -249,57 +365,30 @@ export function markdownToBlocks(md: string, pageId: string): ImportResult {
         }
         break
       }
-
-      case 'code': {
-        blocks.push(createBlock('codeBlock', token.text, { language: token.lang || '' }, sortOrder++, pageId))
+      case 'code':
+        blocks.push(createBlock('codeBlock', token.text, { language: token.lang }, sortOrder++, pageId))
         break
-      }
-
-      case 'blockquote': {
-        const text = extractWikiLinks(token.text || '')
-        blocks.push(createBlock('quote', text, {}, sortOrder++, pageId))
+      case 'blockquote':
+        blocks.push(createBlock('quote', extractWikiLinks(token.text), {}, sortOrder++, pageId))
         break
-      }
-
-      case 'hr': {
+      case 'hr':
         blocks.push(createBlock('divider', '', {}, sortOrder++, pageId))
         break
-      }
-
       case 'html': {
-        // Best-effort: <details>/<summary> → toggle
-        const detailsMatch = token.text.match(/<summary>(.*?)<\/summary>/s)
-        if (detailsMatch) {
-          blocks.push(createBlock('toggle', detailsMatch[1], {}, sortOrder++, pageId))
-        } else {
-          blocks.push(createBlock('paragraph', token.text, {}, sortOrder++, pageId))
-        }
+        const sumMatch = token.text.match(/<summary>(.*?)<\/summary>/s)
+        if (sumMatch) blocks.push(createBlock('toggle', sumMatch[1], {}, sortOrder++, pageId))
+        else blocks.push(createBlock('paragraph', token.text, {}, sortOrder++, pageId))
         break
       }
-
       case 'table': {
-        // Convert to paragraph with pipe-separated text (simplified)
-        if (token.header && token.rows) {
-          const headerRow = token.header.map((h: { text: string }) => h.text).join(' | ')
-          blocks.push(createBlock('paragraph', `| ${headerRow} |`, {}, sortOrder++, pageId))
-          for (const row of token.rows) {
-            const rowText = row.map((c: { text: string }) => c.text).join(' | ')
-            blocks.push(createBlock('paragraph', `| ${rowText} |`, {}, sortOrder++, pageId))
-          }
+        blocks.push(createBlock('paragraph', `| ${token.header.join(' | ')} |`, {}, sortOrder++, pageId))
+        for (const row of token.rows) {
+          blocks.push(createBlock('paragraph', `| ${row.join(' | ')} |`, {}, sortOrder++, pageId))
         }
         break
       }
-
       case 'space':
         break
-
-      default: {
-        if ('text' in token && token.text) {
-          const text = extractWikiLinks(token.text as string)
-          blocks.push(createBlock('paragraph', text, {}, sortOrder++, pageId))
-        }
-        break
-      }
     }
   }
 
