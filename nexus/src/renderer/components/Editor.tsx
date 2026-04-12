@@ -123,9 +123,10 @@ function resetToggles(blocks: unknown[]): void {
 
 export function Editor({ pageId }: Props) {
   const { setSaveStatus, updatePage, currentPage, pages, createPage, loadPages, selectPage } = useAppStore()
-  const { selectedBlockIds, deselectAllBlocks, selectBlocks, toggleBlockSelection } = useAppStore()
+  const { selectedBlockIds, isLassoActive, deselectAllBlocks, selectBlocks, toggleBlockSelection } = useAppStore()
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
   const initialContentLoaded = useRef(false)
   const currentPageId = useRef(pageId)
   const lastSavedBlocksSnapshot = useRef<string>('')
@@ -604,7 +605,7 @@ export function Editor({ pageId }: Props) {
   )
 
   return (
-    <div className="h-full overflow-y-auto relative editor-scroll">
+    <div ref={scrollContainerRef} className="h-full overflow-y-auto relative editor-scroll" style={isLassoActive ? { userSelect: 'none' } : undefined}>
       <div
         className="mx-auto px-8 pt-6 pb-32"
         style={{ maxWidth: maxWidthStyle, transition: 'max-width 200ms ease-out' }}
@@ -708,7 +709,7 @@ export function Editor({ pageId }: Props) {
         <BacklinksPanel pageId={pageId} />
       </div>
 
-      <LassoSelect editorContainerRef={editorContainerRef} />
+      <LassoSelect scrollContainerRef={scrollContainerRef} editorContainerRef={editorContainerRef} />
 
       {contextMenu ? (
         <BlockContextMenu

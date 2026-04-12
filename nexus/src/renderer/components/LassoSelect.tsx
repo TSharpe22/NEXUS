@@ -2,6 +2,9 @@ import React, { useCallback, useRef, useEffect } from 'react'
 import { useAppStore } from '../stores/app-store'
 
 interface Props {
+  // The scroll container — we listen for mousedown here via native listener
+  // so we never block clicks on actual content.
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>
   editorContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
@@ -12,7 +15,7 @@ function rectsIntersect(
   return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)
 }
 
-export function LassoSelect({ editorContainerRef }: Props) {
+export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   const {
     selectedBlockIds,
     isLassoActive,
@@ -26,24 +29,18 @@ export function LassoSelect({ editorContainerRef }: Props) {
   const startPos = useRef<{ x: number; y: number } | null>(null)
   const blockRectsCache = useRef<Map<string, DOMRect>>(new Map())
   const rafRef = useRef<number>(0)
-
-  const getBlockElements = useCallback((): HTMLElement[] => {
-    if (!editorContainerRef.current) return []
-    return Array.from(
-      editorContainerRef.current.querySelectorAll('[data-node-type="blockContainer"]'),
-    ) as HTMLElement[]
-  }, [editorContainerRef])
+  // Track whether we've moved enough to actually be lassoing
+  const isDragging = useRef(false)
 
   const cacheBlockRects = useCallback(() => {
     blockRectsCache.current.clear()
-    const elements = getBlockElements()
-    for (const el of elements) {
+    if (!editorContainerRef.current) return
+    const elements = editorContainerRef.current.querySelectorAll('[data-node-type="blockContainer"]')
+    elements.forEach((el) => {
       const id = el.getAttribute('data-id')
-      if (id) {
-        blockRectsCache.current.set(id, el.getBoundingClientRect())
-      }
-    }
-  }, [getBlockElements])
+      if (id) blockRectsCache.current.set(id, el.getBoundingClientRect())
+    })
+  }, [editorContainerRef])
 
   const computeIntersections = useCallback(
     (rect: { x: number; y: number; width: number; height: number }) => {
@@ -51,82 +48,88 @@ export function LassoSelect({ editorContainerRef }: Props) {
       const lassoRight = Math.max(rect.x, rect.x + rect.width)
       const lassoTop = Math.min(rect.y, rect.y + rect.height)
       const lassoBottom = Math.max(rect.y, rect.y + rect.height)
-
       const lassoBounds = { left: lassoLeft, top: lassoTop, right: lassoRight, bottom: lassoBottom }
       const ids: string[] = []
-
       for (const [id, blockRect] of blockRectsCache.current) {
-        const blockBounds = {
-          left: blockRect.left,
-          top: blockRect.top,
-          right: blockRect.right,
-          bottom: blockRect.bottom,
-        }
-        if (rectsIntersect(lassoBounds, blockBounds)) {
+        if (rectsIntersect(lassoBounds, { left: blockRect.left, top: blockRect.top, right: blockRect.right, bottom: blockRect.bottom })) {
           ids.push(id)
         }
       }
-
       selectBlocks(ids)
     },
     [selectBlocks],
   )
 
-  const onMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      // Only start lasso on left-click in empty editor space
+  // Native mousedown on scroll container — does NOT call preventDefault so
+  // normal clicks on blocks, buttons, inputs are completely unaffected.
+  useEffect(() => {
+    const container = scrollContainerRef.current
+    if (!container) return
+
+    const onMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return
 
       const target = e.target as HTMLElement
 
-      // Don't lasso if clicking on interactive elements or editable content
+      // Ignore clicks on any interactive or editable content
       if (
         target.isContentEditable ||
         target.closest('[contenteditable]') ||
         target.closest('.bn-inline-content') ||
+        target.closest('.bn-block-content') ||
+        target.closest('[data-content-type]') ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'BUTTON' ||
         target.tagName === 'A' ||
-        target.tagName === 'SELECT'
+        target.tagName === 'SELECT' ||
+        target.closest('.nx-fmt-toolbar') ||
+        target.closest('.nx-link-menu') ||
+        target.closest('[role="menu"]')
       ) {
         return
       }
 
-      // Skip if inside a block's inline content area (.bn-block-content or .bn-block-outer)
-      // but allow clicking in the side gutter / block margins.
+      // Only lasso in "empty" zones: the scroll container itself, the padding
+      // wrappers, or the block side-gutters (but not block content).
       const blockContainer = target.closest('[data-node-type="blockContainer"]')
       if (blockContainer) {
+        // Clicking inside a block container but outside its content → gutter/margin
         const inner =
           blockContainer.querySelector('.bn-block-content') ||
           blockContainer.querySelector('[data-content-type]')
-        if (inner && inner.contains(target)) {
-          return
-        }
+        if (inner && inner.contains(target)) return
       }
 
-      e.preventDefault()
-      deselectAllBlocks()
+      // Good — remember start position and cache block positions.
+      // We do NOT preventDefault here so existing click behavior is preserved.
       startPos.current = { x: e.clientX, y: e.clientY }
-      setLassoActive(true)
+      isDragging.current = false
       cacheBlockRects()
-    },
-    [deselectAllBlocks, setLassoActive, cacheBlockRects],
-  )
+    }
 
+    container.addEventListener('mousedown', onMouseDown)
+    return () => container.removeEventListener('mousedown', onMouseDown)
+  }, [scrollContainerRef, cacheBlockRects])
+
+  // Once a start position is set, listen for drag movement at the document level.
   useEffect(() => {
-    if (!isLassoActive) return
+    const DRAG_THRESHOLD = 5 // px — don't show lasso for tiny accidental movements
 
     const onMouseMove = (e: MouseEvent) => {
       if (!startPos.current) return
 
-      const rect = {
-        x: startPos.current.x,
-        y: startPos.current.y,
-        width: e.clientX - startPos.current.x,
-        height: e.clientY - startPos.current.y,
+      const dx = e.clientX - startPos.current.x
+      const dy = e.clientY - startPos.current.y
+
+      if (!isDragging.current) {
+        if (Math.abs(dx) < DRAG_THRESHOLD && Math.abs(dy) < DRAG_THRESHOLD) return
+        isDragging.current = true
+        deselectAllBlocks()
+        setLassoActive(true)
       }
 
+      const rect = { x: startPos.current.x, y: startPos.current.y, width: dx, height: dy }
       cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {
         setLassoRect(rect)
@@ -136,6 +139,7 @@ export function LassoSelect({ editorContainerRef }: Props) {
 
     const onMouseUp = () => {
       startPos.current = null
+      isDragging.current = false
       setLassoActive(false)
       setLassoRect(null)
       cancelAnimationFrame(rafRef.current)
@@ -143,50 +147,37 @@ export function LassoSelect({ editorContainerRef }: Props) {
 
     document.addEventListener('mousemove', onMouseMove)
     document.addEventListener('mouseup', onMouseUp)
-
     return () => {
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
       cancelAnimationFrame(rafRef.current)
     }
-  }, [isLassoActive, setLassoActive, setLassoRect, computeIntersections])
+  }, [deselectAllBlocks, setLassoActive, setLassoRect, computeIntersections])
 
   // Escape to deselect
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && selectedBlockIds.length > 0) {
-        deselectAllBlocks()
-      }
+      if (e.key === 'Escape' && selectedBlockIds.length > 0) deselectAllBlocks()
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [selectedBlockIds, deselectAllBlocks])
 
-  return (
-    <>
-      {/* Lasso rectangle overlay */}
-      {lassoRect && (
-        <div
-          className="nx-lasso-rect"
-          style={{
-            position: 'fixed',
-            left: Math.min(lassoRect.x, lassoRect.x + lassoRect.width),
-            top: Math.min(lassoRect.y, lassoRect.y + lassoRect.height),
-            width: Math.abs(lassoRect.width),
-            height: Math.abs(lassoRect.height),
-            pointerEvents: 'none',
-            zIndex: 9998,
-          }}
-        />
-      )}
+  // Lasso rect overlay only — no invisible capture div
+  if (!lassoRect) return null
 
-      {/* Invisible mousedown capture layer — sits behind block content (z-0)
-          so normal block interaction is unaffected, but catches empty-space clicks. */}
-      <div
-        className="absolute inset-0"
-        style={{ zIndex: 0, pointerEvents: isLassoActive ? 'none' : 'auto' }}
-        onMouseDown={onMouseDown}
-      />
-    </>
+  return (
+    <div
+      className="nx-lasso-rect"
+      style={{
+        position: 'fixed',
+        left: Math.min(lassoRect.x, lassoRect.x + lassoRect.width),
+        top: Math.min(lassoRect.y, lassoRect.y + lassoRect.height),
+        width: Math.abs(lassoRect.width),
+        height: Math.abs(lassoRect.height),
+        pointerEvents: 'none',
+        zIndex: 9998,
+      }}
+    />
   )
 }
