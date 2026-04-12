@@ -11,9 +11,8 @@ import type { NexusEditor } from './schema'
 //    and external-url prompts that haven't been designed yet).
 // 3. Drop `emoji` — the spec doesn't call for it and we already have emoji
 //    picker in the callout block.
-// 4. Append our two custom blocks (Toggle, Callout).
-// Column blocks are intentionally excluded: the spec says columns are
-// drag-only, so we don't merge in getMultiColumnSlashMenuItems.
+// 4. Append our custom blocks (Toggle, Callout).
+// Columns are drag-only (drag a block next to another block).
 
 const DROP_KEYS = new Set([
   'file',
