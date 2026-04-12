@@ -20,6 +20,7 @@ import { CustomFormattingToolbar } from './FormattingToolbar'
 import { BlockContextMenu } from './BlockContextMenu'
 import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
 import { LassoSelect } from './LassoSelect'
+import { ColumnResizeHandles } from './ColumnResizeHandles'
 import type { LinkTarget } from '../../shared/types'
 
 const WIDTH_ICON = (
@@ -683,7 +684,7 @@ export function Editor({ pageId }: Props) {
         </div>
 
         {/* Block editor */}
-        <div ref={editorContainerRef} onContextMenu={onContextMenu} className="relative">
+        <div ref={editorContainerRef} onContextMenu={onContextMenu} className="relative overflow-visible">
           <BlockNoteView
             editor={editor as never}
             theme="dark"
@@ -717,6 +718,7 @@ export function Editor({ pageId }: Props) {
               }}
             />
           </BlockNoteView>
+          <ColumnResizeHandles editor={editor} editorContainerRef={editorContainerRef} />
         </div>
 
       </div>

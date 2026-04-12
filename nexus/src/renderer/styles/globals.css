@@ -278,6 +278,67 @@ button:focus-visible {
   border-color: var(--nx-accent) !important;
 }
 
+/* ============================================================
+   Multi-column layout — @blocknote/xl-multi-column
+   The package doesn't ship its own CSS; we provide flex-row
+   layout for the block-group that contains column blocks.
+   ============================================================ */
+
+/* The .bn-block-group that holds column children → flex row */
+[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group {
+  display: flex !important;
+  flex-direction: row;
+  gap: 0;
+  align-items: flex-start;
+}
+
+/* Each column blockContainer stretches to fill its flex ratio */
+[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] {
+  flex: 1 1 0;
+  min-width: 80px;
+  min-height: 2em;
+  /* Remove bottom-margin that causes vertical stacking appearance */
+  margin-bottom: 0 !important;
+}
+
+/* Column inner content fills available width */
+[data-content-type="column"] {
+  width: 100%;
+}
+
+/* Remove the left border BlockNote adds to nested block groups */
+[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] > .bn-block-group {
+  border-left: none !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+/* Resize handle — thin vertical divider between columns */
+.nx-col-resize-handle {
+  position: absolute;
+  top: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 20;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+}
+
+.nx-col-resize-handle::after {
+  content: '';
+  width: 2px;
+  background: transparent;
+  border-radius: 1px;
+  transition: background 150ms ease;
+}
+
+.nx-col-resize-handle:hover::after,
+.nx-col-resize-handle.is-dragging::after {
+  background: var(--nx-accent);
+  opacity: 0.5;
+}
+
 /* Side menu / drag handle — fade on hover */
 .bn-editor .bn-side-menu {
   opacity: 0;
