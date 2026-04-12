@@ -71,13 +71,17 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
 
       const target = e.target as HTMLElement
 
-      // Ignore clicks on any interactive or editable content
+      // Ignore clicks on interactive or directly editable content.
+      // We do NOT filter on .bn-block-content / [data-content-type] because those
+      // cover the entire block visual area — filtering them prevents the lasso from
+      // starting anywhere near actual blocks. The guards below (isContentEditable,
+      // [contenteditable], .bn-inline-content) are sufficient to protect text-cursor
+      // zones while allowing clicks on block chrome (padding, handle gutter) to
+      // initiate a drag. The 5px threshold below prevents accidental lasso on clicks.
       if (
         target.isContentEditable ||
         target.closest('[contenteditable]') ||
         target.closest('.bn-inline-content') ||
-        target.closest('.bn-block-content') ||
-        target.closest('[data-content-type]') ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'BUTTON' ||
@@ -88,17 +92,6 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
         target.closest('[role="menu"]')
       ) {
         return
-      }
-
-      // Only lasso in "empty" zones: the scroll container itself, the padding
-      // wrappers, or the block side-gutters (but not block content).
-      const blockContainer = target.closest('[data-node-type="blockContainer"]')
-      if (blockContainer) {
-        // Clicking inside a block container but outside its content → gutter/margin
-        const inner =
-          blockContainer.querySelector('.bn-block-content') ||
-          blockContainer.querySelector('[data-content-type]')
-        if (inner && inner.contains(target)) return
       }
 
       // Good — remember start position and cache block positions.

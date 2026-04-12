@@ -134,13 +134,23 @@ export function Editor({ pageId }: Props) {
 
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null)
   const [widthSliderOpen, setWidthSliderOpen] = useState(false)
+  // Local optimistic width — updated instantly on slider drag, cleared on page change.
+  // Prevents stutter from async IPC round-trip in updatePage.
+  const [localWidthPx, setLocalWidthPx] = useState<number | null>(null)
 
   // Numeric pixel width. 0 = full/unconstrained.
   const storedWidth = currentPage?.page_width
   const widthPx: number = (typeof storedWidth === 'number' && storedWidth > 0)
     ? storedWidth
     : (typeof storedWidth === 'number' && storedWidth === 0 ? 0 : WIDTH_DEFAULT)
-  const maxWidthStyle = widthPx === 0 ? '100%' : `${widthPx}px`
+  // Display value: prefer local state (instant) over store value (async)
+  const displayWidthPx = localWidthPx ?? widthPx
+  const maxWidthStyle = displayWidthPx === 0 ? '100%' : `${displayWidthPx}px`
+
+  // Clear local state when navigating to a different page
+  useEffect(() => {
+    setLocalWidthPx(null)
+  }, [pageId])
 
   const handleWidthChange = useCallback(
     (val: number) => {
@@ -625,7 +635,7 @@ export function Editor({ pageId }: Props) {
           <div className="relative shrink-0 mt-2">
             <button
               onClick={() => setWidthSliderOpen((v) => !v)}
-              title={widthPx === 0 ? 'Page width: Full' : `Page width: ${widthPx}px`}
+              title={displayWidthPx === 0 ? 'Page width: Full' : `Page width: ${displayWidthPx}px`}
               className={`flex items-center justify-center w-7 h-7 rounded-[var(--nx-radius-sm)] transition-all duration-100 active:scale-95 ${widthSliderOpen ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)]'}`}
             >
               {WIDTH_ICON}
@@ -637,7 +647,7 @@ export function Editor({ pageId }: Props) {
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[11px] text-[var(--nx-text-tertiary)] uppercase tracking-wide">Page width</span>
                     <span className="text-[12px] font-medium text-[var(--nx-accent)] tabular-nums">
-                      {widthPx === 0 ? 'Full' : `${widthPx}px`}
+                      {displayWidthPx === 0 ? 'Full' : `${displayWidthPx}px`}
                     </span>
                   </div>
                   <input
@@ -645,18 +655,24 @@ export function Editor({ pageId }: Props) {
                     min={WIDTH_MIN}
                     max={WIDTH_MAX}
                     step={10}
-                    value={widthPx === 0 ? WIDTH_MAX : widthPx}
+                    value={displayWidthPx === 0 ? WIDTH_MAX : displayWidthPx}
                     onChange={(e) => {
                       const v = parseInt(e.target.value, 10)
-                      handleWidthChange(v >= WIDTH_MAX ? 0 : v)
+                      setLocalWidthPx(v >= WIDTH_MAX ? 0 : v)
+                    }}
+                    onMouseUp={(e) => {
+                      const v = parseInt((e.target as HTMLInputElement).value, 10)
+                      const final = v >= WIDTH_MAX ? 0 : v
+                      setLocalWidthPx(final)
+                      handleWidthChange(final)
                     }}
                     className="nx-width-slider w-full"
                   />
                   <div className="flex justify-between mt-1.5">
                     <span className="text-[10px] text-[var(--nx-text-tertiary)]">{WIDTH_MIN}px</span>
                     <button
-                      onClick={() => handleWidthChange(0)}
-                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors duration-75 ${widthPx === 0 ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)]'}`}
+                      onClick={() => { setLocalWidthPx(0); handleWidthChange(0) }}
+                      className={`text-[10px] px-1.5 py-0.5 rounded transition-colors duration-75 ${displayWidthPx === 0 ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)]'}`}
                     >
                       Full
                     </button>
