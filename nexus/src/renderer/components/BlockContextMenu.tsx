@@ -1,5 +1,7 @@
+import React from 'react'
 import { Menu, type MenuSection, type MenuItem } from './Menu'
 import { COLOR_KEYS, COLORS } from '../blocks/callout-colors'
+import { PageIcon } from '../blocks/icons'
 import type { NexusEditor } from '../blocks/schema'
 import { useAppStore } from '../stores/app-store'
 
@@ -25,7 +27,7 @@ interface Props {
 type TransformEntry = {
   id: string
   label: string
-  icon: string
+  icon: React.ReactNode
   type: string
   extraProps?: Record<string, unknown>
 }
@@ -39,7 +41,7 @@ const TRANSFORMS: TransformEntry[] = [
   { id: 'numbered', label: 'Numbered List', icon: '1.', type: 'numberedListItem' },
   { id: 'check', label: 'Check List', icon: '☐', type: 'checkListItem' },
   { id: 'code', label: 'Code Block', icon: '</>', type: 'codeBlock' },
-  { id: 'callout', label: 'Callout', icon: '💡', type: 'callout' },
+  { id: 'callout', label: 'Callout', icon: <PageIcon iconKey="bulb" size={13} />, type: 'callout' },
   { id: 'toggle', label: 'Toggle', icon: '▸', type: 'toggle' },
 ]
 
@@ -159,7 +161,9 @@ export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockId
   const transforms: MenuItem[] = TRANSFORMS.map((entry) => ({
     id: `transform-${entry.id}`,
     label: entry.label,
-    icon: <span className="nx-menu__icon-text">{entry.icon}</span>,
+    icon: typeof entry.icon === 'string'
+      ? <span className="nx-menu__icon-text">{entry.icon}</span>
+      : entry.icon,
     isActive: !isMultiSelect && isTransformActive(block, entry),
     onSelect: () => {
       for (const bid of targetIds) {
