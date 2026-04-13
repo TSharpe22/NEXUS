@@ -313,30 +313,66 @@ button:focus-visible {
   margin-left: 0 !important;
 }
 
-/* Resize handle — thin vertical divider between columns */
+/* Prevent first-block top-margin from pushing one column's content
+   visually lower than its sibling's. Reset top spacing on the first
+   descendant block and its content wrappers inside every column. */
+[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child,
+[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child > .bn-block,
+[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child .bn-block-content {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Kill horizontal margin/padding on block chrome inside columns so
+   neighboring columns' bounding rects actually touch — required for the
+   resize divider to land on the true visual midpoint between columns.
+   If the left column has right-padding it appears as a gap on the LEFT
+   side of the divider, pushing the handle flush against the right column. */
+[data-content-type="column"] .bn-block,
+[data-content-type="column"] .bn-block-content,
+[data-content-type="column"] .bn-block-outer {
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+  padding-right: 0 !important;
+}
+
+/* The column blockContainer itself must not introduce right-side padding
+   either, or its rect extends past the visible content and the midpoint
+   math in ColumnResizeHandles shifts rightward. */
+[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] {
+  padding-right: 0 !important;
+}
+
+/* Resize handle — thin vertical divider between columns.
+   The visible line is absolutely centered inside an 8px hit target so
+   the divider always sits on the geometric midpoint regardless of
+   BlockNote's internal padding or hover affordances. */
 .nx-col-resize-handle {
   position: absolute;
   top: 0;
   width: 8px;
   cursor: col-resize;
   z-index: 20;
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
 }
 
 .nx-col-resize-handle::after {
   content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
   width: 2px;
-  background: transparent;
+  transform: translateX(-1px);
+  background: var(--nx-border-subtle);
+  opacity: 0.55;
   border-radius: 1px;
-  transition: background 150ms ease;
+  transition: background 150ms ease, opacity 150ms ease;
 }
 
 .nx-col-resize-handle:hover::after,
 .nx-col-resize-handle.is-dragging::after {
   background: var(--nx-accent);
-  opacity: 0.5;
+  opacity: 1;
 }
 
 /* Side menu / drag handle — fade on hover */
@@ -1070,14 +1106,36 @@ button:focus-visible {
    ============================================================ */
 
 .nx-lasso-rect {
-  background: rgba(107, 138, 253, 0.10);
-  border: 1px solid rgba(107, 138, 253, 0.35);
+  background: rgba(165, 123, 255, 0.10);
+  border: 1px solid rgba(165, 123, 255, 0.45);
   border-radius: 2px;
 }
 
+/* Block-level selection: full-width accent fill + left rail.
+   Applied to the blockContainer; uses ::before for the fill so we don't
+   disturb the block's own padding / layout. */
 .nx-block-selected {
-  box-shadow: 0 0 0 2px rgba(107, 138, 253, 0.6);
+  position: relative;
+}
+
+.nx-block-selected::before {
+  content: '';
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  top: 0;
+  bottom: 0;
+  background: rgba(165, 123, 255, 0.12);
+  border-left: 2px solid var(--nx-accent);
   border-radius: var(--nx-radius-sm);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Keep block content above the highlight */
+.nx-block-selected > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ============================================================
