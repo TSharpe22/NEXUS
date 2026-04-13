@@ -1076,10 +1076,8 @@ button:focus-visible {
 }
 
 .nx-block-selected {
-  background: rgba(107, 138, 253, 0.08) !important;
-  border-left: 2px solid rgba(165, 123, 255, 0.4);
+  box-shadow: 0 0 0 2px rgba(107, 138, 253, 0.6);
   border-radius: var(--nx-radius-sm);
-  transition: background 80ms ease;
 }
 
 /* ============================================================

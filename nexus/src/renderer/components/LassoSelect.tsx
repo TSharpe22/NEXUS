@@ -8,13 +8,6 @@ interface Props {
   editorContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
-function rectsIntersect(
-  a: { left: number; top: number; right: number; bottom: number },
-  b: { left: number; top: number; right: number; bottom: number },
-): boolean {
-  return !(a.right < b.left || a.left > b.right || a.bottom < b.top || a.top > b.bottom)
-}
-
 export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   const {
     selectedBlockIds,
@@ -37,6 +30,11 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
     if (!editorContainerRef.current) return
     const elements = editorContainerRef.current.querySelectorAll('[data-node-type="blockContainer"]')
     elements.forEach((el) => {
+      // Headings are structural — do not make them lasso-selectable
+      if (
+        el.querySelector(':scope > .bn-block > .bn-block-content[data-content-type="heading"]') ||
+        el.querySelector(':scope > .bn-block-content[data-content-type="heading"]')
+      ) return
       const id = el.getAttribute('data-id')
       if (id) blockRectsCache.current.set(id, el.getBoundingClientRect())
     })
@@ -48,10 +46,17 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       const lassoRight = Math.max(rect.x, rect.x + rect.width)
       const lassoTop = Math.min(rect.y, rect.y + rect.height)
       const lassoBottom = Math.max(rect.y, rect.y + rect.height)
-      const lassoBounds = { left: lassoLeft, top: lassoTop, right: lassoRight, bottom: lassoBottom }
       const ids: string[] = []
       for (const [id, blockRect] of blockRectsCache.current) {
-        if (rectsIntersect(lassoBounds, { left: blockRect.left, top: blockRect.top, right: blockRect.right, bottom: blockRect.bottom })) {
+        // A block is selected only when the lasso contains its vertical midpoint.
+        // This prevents partial overlaps from grabbing adjacent blocks unintentionally.
+        const blockCenterY = (blockRect.top + blockRect.bottom) / 2
+        if (
+          blockCenterY >= lassoTop &&
+          blockCenterY <= lassoBottom &&
+          blockRect.right > lassoLeft &&
+          blockRect.left < lassoRight
+        ) {
           ids.push(id)
         }
       }

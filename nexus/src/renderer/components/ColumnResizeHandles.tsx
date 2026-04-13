@@ -47,9 +47,41 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
       const columnChildren = Array.from(group.children).filter(isColumnContainer)
       if (columnChildren.length < 2) return
 
+      // Apply flex layout directly via JS — CSS :has() can be unreliable inside
+      // Electron's Chromium. getBoundingClientRect() below forces a reflow, so
+      // the layout will be correct even on the very first call.
+      const groupEl = group as HTMLElement
+      if (groupEl.style.display !== 'flex') {
+        groupEl.style.display = 'flex'
+        groupEl.style.flexDirection = 'row'
+        groupEl.style.alignItems = 'flex-start'
+        groupEl.style.gap = '0'
+      }
+
+      for (const col of columnChildren) {
+        const colEl = col as HTMLElement
+        // Only initialise flex-grow if not already set by a drag interaction
+        if (!colEl.style.flex) {
+          let storedWidth: number | undefined
+          const colId = colEl.getAttribute('data-id')
+          if (colId) {
+            try {
+              const block = editor.getBlock(colId) as { props?: { width?: unknown } } | undefined
+              const w = block?.props?.width
+              if (typeof w === 'number' && w > 0) storedWidth = w
+            } catch { /* ignore */ }
+          }
+          colEl.style.flex = `${storedWidth ?? 1} 1 0`
+        }
+        if (!colEl.style.minWidth) colEl.style.minWidth = '80px'
+        if (!colEl.style.minHeight) colEl.style.minHeight = '2em'
+      }
+
       for (let i = 0; i < columnChildren.length - 1; i++) {
         const leftEl = columnChildren[i]
         const rightEl = columnChildren[i + 1]
+        // getBoundingClientRect() forces a reflow so positions reflect the flex
+        // layout we just applied above.
         const leftRect = leftEl.getBoundingClientRect()
         const rightRect = rightEl.getBoundingClientRect()
 
@@ -73,7 +105,7 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
     })
 
     setHandles(newHandles)
-  }, [editorContainerRef])
+  }, [editorContainerRef, editor])
 
   // Recompute on DOM mutations (block add/remove/resize)
   useEffect(() => {
