@@ -375,19 +375,37 @@ export function Editor({ pageId }: Props) {
     deselectAllBlocks()
   }, [pageId, deselectAllBlocks])
 
-  // Apply highlight CSS to selected blocks
+  // Apply highlight CSS to selected blocks — diff-based so we only touch
+  // the classList entries that actually changed. Also skips heading blocks
+  // (they are structural and can never be lasso-selected).
+  const prevSelectedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     if (!editorContainerRef.current) return
-    const blocks = editorContainerRef.current.querySelectorAll('[data-node-type="blockContainer"]')
-    const selectedSet = new Set(selectedBlockIds)
-    blocks.forEach((el) => {
-      const id = el.getAttribute('data-id')
-      if (id && selectedSet.has(id)) {
-        el.classList.add('nx-block-selected')
-      } else {
-        el.classList.remove('nx-block-selected')
-      }
-    })
+    const container = editorContainerRef.current
+    const nextSelected = new Set(selectedBlockIds)
+    const prevSelected = prevSelectedRef.current
+
+    // Remove class from blocks that are no longer selected
+    for (const id of prevSelected) {
+      if (nextSelected.has(id)) continue
+      const el = container.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`)
+      el?.classList.remove('nx-block-selected')
+    }
+
+    // Add class to newly-selected blocks, but skip headings and any id
+    // whose DOM node has already been removed by BlockNote.
+    for (const id of nextSelected) {
+      if (prevSelected.has(id)) continue
+      const el = container.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`)
+      if (!el) continue
+      const isHeading =
+        el.querySelector(':scope > .bn-block > .bn-block-content[data-content-type="heading"]') ||
+        el.querySelector(':scope > .bn-block-content[data-content-type="heading"]')
+      if (isHeading) continue
+      el.classList.add('nx-block-selected')
+    }
+
+    prevSelectedRef.current = nextSelected
   }, [selectedBlockIds])
 
   // Multi-select keyboard shortcuts
@@ -397,11 +415,16 @@ export function Editor({ pageId }: Props) {
     const onKey = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey
 
-      // Backspace / Delete → delete selected blocks
+      // Backspace / Delete → delete selected blocks.
+      // Deselect FIRST so the styling effect strips .nx-block-selected
+      // from the DOM before BlockNote's async re-render shifts ids around
+      // (otherwise a neighboring block — e.g. a heading — can briefly
+      // inherit the highlight).
       if ((e.key === 'Backspace' || e.key === 'Delete') && !mod) {
         e.preventDefault()
-        editor.removeBlocks(selectedBlockIds)
+        const toRemove = [...selectedBlockIds]
         deselectAllBlocks()
+        editor.removeBlocks(toRemove)
         return
       }
 

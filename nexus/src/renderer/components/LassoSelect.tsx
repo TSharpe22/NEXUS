@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useEffect } from 'react'
+import React, { useCallback, useRef, useEffect, useState } from 'react'
 import { useAppStore } from '../stores/app-store'
 
 interface Props {
@@ -8,20 +8,30 @@ interface Props {
   editorContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
+interface LassoRect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   const {
     selectedBlockIds,
-    isLassoActive,
-    lassoRect,
     selectBlocks,
     deselectAllBlocks,
     setLassoActive,
-    setLassoRect,
   } = useAppStore()
+
+  // Lasso rect lives locally — it updates every mouse frame and we don't
+  // want to trigger re-renders in every Zustand subscriber while dragging.
+  const [lassoRect, setLocalLassoRect] = useState<LassoRect | null>(null)
 
   const startPos = useRef<{ x: number; y: number } | null>(null)
   const blockRectsCache = useRef<Map<string, DOMRect>>(new Map())
+  const editorBoundsRef = useRef<{ top: number; bottom: number; left: number; right: number } | null>(null)
   const rafRef = useRef<number>(0)
+  const lastComputedRect = useRef<LassoRect | null>(null)
   // Track whether we've moved enough to actually be lassoing
   const isDragging = useRef(false)
 
@@ -38,10 +48,19 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       const id = el.getAttribute('data-id')
       if (id) blockRectsCache.current.set(id, el.getBoundingClientRect())
     })
+    // Cache the editor's viewport bounds so we can clamp the visual overlay
+    // (prevents the translucent rect from visually covering the page title).
+    const bounds = editorContainerRef.current.getBoundingClientRect()
+    editorBoundsRef.current = {
+      top: bounds.top,
+      bottom: bounds.bottom,
+      left: bounds.left,
+      right: bounds.right,
+    }
   }, [editorContainerRef])
 
   const computeIntersections = useCallback(
-    (rect: { x: number; y: number; width: number; height: number }) => {
+    (rect: LassoRect) => {
       const lassoLeft = Math.min(rect.x, rect.x + rect.width)
       const lassoRight = Math.max(rect.x, rect.x + rect.width)
       const lassoTop = Math.min(rect.y, rect.y + rect.height)
@@ -76,23 +95,19 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
 
       const target = e.target as HTMLElement
 
-      // Only start lasso from truly empty space — not from inside any block.
-      // Allowing lasso starts inside blocks causes the entire vertical swath of
-      // blocks to be selected (all blocks span full width, so any downward drag
-      // intersects them all). Restricting to empty space makes selection intentional:
-      // the user drags from the padding below blocks upward to sweep across them.
-      if (target.closest('[data-node-type="blockContainer"]')) return
-
-      // Also guard interactive / editable elements in the container padding area.
+      // Allow lasso to start from anywhere EXCEPT inside live editable text
+      // or interactive controls. This kills the "dead click" / sticky-keys
+      // feel the previous strict guard caused.
       if (
         target.isContentEditable ||
-        target.closest('[contenteditable]') ||
+        target.closest('[contenteditable="true"]') ||
         target.tagName === 'INPUT' ||
         target.tagName === 'TEXTAREA' ||
         target.tagName === 'BUTTON' ||
         target.tagName === 'A' ||
         target.tagName === 'SELECT' ||
-        target.closest('[role="menu"]')
+        target.closest('[role="menu"]') ||
+        target.closest('.nx-col-resize-handle')
       ) {
         return
       }
@@ -110,7 +125,8 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
 
   // Once a start position is set, listen for drag movement at the document level.
   useEffect(() => {
-    const DRAG_THRESHOLD = 5 // px — don't show lasso for tiny accidental movements
+    const DRAG_THRESHOLD = 4 // px — don't show lasso for tiny accidental movements
+    const MIN_DELTA = 1 // px — skip redundant computation for sub-pixel moves
 
     const onMouseMove = (e: MouseEvent) => {
       if (!startPos.current) return
@@ -125,10 +141,27 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
         setLassoActive(true)
       }
 
-      const rect = { x: startPos.current.x, y: startPos.current.y, width: dx, height: dy }
+      const rect: LassoRect = {
+        x: startPos.current.x,
+        y: startPos.current.y,
+        width: dx,
+        height: dy,
+      }
+
+      // Cheap short-circuit: skip RAF if the rect barely moved
+      const prev = lastComputedRect.current
+      if (
+        prev &&
+        Math.abs(prev.width - rect.width) < MIN_DELTA &&
+        Math.abs(prev.height - rect.height) < MIN_DELTA
+      ) {
+        return
+      }
+
       cancelAnimationFrame(rafRef.current)
       rafRef.current = requestAnimationFrame(() => {
-        setLassoRect(rect)
+        lastComputedRect.current = rect
+        setLocalLassoRect(rect)
         computeIntersections(rect)
       })
     }
@@ -136,8 +169,9 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
     const onMouseUp = () => {
       startPos.current = null
       isDragging.current = false
+      lastComputedRect.current = null
       setLassoActive(false)
-      setLassoRect(null)
+      setLocalLassoRect(null)
       cancelAnimationFrame(rafRef.current)
     }
 
@@ -148,7 +182,7 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       document.removeEventListener('mouseup', onMouseUp)
       cancelAnimationFrame(rafRef.current)
     }
-  }, [deselectAllBlocks, setLassoActive, setLassoRect, computeIntersections])
+  }, [deselectAllBlocks, setLassoActive, computeIntersections])
 
   // Escape to deselect
   useEffect(() => {
@@ -162,15 +196,33 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   // Lasso rect overlay only — no invisible capture div
   if (!lassoRect) return null
 
+  // Raw viewport rect
+  const rawLeft = Math.min(lassoRect.x, lassoRect.x + lassoRect.width)
+  const rawTop = Math.min(lassoRect.y, lassoRect.y + lassoRect.height)
+  const rawRight = Math.max(lassoRect.x, lassoRect.x + lassoRect.width)
+  const rawBottom = Math.max(lassoRect.y, lassoRect.y + lassoRect.height)
+
+  // Clamp to editor bounds so the translucent rect can never visually
+  // cover the page title / header area above the editor.
+  const bounds = editorBoundsRef.current
+  const left = bounds ? Math.max(rawLeft, bounds.left) : rawLeft
+  const top = bounds ? Math.max(rawTop, bounds.top) : rawTop
+  const right = bounds ? Math.min(rawRight, bounds.right) : rawRight
+  const bottom = bounds ? Math.min(rawBottom, bounds.bottom) : rawBottom
+  const width = Math.max(0, right - left)
+  const height = Math.max(0, bottom - top)
+
+  if (width === 0 || height === 0) return null
+
   return (
     <div
       className="nx-lasso-rect"
       style={{
         position: 'fixed',
-        left: Math.min(lassoRect.x, lassoRect.x + lassoRect.width),
-        top: Math.min(lassoRect.y, lassoRect.y + lassoRect.height),
-        width: Math.abs(lassoRect.width),
-        height: Math.abs(lassoRect.height),
+        left,
+        top,
+        width,
+        height,
         pointerEvents: 'none',
         zIndex: 9998,
       }}

@@ -89,9 +89,14 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
         const rightId = rightEl.getAttribute('data-id') || ''
         if (!leftId || !rightId) continue
 
-        const x = (leftRect.right + rightRect.left) / 2 - containerRect.left
-        const top = Math.min(leftRect.top, rightRect.top) - containerRect.top
-        const bottom = Math.max(leftRect.bottom, rightRect.bottom) - containerRect.top
+        // Midpoint between the left column's right edge and the right
+        // column's left edge, expressed in coordinates relative to the
+        // editor container. Rounded to integer pixels so the CSS-centered
+        // 2px line renders crisply instead of on a sub-pixel boundary.
+        const midX = (leftRect.right + rightRect.left) / 2
+        const x = Math.round(midX - containerRect.left)
+        const top = Math.round(Math.min(leftRect.top, rightRect.top) - containerRect.top)
+        const bottom = Math.round(Math.max(leftRect.bottom, rightRect.bottom) - containerRect.top)
 
         newHandles.push({
           key: `${leftId}|${rightId}`,
