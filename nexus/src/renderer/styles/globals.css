@@ -280,73 +280,47 @@ button:focus-visible {
 
 /* ============================================================
    Multi-column layout — @blocknote/xl-multi-column
-   The package doesn't ship its own CSS; we provide flex-row
-   layout for the block-group that contains column blocks.
+   BlockNote ships its own column CSS (loaded via @blocknote/mantine):
+     .bn-block-column-list { display: flex; flex-direction: row }
+     .bn-block-column { flex: 1; padding: 12px 20px; overflow-x: auto }
+     .bn-block-column:first-child { padding-left: 0 }
+     .bn-block-column:last-child  { padding-right: 0 }
+   We only need to override the nested-block indent/guide-line that
+   causes column 2 to appear staggered with a vertical line at its
+   start. NOTE: BlockNote does NOT set data-content-type on column
+   elements — it uses class names + data-node-type. All selectors
+   below match real DOM.
    ============================================================ */
 
-/* The .bn-block-group that holds column children → flex row */
-[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group {
-  display: flex !important;
-  flex-direction: row;
-  gap: 0;
-  align-items: flex-start;
+/* Kill the indent guide-line BlockNote draws on every .bn-block-outer
+   that sits inside a nested .bn-block-group (this is the "vertical
+   line at the start of column 2" the user sees). */
+.bn-block-column .bn-block-outer::before,
+.bn-block-column-list .bn-block-outer::before {
+  content: none !important;
+  display: none !important;
 }
 
-/* Each column blockContainer stretches to fill its flex ratio */
-[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] {
-  flex: 1 1 0;
-  min-width: 80px;
-  min-height: 2em;
-  /* Remove bottom-margin that causes vertical stacking appearance */
-  margin-bottom: 0 !important;
-}
-
-/* Column inner content fills available width */
-[data-content-type="column"] {
-  width: 100%;
-}
-
-/* Remove the left border BlockNote adds to nested block groups */
-[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] > .bn-block-group {
-  border-left: none !important;
-  padding-left: 0 !important;
+/* Kill the 1.5em left-margin BlockNote adds to nested block-groups
+   inside columns — that's what visually staggers / right-offsets
+   column 2's content. */
+.bn-block-column .bn-block-group,
+.bn-block-column-list .bn-block-group {
   margin-left: 0 !important;
 }
 
-/* Prevent first-block top-margin from pushing one column's content
-   visually lower than its sibling's. Reset top spacing on the first
-   descendant block and its content wrappers inside every column. */
-[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child,
-[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child > .bn-block,
-[data-content-type="column"] > .bn-block-group > [data-node-type="blockContainer"]:first-child .bn-block-content {
+/* Both columns' first child starts flush with the top of the column
+   padding — no extra top margin from BlockNote's transitions or
+   depth-change animations. */
+.bn-block-column > .bn-block-outer:first-child,
+.bn-block-column > .bn-block-outer:first-child > .bn-block,
+.bn-block-column > .bn-block-outer:first-child > .bn-block > .bn-block-content {
   margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-/* Kill horizontal margin/padding on block chrome inside columns so
-   neighboring columns' bounding rects actually touch — required for the
-   resize divider to land on the true visual midpoint between columns.
-   If the left column has right-padding it appears as a gap on the LEFT
-   side of the divider, pushing the handle flush against the right column. */
-[data-content-type="column"] .bn-block,
-[data-content-type="column"] .bn-block-content,
-[data-content-type="column"] .bn-block-outer {
-  margin-right: 0 !important;
-  margin-left: 0 !important;
-  padding-right: 0 !important;
-}
-
-/* The column blockContainer itself must not introduce right-side padding
-   either, or its rect extends past the visible content and the midpoint
-   math in ColumnResizeHandles shifts rightward. */
-[data-node-type="blockContainer"]:has([data-content-type="columnList"]) > .bn-block-group > [data-node-type="blockContainer"] {
-  padding-right: 0 !important;
 }
 
 /* Resize handle — thin vertical divider between columns.
-   The visible line is absolutely centered inside an 8px hit target so
-   the divider always sits on the geometric midpoint regardless of
-   BlockNote's internal padding or hover affordances. */
+   Absolutely-positioned line at the hit-area midpoint so the divider
+   always sits dead center regardless of BlockNote padding / hover. */
 .nx-col-resize-handle {
   position: absolute;
   top: 0;
@@ -1109,6 +1083,16 @@ button:focus-visible {
   background: rgba(165, 123, 255, 0.10);
   border: 1px solid rgba(165, 123, 255, 0.45);
   border-radius: 2px;
+}
+
+/* While the user is lassoing, block the browser's native text-range
+   selection from extending into the page title / header / content.
+   Without this, dragging upward from the gutter visibly highlights
+   the page title using the browser's own selection color. */
+body.nx-lassoing,
+body.nx-lassoing * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
 }
 
 /* Block-level selection: full-width accent fill + left rail.

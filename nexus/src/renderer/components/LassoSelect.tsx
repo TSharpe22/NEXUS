@@ -113,7 +113,11 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       }
 
       // Good — remember start position and cache block positions.
-      // We do NOT preventDefault here so existing click behavior is preserved.
+      // preventDefault stops the browser from anchoring a native text-range
+      // selection at the mousedown point. Without this, drags that pass
+      // over the page title/header extend a native selection into them
+      // and the user sees the title visually highlighted.
+      e.preventDefault()
       startPos.current = { x: e.clientX, y: e.clientY }
       isDragging.current = false
       cacheBlockRects()
@@ -139,6 +143,15 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
         isDragging.current = true
         deselectAllBlocks()
         setLassoActive(true)
+        // Block native text-range selection for the duration of the drag
+        // and wipe any range that slipped through before preventDefault.
+        document.body.classList.add('nx-lassoing')
+        window.getSelection()?.removeAllRanges()
+      }
+      // Keep killing any new selection the browser tries to extend as the
+      // cursor moves (belt-and-suspenders alongside body.nx-lassoing).
+      if (isDragging.current) {
+        e.preventDefault()
       }
 
       const rect: LassoRect = {
@@ -173,6 +186,7 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       setLassoActive(false)
       setLocalLassoRect(null)
       cancelAnimationFrame(rafRef.current)
+      document.body.classList.remove('nx-lassoing')
     }
 
     document.addEventListener('mousemove', onMouseMove)
@@ -181,6 +195,7 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       document.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('mouseup', onMouseUp)
       cancelAnimationFrame(rafRef.current)
+      document.body.classList.remove('nx-lassoing')
     }
   }, [deselectAllBlocks, setLassoActive, computeIntersections])
 
