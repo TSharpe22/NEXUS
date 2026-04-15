@@ -280,20 +280,45 @@ button:focus-visible {
 
 /* ============================================================
    Multi-column layout — @blocknote/xl-multi-column
-   BlockNote core CSS already handles the layout:
+   BlockNote core CSS already handles the horizontal layout:
      .bn-block-column-list { display: flex; flex-direction: row }
      .bn-block-column     { flex: 1; padding: 12px 20px; overflow-x: auto }
-   Our only override is: nested .bn-block-group inside a column
-   inherits the generic nested-block left margin/indent, which makes
-   column 2 look "nested" or staggered under column 1. Kill that
-   indent ONLY inside columns. No other overrides — past attempts
-   to force display:flex, reset flex:1, etc. fought phantoms and
-   risked breaking BlockNote's own layout updates.
+   Our overrides:
+   1. Align column tops instead of stretching — prevents a tall
+      column from visually pulling the resize divider below the
+      content area.
+   2. Suppress the nested-block indent guide (::before pseudo that
+      BlockNote draws at the left edge of a nested .bn-block-outer
+      inside a .bn-block-group inside another .bn-block-group). In
+      columns, that guide is visual noise — it's what the user
+      describes as "the vertical line at the start of column 2".
+   3. Strip indent padding/margin/border on .bn-block-group inside
+      columns so column 2 doesn't appear shoved right.
    ============================================================ */
+.bn-block-column-list {
+  align-items: flex-start;
+}
+
+/* Kill the indent guide line inside columns (any descendant .bn-block-outer's
+   ::before, including the nested .bn-block-group chain). */
+.bn-block-column .bn-block-outer::before,
+.bn-block-column-list .bn-block-outer::before {
+  content: none !important;
+  display: none !important;
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Strip nested-block indent inside columns. */
 .bn-block-column .bn-block-group {
   margin-left: 0;
   padding-left: 0;
   border-left: none;
+}
+
+/* Reset BlockNote's depth-change driven margin-left inside columns. */
+.bn-block-column .bn-block-outer[data-prev-depth-change] {
+  margin-left: 0 !important;
 }
 
 /* Resize handle — thin vertical divider between columns.
@@ -316,7 +341,7 @@ button:focus-visible {
   width: 2px;
   transform: translateX(-1px);
   background: var(--nx-border-subtle);
-  opacity: 0.55;
+  opacity: 0;
   border-radius: 1px;
   transition: background 150ms ease, opacity 150ms ease;
 }

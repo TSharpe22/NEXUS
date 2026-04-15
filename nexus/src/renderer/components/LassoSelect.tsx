@@ -199,6 +199,7 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
     }
 
     const onMouseUp = () => {
+      const wasDragging = isDragging.current
       startPos.current = null
       isDragging.current = false
       lastComputedRect.current = null
@@ -206,6 +207,22 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       setLocalLassoRect(null)
       cancelAnimationFrame(rafRef.current)
       document.body.classList.remove('nx-lassoing')
+
+      // After a drag on content-editable text, the browser fires a synthetic
+      // `click` event. Editor.tsx has a document-level click handler that
+      // calls deselectAllBlocks() when the click target is inside editable
+      // content — which wipes the selection we just made. Swallow the
+      // next click in the capture phase so it never reaches that handler.
+      if (wasDragging) {
+        const swallow = (ev: MouseEvent) => {
+          ev.stopPropagation()
+          ev.preventDefault()
+          document.removeEventListener('click', swallow, true)
+        }
+        document.addEventListener('click', swallow, true)
+        // Safety: if no synthetic click ever fires, clean up after a tick.
+        setTimeout(() => document.removeEventListener('click', swallow, true), 50)
+      }
     }
 
     document.addEventListener('mousemove', onMouseMove)
