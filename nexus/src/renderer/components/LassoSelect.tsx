@@ -38,17 +38,15 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   const cacheBlockRects = useCallback(() => {
     blockRectsCache.current.clear()
     if (!editorContainerRef.current) return
-    // Include both blockContainer and .bn-block-outer in case BlockNote moved
-    // data-id between elements between versions.
+    // IMPORTANT: same selector as Editor.tsx's findBlock lookup. If these
+    // diverge, the lasso produces IDs that Editor.tsx can't find, so the
+    // selection class never lands and highlights stay invisible.
     const elements = editorContainerRef.current.querySelectorAll(
-      '[data-node-type="blockContainer"][data-id], .bn-block-outer[data-id]',
+      '[data-node-type="blockContainer"][data-id]',
     )
     elements.forEach((el) => {
       // Headings are structural — do not make them lasso-selectable
-      if (
-        el.querySelector(':scope > .bn-block > .bn-block-content[data-content-type="heading"]') ||
-        el.querySelector(':scope > .bn-block-content[data-content-type="heading"]')
-      ) return
+      if (el.querySelector(':scope > .bn-block-content[data-content-type="heading"]')) return
       const id = el.getAttribute('data-id')
       if (id) blockRectsCache.current.set(id, el.getBoundingClientRect())
     })
@@ -82,6 +80,11 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
         ) {
           ids.push(id)
         }
+      }
+      // TEMP instrumentation — remove after lasso highlight is verified working.
+      if (ids.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log('[nx-lasso] ids', ids.length, ids.slice(0, 3))
       }
       selectBlocks(ids)
     },

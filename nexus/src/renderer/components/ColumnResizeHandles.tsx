@@ -62,32 +62,9 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
       )
       if (cols.length < 2) return
 
-      // Force flex inline — CSS :has() can be unreliable inside Electron's
-      // Chromium and BlockNote's own CSS may load after first paint.
-      // getBoundingClientRect() below forces a reflow so positions reflect
-      // the layout we just applied.
-      list.style.display = 'flex'
-      list.style.flexDirection = 'row'
-      list.style.alignItems = 'flex-start'
-      list.style.gap = '0'
-
-      for (const col of cols) {
-        // Only initialise flex-grow if not already set by a drag interaction
-        if (!col.style.flex) {
-          let storedWidth: number | undefined
-          const colId = getColumnId(col)
-          if (colId) {
-            try {
-              const block = editor.getBlock(colId) as { props?: { width?: unknown } } | undefined
-              const w = block?.props?.width
-              if (typeof w === 'number' && w > 0) storedWidth = w
-            } catch { /* ignore */ }
-          }
-          col.style.flex = `${storedWidth ?? 1} 1 0`
-        }
-        if (!col.style.minWidth) col.style.minWidth = '80px'
-        if (!col.style.minHeight) col.style.minHeight = '2em'
-      }
+      // BlockNote core CSS sets .bn-block-column-list{display:flex;flex-direction:row}
+      // and writes flex-grow inline from the column's data-width prop. Don't
+      // force any inline flex/display on the list — let BlockNote own layout.
 
       for (let i = 0; i < cols.length - 1; i++) {
         const leftEl = cols[i]
@@ -121,7 +98,7 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
     })
 
     setHandles(newHandles)
-  }, [editorContainerRef, editor])
+  }, [editorContainerRef])
 
   // Recompute on DOM mutations (block add/remove/resize)
   useEffect(() => {
@@ -164,9 +141,11 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
         const newLeftGrow = (newLeftPx / totalWidth) * totalGrow
         const newRightGrow = (newRightPx / totalWidth) * totalGrow
 
-        // Live DOM update — BlockNote re-render will overwrite these on mouseup
-        handle.leftEl.style.flex = `${newLeftGrow} 1 0`
-        handle.rightEl.style.flex = `${newRightGrow} 1 0`
+        // Live DOM update — set only flex-grow (BlockNote writes flex-grow
+        // inline from data-width, so the shorthand `flex` was overriding
+        // flex-basis/shrink and could confuse BlockNote's own reflow).
+        handle.leftEl.style.flexGrow = `${newLeftGrow}`
+        handle.rightEl.style.flexGrow = `${newRightGrow}`
       }
 
       const onUp = (me: MouseEvent) => {
@@ -178,19 +157,35 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
         const leftStartPx = totalWidth * (leftGrow / totalGrow)
         const newLeftPx = Math.max(80, Math.min(totalWidth - 80, leftStartPx + dx))
 
-        // Normalize to a 0–20 integer ratio for storage (gives ~5% precision)
-        const leftRatio = Math.round((newLeftPx / totalWidth) * 20)
-        const rightRatio = 20 - leftRatio
+        // Store as a fractional ratio of totalGrow (keeps precision; the column
+        // node renders `flex-grow: <width>` directly from this value).
+        const newLeftRatio = (newLeftPx / totalWidth) * totalGrow
+        const newRightRatio = totalGrow - newLeftRatio
 
         const leftId = getColumnId(handle.leftEl)
         const rightId = getColumnId(handle.rightEl)
 
         if (leftId && rightId) {
           try {
-            editor.updateBlock(leftId, { type: 'column', props: { width: leftRatio } } as never)
-            editor.updateBlock(rightId, { type: 'column', props: { width: rightRatio } } as never)
-          } catch {
-            // column block may not have a width prop in this version — ignore
+            // TEMP instrumentation — remove after column resize is verified.
+            // eslint-disable-next-line no-console
+            console.log('[nx-col] updateBlock', {
+              leftId, rightId, newLeftRatio, newRightRatio,
+              before: {
+                left: (editor.getBlock(leftId) as { props?: Record<string, unknown> } | undefined)?.props,
+                right: (editor.getBlock(rightId) as { props?: Record<string, unknown> } | undefined)?.props,
+              },
+            })
+            editor.updateBlock(leftId, { type: 'column', props: { width: newLeftRatio } } as never)
+            editor.updateBlock(rightId, { type: 'column', props: { width: newRightRatio } } as never)
+            // eslint-disable-next-line no-console
+            console.log('[nx-col] after', {
+              left: (editor.getBlock(leftId) as { props?: Record<string, unknown> } | undefined)?.props,
+              right: (editor.getBlock(rightId) as { props?: Record<string, unknown> } | undefined)?.props,
+            })
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.log('[nx-col] updateBlock threw', err)
           }
         }
 

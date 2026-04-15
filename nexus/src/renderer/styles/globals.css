@@ -280,68 +280,20 @@ button:focus-visible {
 
 /* ============================================================
    Multi-column layout — @blocknote/xl-multi-column
-   BlockNote ships its own column CSS (loaded via @blocknote/mantine):
+   BlockNote core CSS already handles the layout:
      .bn-block-column-list { display: flex; flex-direction: row }
-     .bn-block-column { flex: 1; padding: 12px 20px; overflow-x: auto }
-     .bn-block-column:first-child { padding-left: 0 }
-     .bn-block-column:last-child  { padding-right: 0 }
-   We only need to override the nested-block indent/guide-line that
-   causes column 2 to appear staggered with a vertical line at its
-   start. NOTE: BlockNote does NOT set data-content-type on column
-   elements — it uses class names + data-node-type. All selectors
-   below match real DOM.
+     .bn-block-column     { flex: 1; padding: 12px 20px; overflow-x: auto }
+   Our only override is: nested .bn-block-group inside a column
+   inherits the generic nested-block left margin/indent, which makes
+   column 2 look "nested" or staggered under column 1. Kill that
+   indent ONLY inside columns. No other overrides — past attempts
+   to force display:flex, reset flex:1, etc. fought phantoms and
+   risked breaking BlockNote's own layout updates.
    ============================================================ */
-
-/* Kill the indent guide-line BlockNote draws on every .bn-block-outer
-   that sits inside a nested .bn-block-group (this is the "vertical
-   line at the start of column 2" the user sees). Strip both the pseudo
-   AND any border/background that could survive `content: none`. */
-.bn-block-column .bn-block-outer::before,
-.bn-block-column-list .bn-block-outer::before,
-[data-node-type="column"] .bn-block-outer::before,
-[data-node-type="columnList"] .bn-block-outer::before {
-  content: none !important;
-  display: none !important;
-  background: transparent !important;
-  border: none !important;
-}
-
-/* Kill the 1.5em left-margin BlockNote adds to nested block-groups
-   inside columns — that's what visually staggers / right-offsets
-   column 2's content. Also strip any left border / padding that could
-   look like an indent guide. */
-.bn-block-column .bn-block-group,
-.bn-block-column-list .bn-block-group,
-[data-node-type="column"] .bn-block-group {
-  margin-left: 0 !important;
-  padding-left: 0 !important;
-  border-left: none !important;
-}
-
-/* Both columns' first child starts flush with the top of the column
-   padding — no extra top margin from BlockNote's transitions or
-   depth-change animations. */
-.bn-block-column > *:first-child,
-[data-node-type="column"] > *:first-child,
-.bn-block-column > .bn-block-outer:first-child,
-.bn-block-column > .bn-block-outer:first-child > .bn-block,
-.bn-block-column > .bn-block-outer:first-child > .bn-block > .bn-block-content {
-  margin-top: 0 !important;
-  padding-top: 0 !important;
-}
-
-/* Last-resort: force the list to a true flex row so columns sit side-by-side
-   even before our JS runs and even if BlockNote's CSS is overridden. */
-.bn-block-column-list,
-[data-node-type="columnList"] {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: flex-start !important;
-}
-.bn-block-column,
-[data-node-type="column"] {
-  flex: 1 1 0 !important;
-  min-width: 80px !important;
+.bn-block-column .bn-block-group {
+  margin-left: 0;
+  padding-left: 0;
+  border-left: none;
 }
 
 /* Resize handle — thin vertical divider between columns.
@@ -1136,42 +1088,17 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
   color: inherit !important;
 }
 
-/* Block-level selection: full-width accent fill + left rail.
-   The class is applied to .bn-block-outer (the full-width wrapper that
-   includes the side-menu gutter). We paint via an absolutely-positioned
-   ::before overlay so we don't disturb the block's own padding/layout,
-   AND we paint a real background as a fallback for any environment where
-   the pseudo can't render. Both use !important to win over BlockNote's
-   own .bn-block-outer rules. */
-.bn-editor .bn-block-outer.nx-block-selected,
-.bn-block-outer.nx-block-selected,
-[data-node-type="blockContainer"].nx-block-selected,
-.nx-block-selected {
-  position: relative !important;
-  background-color: rgba(165, 123, 255, 0.14) !important;
+/* Block-level selection.
+   Applied directly to the element we queried by data-id:
+   .bn-block[data-node-type="blockContainer"]. One element, one class.
+   No wrappers, no pseudo-elements, no walking up the tree —
+   that complexity was the source of the invisible-highlight bug.
+   Purple fill + a 3px left rail via inset box-shadow. */
+.bn-editor .bn-block[data-node-type="blockContainer"].nx-block-selected,
+.bn-block[data-node-type="blockContainer"].nx-block-selected {
+  background-color: rgba(165, 123, 255, 0.18);
+  box-shadow: inset 3px 0 0 var(--nx-accent);
   border-radius: var(--nx-radius-sm);
-}
-
-/* Belt-and-suspenders overlay — paints across the full editor row even if
-   the element's own background is overridden somewhere downstream. */
-.nx-block-selected::before {
-  content: '' !important;
-  position: absolute !important;
-  left: -8px;
-  right: -8px;
-  top: 0;
-  bottom: 0;
-  background: rgba(165, 123, 255, 0.18);
-  border-left: 3px solid var(--nx-accent);
-  border-radius: var(--nx-radius-sm);
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* Keep block content above the highlight overlay */
-.nx-block-selected > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* ============================================================

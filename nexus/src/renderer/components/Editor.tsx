@@ -385,33 +385,43 @@ export function Editor({ pageId }: Props) {
     const nextSelected = new Set(selectedBlockIds)
     const prevSelected = prevSelectedRef.current
 
-    // BlockNote places data-id on the inner .bn-block (data-node-type=
-    // "blockContainer"), but our highlight CSS paints most reliably on the
-    // outer wrapper .bn-block-outer (full-width, no opaque descendants
-    // covering the background). Find by data-id on .bn-block, then walk up
-    // to .bn-block-outer and apply the class there.
-    const findOuter = (id: string): Element | null => {
-      const inner = container.querySelector(
+    // Apply the selection class to the SAME element we queried by data-id
+    // (the inner .bn-block with data-node-type="blockContainer"). Walking up
+    // to .bn-block-outer created a failure mode where the walk would
+    // fall back to `inner` silently if the outer wrapper wasn't present,
+    // and the CSS was written for one or the other but not both reliably.
+    // One element, one class, no walking.
+    const findBlock = (id: string): Element | null =>
+      container.querySelector(
         `[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`,
       )
-      if (!inner) return null
-      return inner.closest('.bn-block-outer') ?? inner
+
+    // TEMP instrumentation — remove after lasso highlight is verified working.
+    if (nextSelected.size > 0) {
+      // eslint-disable-next-line no-console
+      console.log('[nx-sel]', {
+        ids: [...nextSelected],
+        hits: [...nextSelected].map((id) => {
+          const el = findBlock(id)
+          return { id, found: !!el, tag: el?.tagName ?? null }
+        }),
+      })
     }
 
     // Remove class from blocks that are no longer selected
     for (const id of prevSelected) {
       if (nextSelected.has(id)) continue
-      findOuter(id)?.classList.remove('nx-block-selected')
+      findBlock(id)?.classList.remove('nx-block-selected')
     }
 
     // Add class to newly-selected blocks, but skip headings and any id
     // whose DOM node has already been removed by BlockNote.
     for (const id of nextSelected) {
       if (prevSelected.has(id)) continue
-      const el = findOuter(id)
+      const el = findBlock(id)
       if (!el) continue
       const isHeading = el.querySelector(
-        '.bn-block-content[data-content-type="heading"]',
+        ':scope > .bn-block-content[data-content-type="heading"]',
       )
       if (isHeading) continue
       el.classList.add('nx-block-selected')
