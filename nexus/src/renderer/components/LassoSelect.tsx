@@ -38,7 +38,11 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
   const cacheBlockRects = useCallback(() => {
     blockRectsCache.current.clear()
     if (!editorContainerRef.current) return
-    const elements = editorContainerRef.current.querySelectorAll('[data-node-type="blockContainer"]')
+    // Include both blockContainer and .bn-block-outer in case BlockNote moved
+    // data-id between elements between versions.
+    const elements = editorContainerRef.current.querySelectorAll(
+      '[data-node-type="blockContainer"][data-id], .bn-block-outer[data-id]',
+    )
     elements.forEach((el) => {
       // Headings are structural — do not make them lasso-selectable
       if (
@@ -113,10 +117,15 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       }
 
       // Good — remember start position and cache block positions.
-      // preventDefault stops the browser from anchoring a native text-range
-      // selection at the mousedown point. Without this, drags that pass
-      // over the page title/header extend a native selection into them
-      // and the user sees the title visually highlighted.
+      // Blur whatever currently has focus (typically the page-title
+      // <textarea> if the user just edited it) and clear any existing
+      // selection range so no native caret can survive into the drag.
+      // Then preventDefault stops the browser from anchoring a fresh
+      // text-range selection at the mousedown point.
+      if (document.activeElement instanceof HTMLElement) {
+        document.activeElement.blur()
+      }
+      window.getSelection()?.removeAllRanges()
       e.preventDefault()
       startPos.current = { x: e.clientX, y: e.clientY }
       isDragging.current = false

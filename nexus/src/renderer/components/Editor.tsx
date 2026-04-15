@@ -385,22 +385,28 @@ export function Editor({ pageId }: Props) {
     const nextSelected = new Set(selectedBlockIds)
     const prevSelected = prevSelectedRef.current
 
+    // Prefer .bn-block-outer (the outermost wrapper) since our highlight CSS
+    // paints a real background + inset shadow there, where BlockNote's own
+    // descendant backgrounds can't cover it. Fall back to blockContainer.
+    const findEl = (id: string) =>
+      container.querySelector(`.bn-block-outer[data-id="${CSS.escape(id)}"]`) ||
+      container.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`)
+
     // Remove class from blocks that are no longer selected
     for (const id of prevSelected) {
       if (nextSelected.has(id)) continue
-      const el = container.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`)
-      el?.classList.remove('nx-block-selected')
+      findEl(id)?.classList.remove('nx-block-selected')
     }
 
     // Add class to newly-selected blocks, but skip headings and any id
     // whose DOM node has already been removed by BlockNote.
     for (const id of nextSelected) {
       if (prevSelected.has(id)) continue
-      const el = container.querySelector(`[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`)
+      const el = findEl(id)
       if (!el) continue
-      const isHeading =
-        el.querySelector(':scope > .bn-block > .bn-block-content[data-content-type="heading"]') ||
-        el.querySelector(':scope > .bn-block-content[data-content-type="heading"]')
+      const isHeading = el.querySelector(
+        '.bn-block-content[data-content-type="heading"]',
+      )
       if (isHeading) continue
       el.classList.add('nx-block-selected')
     }

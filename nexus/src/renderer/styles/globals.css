@@ -294,28 +294,54 @@ button:focus-visible {
 
 /* Kill the indent guide-line BlockNote draws on every .bn-block-outer
    that sits inside a nested .bn-block-group (this is the "vertical
-   line at the start of column 2" the user sees). */
+   line at the start of column 2" the user sees). Strip both the pseudo
+   AND any border/background that could survive `content: none`. */
 .bn-block-column .bn-block-outer::before,
-.bn-block-column-list .bn-block-outer::before {
+.bn-block-column-list .bn-block-outer::before,
+[data-node-type="column"] .bn-block-outer::before,
+[data-node-type="columnList"] .bn-block-outer::before {
   content: none !important;
   display: none !important;
+  background: transparent !important;
+  border: none !important;
 }
 
 /* Kill the 1.5em left-margin BlockNote adds to nested block-groups
    inside columns — that's what visually staggers / right-offsets
-   column 2's content. */
+   column 2's content. Also strip any left border / padding that could
+   look like an indent guide. */
 .bn-block-column .bn-block-group,
-.bn-block-column-list .bn-block-group {
+.bn-block-column-list .bn-block-group,
+[data-node-type="column"] .bn-block-group {
   margin-left: 0 !important;
+  padding-left: 0 !important;
+  border-left: none !important;
 }
 
 /* Both columns' first child starts flush with the top of the column
    padding — no extra top margin from BlockNote's transitions or
    depth-change animations. */
+.bn-block-column > *:first-child,
+[data-node-type="column"] > *:first-child,
 .bn-block-column > .bn-block-outer:first-child,
 .bn-block-column > .bn-block-outer:first-child > .bn-block,
 .bn-block-column > .bn-block-outer:first-child > .bn-block > .bn-block-content {
   margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+
+/* Last-resort: force the list to a true flex row so columns sit side-by-side
+   even before our JS runs and even if BlockNote's CSS is overridden. */
+.bn-block-column-list,
+[data-node-type="columnList"] {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: flex-start !important;
+}
+.bn-block-column,
+[data-node-type="column"] {
+  flex: 1 1 0 !important;
+  min-width: 80px !important;
 }
 
 /* Resize handle — thin vertical divider between columns.
@@ -1095,11 +1121,34 @@ body.nx-lassoing * {
   -webkit-user-select: none !important;
 }
 
+/* Nuclear option for the page title <textarea>: even if a native selection
+   range slips through (textareas paint their own selection regardless of
+   user-select on ancestors), force the painted color transparent so nothing
+   visually highlights. */
+body.nx-lassoing .nx-page-title::selection,
+body.nx-lassoing textarea.nx-page-title::selection {
+  background: transparent !important;
+  color: inherit !important;
+}
+body.nx-lassoing .nx-page-title::-moz-selection,
+body.nx-lassoing textarea.nx-page-title::-moz-selection {
+  background: transparent !important;
+  color: inherit !important;
+}
+
 /* Block-level selection: full-width accent fill + left rail.
-   Applied to the blockContainer; uses ::before for the fill so we don't
-   disturb the block's own padding / layout. */
+   Paint the background DIRECTLY on the selected element (in addition to the
+   ::before overlay) so BlockNote's own opaque descendant backgrounds
+   (.bn-block-content) can't hide the highlight. Apply at multiple anchor
+   points (.bn-block-outer, [data-node-type="blockContainer"]) so the fill
+   shows regardless of which element the JS toggled the class on. */
+[data-node-type="blockContainer"].nx-block-selected,
+.bn-block-outer.nx-block-selected,
 .nx-block-selected {
   position: relative;
+  background: rgba(165, 123, 255, 0.12) !important;
+  box-shadow: inset 2px 0 0 0 var(--nx-accent) !important;
+  border-radius: var(--nx-radius-sm);
 }
 
 .nx-block-selected::before {
