@@ -17,12 +17,17 @@ interface Props {
   editorContainerRef: React.RefObject<HTMLDivElement | null>
 }
 
-/** Returns true if the element is a blockContainer whose direct content is a column block. */
-function isColumnContainer(el: Element): el is HTMLElement {
-  if (el.getAttribute('data-node-type') !== 'blockContainer') return false
-  return !!(
-    el.querySelector(':scope > .bn-block > .bn-block-content[data-content-type="column"]') ||
-    el.querySelector(':scope > .bn-block-content[data-content-type="column"]')
+/**
+ * Find a stable data-id for a column element. BlockNote 0.24's
+ * @blocknote/xl-multi-column may place data-id on the column element itself,
+ * on a direct .bn-block child, or on a deeper descendant. Try each in order.
+ */
+function getColumnId(col: HTMLElement): string {
+  return (
+    col.getAttribute('data-id') ||
+    col.querySelector(':scope > .bn-block[data-id]')?.getAttribute('data-id') ||
+    col.querySelector('[data-id]')?.getAttribute('data-id') ||
+    ''
   )
 }
 
@@ -42,28 +47,35 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
     const containerRect = container.getBoundingClientRect()
     const newHandles: HandleInfo[] = []
 
-    // Walk every .bn-block-group; find those whose direct children are column blocks
-    container.querySelectorAll('.bn-block-group').forEach((group) => {
-      const columnChildren = Array.from(group.children).filter(isColumnContainer)
-      if (columnChildren.length < 2) return
+    // Real BlockNote DOM: .bn-block-column-list[data-node-type="columnList"]
+    // contains .bn-block-column[data-node-type="column"] siblings. Query both
+    // class- and attribute-based selectors so we tolerate minor DOM shape
+    // changes between BlockNote versions.
+    const lists = container.querySelectorAll<HTMLElement>(
+      '.bn-block-column-list, [data-node-type="columnList"]',
+    )
+    lists.forEach((list) => {
+      const cols = Array.from(
+        list.querySelectorAll<HTMLElement>(
+          ':scope > .bn-block-column, :scope > [data-node-type="column"]',
+        ),
+      )
+      if (cols.length < 2) return
 
-      // Apply flex layout directly via JS — CSS :has() can be unreliable inside
-      // Electron's Chromium. getBoundingClientRect() below forces a reflow, so
-      // the layout will be correct even on the very first call.
-      const groupEl = group as HTMLElement
-      if (groupEl.style.display !== 'flex') {
-        groupEl.style.display = 'flex'
-        groupEl.style.flexDirection = 'row'
-        groupEl.style.alignItems = 'flex-start'
-        groupEl.style.gap = '0'
-      }
+      // Force flex inline — CSS :has() can be unreliable inside Electron's
+      // Chromium and BlockNote's own CSS may load after first paint.
+      // getBoundingClientRect() below forces a reflow so positions reflect
+      // the layout we just applied.
+      list.style.display = 'flex'
+      list.style.flexDirection = 'row'
+      list.style.alignItems = 'flex-start'
+      list.style.gap = '0'
 
-      for (const col of columnChildren) {
-        const colEl = col as HTMLElement
+      for (const col of cols) {
         // Only initialise flex-grow if not already set by a drag interaction
-        if (!colEl.style.flex) {
+        if (!col.style.flex) {
           let storedWidth: number | undefined
-          const colId = colEl.getAttribute('data-id')
+          const colId = getColumnId(col)
           if (colId) {
             try {
               const block = editor.getBlock(colId) as { props?: { width?: unknown } } | undefined
@@ -71,23 +83,22 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
               if (typeof w === 'number' && w > 0) storedWidth = w
             } catch { /* ignore */ }
           }
-          colEl.style.flex = `${storedWidth ?? 1} 1 0`
+          col.style.flex = `${storedWidth ?? 1} 1 0`
         }
-        if (!colEl.style.minWidth) colEl.style.minWidth = '80px'
-        if (!colEl.style.minHeight) colEl.style.minHeight = '2em'
+        if (!col.style.minWidth) col.style.minWidth = '80px'
+        if (!col.style.minHeight) col.style.minHeight = '2em'
       }
 
-      for (let i = 0; i < columnChildren.length - 1; i++) {
-        const leftEl = columnChildren[i]
-        const rightEl = columnChildren[i + 1]
-        // getBoundingClientRect() forces a reflow so positions reflect the flex
-        // layout we just applied above.
+      for (let i = 0; i < cols.length - 1; i++) {
+        const leftEl = cols[i]
+        const rightEl = cols[i + 1]
+
+        const leftId = getColumnId(leftEl)
+        const rightId = getColumnId(rightEl)
+        if (!leftId || !rightId) continue
+
         const leftRect = leftEl.getBoundingClientRect()
         const rightRect = rightEl.getBoundingClientRect()
-
-        const leftId = leftEl.getAttribute('data-id') || ''
-        const rightId = rightEl.getAttribute('data-id') || ''
-        if (!leftId || !rightId) continue
 
         // Midpoint between the left column's right edge and the right
         // column's left edge, expressed in coordinates relative to the
@@ -171,8 +182,8 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
         const leftRatio = Math.round((newLeftPx / totalWidth) * 20)
         const rightRatio = 20 - leftRatio
 
-        const leftId = handle.leftEl.getAttribute('data-id')
-        const rightId = handle.rightEl.getAttribute('data-id')
+        const leftId = getColumnId(handle.leftEl)
+        const rightId = getColumnId(handle.rightEl)
 
         if (leftId && rightId) {
           try {
