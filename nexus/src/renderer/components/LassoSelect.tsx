@@ -111,7 +111,14 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
         target.tagName === 'A' ||
         target.tagName === 'SELECT' ||
         target.closest('[role="menu"]') ||
-        target.closest('.nx-col-resize-handle')
+        target.closest('.nx-col-resize-handle') ||
+        // BlockNote side menu — the six-dots drag handle and the "+" add
+        // button. Without this guard the lasso swallows mousedown and the
+        // user can't grab/drag a block to reorder it or insert via the
+        // plus button.
+        target.closest('.bn-side-menu') ||
+        target.closest('[data-test-id="dragHandle"]') ||
+        target.closest('[draggable="true"]')
       ) {
         return
       }
