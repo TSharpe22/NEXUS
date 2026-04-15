@@ -1137,35 +1137,38 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
 }
 
 /* Block-level selection: full-width accent fill + left rail.
-   Paint the background DIRECTLY on the selected element (in addition to the
-   ::before overlay) so BlockNote's own opaque descendant backgrounds
-   (.bn-block-content) can't hide the highlight. Apply at multiple anchor
-   points (.bn-block-outer, [data-node-type="blockContainer"]) so the fill
-   shows regardless of which element the JS toggled the class on. */
-[data-node-type="blockContainer"].nx-block-selected,
+   The class is applied to .bn-block-outer (the full-width wrapper that
+   includes the side-menu gutter). We paint via an absolutely-positioned
+   ::before overlay so we don't disturb the block's own padding/layout,
+   AND we paint a real background as a fallback for any environment where
+   the pseudo can't render. Both use !important to win over BlockNote's
+   own .bn-block-outer rules. */
+.bn-editor .bn-block-outer.nx-block-selected,
 .bn-block-outer.nx-block-selected,
+[data-node-type="blockContainer"].nx-block-selected,
 .nx-block-selected {
-  position: relative;
-  background: rgba(165, 123, 255, 0.12) !important;
-  box-shadow: inset 2px 0 0 0 var(--nx-accent) !important;
+  position: relative !important;
+  background-color: rgba(165, 123, 255, 0.14) !important;
   border-radius: var(--nx-radius-sm);
 }
 
+/* Belt-and-suspenders overlay — paints across the full editor row even if
+   the element's own background is overridden somewhere downstream. */
 .nx-block-selected::before {
-  content: '';
-  position: absolute;
+  content: '' !important;
+  position: absolute !important;
   left: -8px;
   right: -8px;
   top: 0;
   bottom: 0;
-  background: rgba(165, 123, 255, 0.12);
-  border-left: 2px solid var(--nx-accent);
+  background: rgba(165, 123, 255, 0.18);
+  border-left: 3px solid var(--nx-accent);
   border-radius: var(--nx-radius-sm);
   pointer-events: none;
   z-index: 0;
 }
 
-/* Keep block content above the highlight */
+/* Keep block content above the highlight overlay */
 .nx-block-selected > * {
   position: relative;
   z-index: 1;
