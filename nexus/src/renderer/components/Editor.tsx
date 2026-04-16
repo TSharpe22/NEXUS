@@ -385,33 +385,26 @@ export function Editor({ pageId }: Props) {
     const nextSelected = new Set(selectedBlockIds)
     const prevSelected = prevSelectedRef.current
 
-    // Apply the selection class to the SAME element we queried by data-id
-    // (the inner .bn-block with data-node-type="blockContainer"). Walking up
-    // to .bn-block-outer created a failure mode where the walk would
-    // fall back to `inner` silently if the outer wrapper wasn't present,
-    // and the CSS was written for one or the other but not both reliably.
-    // One element, one class, no walking.
+    // Apply the selection class to BOTH the inner .bn-block (what we
+    // queried by data-id) AND its .bn-block-outer parent. Two targets
+    // give the CSS two chances to paint a visible highlight regardless
+    // of BlockNote's stacking context / descendant backgrounds.
     const findBlock = (id: string): Element | null =>
       container.querySelector(
         `[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`,
       )
 
-    // TEMP instrumentation — remove after lasso highlight is verified working.
-    if (nextSelected.size > 0) {
-      // eslint-disable-next-line no-console
-      console.log('[nx-sel]', {
-        ids: [...nextSelected],
-        hits: [...nextSelected].map((id) => {
-          const el = findBlock(id)
-          return { id, found: !!el, tag: el?.tagName ?? null }
-        }),
-      })
+    const markEls = (el: Element): Element[] => {
+      const outer = el.closest('.bn-block-outer')
+      return outer ? [el, outer] : [el]
     }
 
     // Remove class from blocks that are no longer selected
     for (const id of prevSelected) {
       if (nextSelected.has(id)) continue
-      findBlock(id)?.classList.remove('nx-block-selected')
+      const el = findBlock(id)
+      if (!el) continue
+      for (const target of markEls(el)) target.classList.remove('nx-block-selected')
     }
 
     // Add class to newly-selected blocks, but skip headings and any id
@@ -424,7 +417,36 @@ export function Editor({ pageId }: Props) {
         ':scope > .bn-block-content[data-content-type="heading"]',
       )
       if (isHeading) continue
-      el.classList.add('nx-block-selected')
+      for (const target of markEls(el)) target.classList.add('nx-block-selected')
+    }
+
+    // TEMP instrumentation — log computed background / outline of every
+    // currently-selected block AFTER styles have settled, so we can confirm
+    // the CSS rule actually matches and paints.
+    if (nextSelected.size > 0) {
+      requestAnimationFrame(() => {
+        const report = [...nextSelected].map((id) => {
+          const el = findBlock(id)
+          if (!el) return { id, found: false }
+          const cs = getComputedStyle(el)
+          const outer = el.closest('.bn-block-outer') as HTMLElement | null
+          const outerCs = outer ? getComputedStyle(outer) : null
+          return {
+            id,
+            innerClass: el.className,
+            innerBg: cs.backgroundColor,
+            innerOutline: cs.outlineWidth + ' ' + cs.outlineStyle + ' ' + cs.outlineColor,
+            innerBoxShadow: cs.boxShadow,
+            outerTag: outer?.tagName ?? null,
+            outerClass: outer?.className ?? null,
+            outerBg: outerCs?.backgroundColor ?? null,
+            outerOutline: outerCs ? outerCs.outlineWidth + ' ' + outerCs.outlineStyle + ' ' + outerCs.outlineColor : null,
+            outerDisplay: outerCs?.display ?? null,
+          }
+        })
+        // eslint-disable-next-line no-console
+        console.log('[nx-sel-computed]', report)
+      })
     }
 
     prevSelectedRef.current = nextSelected

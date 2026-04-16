@@ -1134,11 +1134,19 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
    No wrappers, no pseudo-elements, no walking up the tree —
    that complexity was the source of the invisible-highlight bug.
    Purple fill + a 3px left rail via inset box-shadow. */
-.bn-editor .bn-block[data-node-type="blockContainer"].nx-block-selected,
-.bn-block[data-node-type="blockContainer"].nx-block-selected {
-  background-color: rgba(165, 123, 255, 0.18);
-  box-shadow: inset 3px 0 0 var(--nx-accent);
+/* Block-level selection — visible on BOTH the inner blockContainer
+   (what Editor.tsx applies the class to) and the outer .bn-block-outer
+   wrapper (also classed by the effect below). Uses outline + inset
+   box-shadow + background so at least ONE of them renders visibly
+   no matter what BlockNote's stacking context is doing. */
+[data-node-type="blockContainer"].nx-block-selected,
+.bn-block-outer.nx-block-selected {
+  background-color: rgba(165, 123, 255, 0.25) !important;
+  outline: 2px solid var(--nx-accent) !important;
+  outline-offset: -2px;
+  box-shadow: inset 3px 0 0 var(--nx-accent) !important;
   border-radius: var(--nx-radius-sm);
+  position: relative;
 }
 
 /* ============================================================
