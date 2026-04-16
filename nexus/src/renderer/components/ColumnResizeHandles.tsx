@@ -62,6 +62,38 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
       )
       if (cols.length < 2) return
 
+      // TEMP instrumentation — dump real layout measurements so we can see
+      // where the stagger is coming from. Logs at most once per computeHandles
+      // call (not per mousemove).
+      // eslint-disable-next-line no-console
+      console.log('[nx-col-layout]', {
+        list: {
+          rect: list.getBoundingClientRect(),
+          computed: {
+            display: getComputedStyle(list).display,
+            alignItems: getComputedStyle(list).alignItems,
+            padding: getComputedStyle(list).padding,
+          },
+        },
+        cols: cols.map((col, i) => ({
+          i,
+          rect: col.getBoundingClientRect(),
+          computed: {
+            flex: getComputedStyle(col).flex,
+            padding: getComputedStyle(col).padding,
+            marginLeft: getComputedStyle(col).marginLeft,
+            marginTop: getComputedStyle(col).marginTop,
+          },
+          firstChild: col.firstElementChild ? {
+            tag: col.firstElementChild.tagName,
+            className: col.firstElementChild.className,
+            rect: col.firstElementChild.getBoundingClientRect(),
+            marginLeft: getComputedStyle(col.firstElementChild).marginLeft,
+            marginTop: getComputedStyle(col.firstElementChild).marginTop,
+          } : null,
+        })),
+      })
+
       // BlockNote core CSS sets .bn-block-column-list{display:flex;flex-direction:row}
       // and writes flex-grow inline from the column's data-width prop. Don't
       // force any inline flex/display on the list — let BlockNote own layout.
