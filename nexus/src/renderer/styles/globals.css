@@ -280,45 +280,60 @@ button:focus-visible {
 
 /* ============================================================
    Multi-column layout — @blocknote/xl-multi-column
-   BlockNote core CSS already handles the horizontal layout:
+   BlockNote core CSS handles horizontal flex layout:
      .bn-block-column-list { display: flex; flex-direction: row }
      .bn-block-column     { flex: 1; padding: 12px 20px; overflow-x: auto }
-   Our overrides:
-   1. Align column tops instead of stretching — prevents a tall
-      column from visually pulling the resize divider below the
-      content area.
-   2. Suppress the nested-block indent guide (::before pseudo that
-      BlockNote draws at the left edge of a nested .bn-block-outer
-      inside a .bn-block-group inside another .bn-block-group). In
-      columns, that guide is visual noise — it's what the user
-      describes as "the vertical line at the start of column 2".
-   3. Strip indent padding/margin/border on .bn-block-group inside
-      columns so column 2 doesn't appear shoved right.
+   Our overrides (aggressive: every attempt to be conservative has
+   left column 2's content visibly right-shifted):
+   1. align-items: flex-start on the list so columns don't stretch
+   2. column padding collapsed to a small vertical-only value, so
+      content hugs the column's left edge
+   3. nested .bn-block-group inside a column stripped of ALL left
+      indent (margin/padding/border) — at every depth
+   4. indent-guide ::before suppressed everywhere inside columns
+   5. BlockNote's data-prev-depth-change margin-left reset
    ============================================================ */
 .bn-block-column-list {
-  align-items: flex-start;
+  align-items: flex-start !important;
 }
 
-/* Kill the indent guide line inside columns (any descendant .bn-block-outer's
-   ::before, including the nested .bn-block-group chain). */
+.bn-block-column,
+[data-node-type="column"] {
+  padding: 6px 0 !important;
+}
+
+/* Kill indent guide lines inside columns at every depth. */
 .bn-block-column .bn-block-outer::before,
-.bn-block-column-list .bn-block-outer::before {
+.bn-block-column-list .bn-block-outer::before,
+.bn-block-column .bn-block-group > .bn-block-outer::before {
   content: none !important;
   display: none !important;
   background: transparent !important;
   border: none !important;
 }
 
-/* Strip nested-block indent inside columns. */
-.bn-block-column .bn-block-group {
-  margin-left: 0;
-  padding-left: 0;
-  border-left: none;
+/* Nuclear: strip EVERY form of left-indent on blocks/groups inside a column. */
+.bn-block-column .bn-block-group,
+.bn-block-column .bn-block-outer,
+.bn-block-column .bn-block {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  border-left: none !important;
 }
 
-/* Reset BlockNote's depth-change driven margin-left inside columns. */
+/* BlockNote writes margin-left: calc(10px * var(--x)) on depth-changed
+   blocks. Inside a column the --x variable can be non-zero, producing the
+   residual right-shift we were seeing. */
+.bn-block-column [data-prev-depth-change],
 .bn-block-column .bn-block-outer[data-prev-depth-change] {
   margin-left: 0 !important;
+}
+
+/* First child of each column flush to the top. */
+.bn-block-column > *:first-child,
+.bn-block-column > .bn-block-group:first-child > .bn-block-outer:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
 }
 
 /* Resize handle — thin vertical divider between columns.
