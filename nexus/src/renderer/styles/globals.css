@@ -1128,17 +1128,16 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
   color: inherit !important;
 }
 
-/* Block-level selection.
-   Applied directly to the element we queried by data-id:
-   .bn-block[data-node-type="blockContainer"]. One element, one class.
-   No wrappers, no pseudo-elements, no walking up the tree —
-   that complexity was the source of the invisible-highlight bug.
-   Purple fill + a 3px left rail via inset box-shadow. */
-.bn-editor .bn-block[data-node-type="blockContainer"].nx-block-selected,
-.bn-block[data-node-type="blockContainer"].nx-block-selected {
+/* Block-level selection overlay.
+   SelectionOverlay.tsx renders these as absolutely-positioned sibling divs
+   computed from getBoundingClientRect(). We deliberately do NOT add a class
+   to BlockNote/ProseMirror-managed elements — they strip foreign classes on
+   every React re-render and PM DOM sync, making class-based highlights invisible. */
+.nx-selection-overlay {
   background-color: rgba(165, 123, 255, 0.18);
   box-shadow: inset 3px 0 0 var(--nx-accent);
   border-radius: var(--nx-radius-sm);
+  z-index: 1;
 }
 
 /* ============================================================

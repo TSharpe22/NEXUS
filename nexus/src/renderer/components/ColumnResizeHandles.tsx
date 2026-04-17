@@ -62,36 +62,44 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
       )
       if (cols.length < 2) return
 
-      // TEMP instrumentation — dump real layout measurements so we can see
-      // where the stagger is coming from. Logs at most once per computeHandles
-      // call (not per mousemove).
+      // TEMP instrumentation — flat, readable layout dump. No nested DOMRect.
+      const listRect = list.getBoundingClientRect()
+      const listCs = getComputedStyle(list)
       // eslint-disable-next-line no-console
       console.log('[nx-col-layout]', {
-        list: {
-          rect: list.getBoundingClientRect(),
-          computed: {
-            display: getComputedStyle(list).display,
-            alignItems: getComputedStyle(list).alignItems,
-            padding: getComputedStyle(list).padding,
-          },
-        },
-        cols: cols.map((col, i) => ({
-          i,
-          rect: col.getBoundingClientRect(),
-          computed: {
-            flex: getComputedStyle(col).flex,
-            padding: getComputedStyle(col).padding,
-            marginLeft: getComputedStyle(col).marginLeft,
-            marginTop: getComputedStyle(col).marginTop,
-          },
-          firstChild: col.firstElementChild ? {
-            tag: col.firstElementChild.tagName,
-            className: col.firstElementChild.className,
-            rect: col.firstElementChild.getBoundingClientRect(),
-            marginLeft: getComputedStyle(col.firstElementChild).marginLeft,
-            marginTop: getComputedStyle(col.firstElementChild).marginTop,
-          } : null,
-        })),
+        listX: listRect.x,
+        listY: listRect.y,
+        listW: listRect.width,
+        listH: listRect.height,
+        listDisplay: listCs.display,
+        listAlign: listCs.alignItems,
+        listPad: listCs.padding,
+        cols: cols.map((col, i) => {
+          const r = col.getBoundingClientRect()
+          const cs = getComputedStyle(col)
+          const fc = col.firstElementChild as HTMLElement | null
+          const fcR = fc?.getBoundingClientRect()
+          const fcCs = fc ? getComputedStyle(fc) : null
+          return {
+            i,
+            colX: r.x,
+            colY: r.y,
+            colW: r.width,
+            colH: r.height,
+            colPad: cs.padding,
+            colFlex: cs.flex,
+            colMarginL: cs.marginLeft,
+            colMarginT: cs.marginTop,
+            firstChildTag: fc?.tagName ?? null,
+            firstChildClass: fc?.className ?? null,
+            firstChildX: fcR?.x ?? null,
+            firstChildY: fcR?.y ?? null,
+            firstChildMarginL: fcCs?.marginLeft ?? null,
+            firstChildMarginT: fcCs?.marginTop ?? null,
+            firstChildPaddingL: fcCs?.paddingLeft ?? null,
+            firstChildPaddingT: fcCs?.paddingTop ?? null,
+          }
+        }),
       })
 
       // BlockNote core CSS sets .bn-block-column-list{display:flex;flex-direction:row}

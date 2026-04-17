@@ -21,6 +21,7 @@ import { BlockContextMenu } from './BlockContextMenu'
 import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
 import { LassoSelect } from './LassoSelect'
 import { ColumnResizeHandles } from './ColumnResizeHandles'
+import { SelectionOverlay } from './SelectionOverlay'
 import type { LinkTarget } from '../../shared/types'
 
 const WIDTH_ICON = (
@@ -375,60 +376,11 @@ export function Editor({ pageId }: Props) {
     deselectAllBlocks()
   }, [pageId, deselectAllBlocks])
 
-  // Apply highlight CSS to selected blocks — diff-based so we only touch
-  // the classList entries that actually changed. Also skips heading blocks
-  // (they are structural and can never be lasso-selected).
-  const prevSelectedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (!editorContainerRef.current) return
-    const container = editorContainerRef.current
-    const nextSelected = new Set(selectedBlockIds)
-    const prevSelected = prevSelectedRef.current
-
-    // Apply the selection class to the SAME element we queried by data-id
-    // (the inner .bn-block with data-node-type="blockContainer"). Walking up
-    // to .bn-block-outer created a failure mode where the walk would
-    // fall back to `inner` silently if the outer wrapper wasn't present,
-    // and the CSS was written for one or the other but not both reliably.
-    // One element, one class, no walking.
-    const findBlock = (id: string): Element | null =>
-      container.querySelector(
-        `[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`,
-      )
-
-    // TEMP instrumentation — remove after lasso highlight is verified working.
-    if (nextSelected.size > 0) {
-      // eslint-disable-next-line no-console
-      console.log('[nx-sel]', {
-        ids: [...nextSelected],
-        hits: [...nextSelected].map((id) => {
-          const el = findBlock(id)
-          return { id, found: !!el, tag: el?.tagName ?? null }
-        }),
-      })
-    }
-
-    // Remove class from blocks that are no longer selected
-    for (const id of prevSelected) {
-      if (nextSelected.has(id)) continue
-      findBlock(id)?.classList.remove('nx-block-selected')
-    }
-
-    // Add class to newly-selected blocks, but skip headings and any id
-    // whose DOM node has already been removed by BlockNote.
-    for (const id of nextSelected) {
-      if (prevSelected.has(id)) continue
-      const el = findBlock(id)
-      if (!el) continue
-      const isHeading = el.querySelector(
-        ':scope > .bn-block-content[data-content-type="heading"]',
-      )
-      if (isHeading) continue
-      el.classList.add('nx-block-selected')
-    }
-
-    prevSelectedRef.current = nextSelected
-  }, [selectedBlockIds])
+  // Block-selection highlight is rendered by <SelectionOverlay/> as
+  // absolutely-positioned sibling divs. We intentionally do NOT add a
+  // class to BlockNote-managed DOM elements here — BlockNote's React
+  // render and ProseMirror's DOM sync both strip foreign classes, which
+  // is why previous class-based approaches produced no visible highlight.
 
   // Multi-select keyboard shortcuts
   useEffect(() => {
@@ -764,6 +716,7 @@ export function Editor({ pageId }: Props) {
             />
           </BlockNoteView>
           <ColumnResizeHandles editor={editor} editorContainerRef={editorContainerRef} />
+          <SelectionOverlay editorContainerRef={editorContainerRef} scrollContainerRef={scrollContainerRef} />
         </div>
 
       </div>
