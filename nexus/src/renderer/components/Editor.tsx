@@ -21,6 +21,7 @@ import { BlockContextMenu } from './BlockContextMenu'
 import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
 import { LassoSelect } from './LassoSelect'
 import { ColumnResizeHandles } from './ColumnResizeHandles'
+import { SelectionOverlay } from './SelectionOverlay'
 import type { LinkTarget } from '../../shared/types'
 
 const WIDTH_ICON = (
@@ -375,82 +376,11 @@ export function Editor({ pageId }: Props) {
     deselectAllBlocks()
   }, [pageId, deselectAllBlocks])
 
-  // Apply highlight CSS to selected blocks — diff-based so we only touch
-  // the classList entries that actually changed. Also skips heading blocks
-  // (they are structural and can never be lasso-selected).
-  const prevSelectedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    if (!editorContainerRef.current) return
-    const container = editorContainerRef.current
-    const nextSelected = new Set(selectedBlockIds)
-    const prevSelected = prevSelectedRef.current
-
-    // Apply the selection class to BOTH the inner .bn-block (what we
-    // queried by data-id) AND its .bn-block-outer parent. Two targets
-    // give the CSS two chances to paint a visible highlight regardless
-    // of BlockNote's stacking context / descendant backgrounds.
-    const findBlock = (id: string): Element | null =>
-      container.querySelector(
-        `[data-node-type="blockContainer"][data-id="${CSS.escape(id)}"]`,
-      )
-
-    const markEls = (el: Element): Element[] => {
-      const outer = el.closest('.bn-block-outer')
-      return outer ? [el, outer] : [el]
-    }
-
-    // Remove class from blocks that are no longer selected
-    for (const id of prevSelected) {
-      if (nextSelected.has(id)) continue
-      const el = findBlock(id)
-      if (!el) continue
-      for (const target of markEls(el)) target.classList.remove('nx-block-selected')
-    }
-
-    // Add class to newly-selected blocks, but skip headings and any id
-    // whose DOM node has already been removed by BlockNote.
-    for (const id of nextSelected) {
-      if (prevSelected.has(id)) continue
-      const el = findBlock(id)
-      if (!el) continue
-      const isHeading = el.querySelector(
-        ':scope > .bn-block-content[data-content-type="heading"]',
-      )
-      if (isHeading) continue
-      for (const target of markEls(el)) target.classList.add('nx-block-selected')
-    }
-
-    // TEMP instrumentation — log computed background / outline of every
-    // currently-selected block AFTER styles have settled, so we can confirm
-    // the CSS rule actually matches and paints.
-    if (nextSelected.size > 0) {
-      requestAnimationFrame(() => {
-        const report = [...nextSelected].map((id) => {
-          const el = findBlock(id)
-          if (!el) return { id, found: false }
-          const cs = getComputedStyle(el)
-          const outer = el.closest('.bn-block-outer') as HTMLElement | null
-          const outerCs = outer ? getComputedStyle(outer) : null
-          return {
-            id,
-            innerClass: el.className,
-            innerBg: cs.backgroundColor,
-            innerOutline: cs.outlineWidth + ' ' + cs.outlineStyle + ' ' + cs.outlineColor,
-            innerBoxShadow: cs.boxShadow,
-            outerTag: outer?.tagName ?? null,
-            outerClass: outer?.className ?? null,
-            outerBg: outerCs?.backgroundColor ?? null,
-            outerOutline: outerCs ? outerCs.outlineWidth + ' ' + outerCs.outlineStyle + ' ' + outerCs.outlineColor : null,
-            outerDisplay: outerCs?.display ?? null,
-          }
-        })
-        // eslint-disable-next-line no-console
-        console.log('[nx-sel-computed]', report)
-      })
-    }
-
-    prevSelectedRef.current = nextSelected
-  }, [selectedBlockIds])
+  // Block-selection highlight is rendered by <SelectionOverlay/> as
+  // absolutely-positioned sibling divs. We intentionally do NOT add a
+  // class to BlockNote-managed DOM elements here — BlockNote's React
+  // render and ProseMirror's DOM sync both strip foreign classes, which
+  // is why previous class-based approaches produced no visible highlight.
 
   // Multi-select keyboard shortcuts
   useEffect(() => {
@@ -786,6 +716,7 @@ export function Editor({ pageId }: Props) {
             />
           </BlockNoteView>
           <ColumnResizeHandles editor={editor} editorContainerRef={editorContainerRef} />
+          <SelectionOverlay editorContainerRef={editorContainerRef} scrollContainerRef={scrollContainerRef} />
         </div>
 
       </div>
