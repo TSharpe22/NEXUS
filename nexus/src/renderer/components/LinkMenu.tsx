@@ -23,12 +23,13 @@ export function getLinkMenuItems(
   onSelect: (page: Page | null, title: string) => void,
 ): (query: string) => Promise<LinkMenuItem[]> {
   return async (query: string) => {
-    // Only activate for [[ (query starts with "[")
-    if (!query.startsWith('[')) {
+    // BlockNote's SuggestionMenuController strips the trigger char "[" before
+    // calling getItems, so `query` is what the user typed AFTER the first "[".
+    // Require a second "[" to activate so single-bracket markdown is a no-op.
+    if (query.length === 0 || query[0] !== '[') {
       return []
     }
 
-    // Strip the leading "[" to get the actual search query
     const search = query.slice(1).trim()
 
     let filtered: Page[]

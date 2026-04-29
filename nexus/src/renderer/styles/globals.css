@@ -295,11 +295,33 @@ button:focus-visible {
    ============================================================ */
 .bn-block-column-list {
   align-items: flex-start !important;
+  /* BlockNote / xl-multi-column applies inline-start padding via the
+     --x indent variable on the surrounding .bn-block-outer. The flex row
+     itself can also pick up padding-inline-start when nested under a
+     depth-changed block — zero it explicitly. */
+  padding-inline-start: 0 !important;
+  margin-inline-start: 0 !important;
 }
 
 .bn-block-column,
 [data-node-type="column"] {
   padding: 6px 0 !important;
+  /* Some BlockNote builds include padding-inline-start on the column
+     itself (independent of `padding`); knock it out separately so the
+     content hugs the column's left edge regardless of column index. */
+  padding-inline-start: 0 !important;
+  margin-inline-start: 0 !important;
+}
+
+/* The wrapper that BlockNote injects around a column-list inherits the
+   --x depth variable from the enclosing block, producing a margin-left
+   that visually nests the column row. Force flush-left at every wrapper. */
+.bn-block-outer:has(> .bn-block > .bn-block-content > .bn-block-column-list),
+.bn-block-outer:has(> .bn-block-column-list),
+.bn-block-column-list > .bn-block-outer {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  padding-inline-start: 0 !important;
 }
 
 /* Kill indent guide lines inside columns at every depth. */

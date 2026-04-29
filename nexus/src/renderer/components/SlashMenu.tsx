@@ -6,7 +6,7 @@ import type { SlashItem } from '../blocks/slash-items'
 // and filtering are all owned by BlockNote's <SuggestionMenuController>, so
 // this component is purely a visual reflow into our Nexus menu shell.
 
-const GROUP_ORDER = ['Headings', 'Basic blocks', 'Lists', 'Advanced', 'Basic']
+const GROUP_ORDER = ['Headings', 'Basic blocks', 'Lists', 'Basic', 'Advanced']
 
 function groupItems(items: SlashItem[]): { group: string; items: SlashItem[] }[] {
   const buckets = new Map<string, SlashItem[]>()
