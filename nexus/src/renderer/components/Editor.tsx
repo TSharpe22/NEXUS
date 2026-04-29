@@ -423,11 +423,14 @@ export function Editor({ pageId }: Props) {
         return
       }
 
-      // Cmd+X → cut selected blocks
+      // Cmd+X → cut selected blocks. Same deselect-first ordering as the
+      // Backspace path above — strip the highlight class before BlockNote's
+      // async re-render shifts ids around and a neighbor inherits it.
       if (mod && (e.key === 'x' || e.key === 'X') && !e.shiftKey) {
         e.preventDefault()
+        const toRemove = [...selectedBlockIds]
         const texts: string[] = []
-        for (const bid of selectedBlockIds) {
+        for (const bid of toRemove) {
           const block = editor.getBlock(bid) as { content?: unknown } | undefined
           if (block?.content && Array.isArray(block.content)) {
             const text = block.content
@@ -441,8 +444,8 @@ export function Editor({ pageId }: Props) {
           }
         }
         void navigator.clipboard.writeText(texts.join('\n'))
-        editor.removeBlocks(selectedBlockIds)
         deselectAllBlocks()
+        editor.removeBlocks(toRemove)
         return
       }
 

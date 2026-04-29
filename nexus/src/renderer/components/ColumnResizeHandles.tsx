@@ -62,46 +62,6 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
       )
       if (cols.length < 2) return
 
-      // TEMP instrumentation — flat, readable layout dump. No nested DOMRect.
-      const listRect = list.getBoundingClientRect()
-      const listCs = getComputedStyle(list)
-      // eslint-disable-next-line no-console
-      console.log('[nx-col-layout]', {
-        listX: listRect.x,
-        listY: listRect.y,
-        listW: listRect.width,
-        listH: listRect.height,
-        listDisplay: listCs.display,
-        listAlign: listCs.alignItems,
-        listPad: listCs.padding,
-        cols: cols.map((col, i) => {
-          const r = col.getBoundingClientRect()
-          const cs = getComputedStyle(col)
-          const fc = col.firstElementChild as HTMLElement | null
-          const fcR = fc?.getBoundingClientRect()
-          const fcCs = fc ? getComputedStyle(fc) : null
-          return {
-            i,
-            colX: r.x,
-            colY: r.y,
-            colW: r.width,
-            colH: r.height,
-            colPad: cs.padding,
-            colFlex: cs.flex,
-            colMarginL: cs.marginLeft,
-            colMarginT: cs.marginTop,
-            firstChildTag: fc?.tagName ?? null,
-            firstChildClass: fc?.className ?? null,
-            firstChildX: fcR?.x ?? null,
-            firstChildY: fcR?.y ?? null,
-            firstChildMarginL: fcCs?.marginLeft ?? null,
-            firstChildMarginT: fcCs?.marginTop ?? null,
-            firstChildPaddingL: fcCs?.paddingLeft ?? null,
-            firstChildPaddingT: fcCs?.paddingTop ?? null,
-          }
-        }),
-      })
-
       // BlockNote core CSS sets .bn-block-column-list{display:flex;flex-direction:row}
       // and writes flex-grow inline from the column's data-width prop. Don't
       // force any inline flex/display on the list — let BlockNote own layout.
@@ -207,25 +167,12 @@ export function ColumnResizeHandles({ editor, editorContainerRef }: Props) {
 
         if (leftId && rightId) {
           try {
-            // TEMP instrumentation — remove after column resize is verified.
-            // eslint-disable-next-line no-console
-            console.log('[nx-col] updateBlock', {
-              leftId, rightId, newLeftRatio, newRightRatio,
-              before: {
-                left: (editor.getBlock(leftId) as { props?: Record<string, unknown> } | undefined)?.props,
-                right: (editor.getBlock(rightId) as { props?: Record<string, unknown> } | undefined)?.props,
-              },
-            })
             editor.updateBlock(leftId, { type: 'column', props: { width: newLeftRatio } } as never)
             editor.updateBlock(rightId, { type: 'column', props: { width: newRightRatio } } as never)
-            // eslint-disable-next-line no-console
-            console.log('[nx-col] after', {
-              left: (editor.getBlock(leftId) as { props?: Record<string, unknown> } | undefined)?.props,
-              right: (editor.getBlock(rightId) as { props?: Record<string, unknown> } | undefined)?.props,
-            })
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.log('[nx-col] updateBlock threw', err)
+          } catch {
+            // BlockNote may reject column updates if the column-list was
+            // restructured mid-drag — the live flex-grow style stays applied
+            // visually; the next mouseup recompute will reconcile.
           }
         }
 
