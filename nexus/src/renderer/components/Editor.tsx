@@ -202,6 +202,10 @@ export function Editor({ pageId }: Props) {
     [pages, editor, handleLinkSelect],
   )
 
+  // Slash menu items only depend on the editor instance — memoize so the full
+  // ~50-item list isn't rebuilt on every keystroke inside getItems.
+  const slashItems = useMemo(() => getNexusSlashMenuItems(editor), [editor])
+
   // Intercept nexus:// link clicks and navigate within the app
   useEffect(() => {
     const container = editorContainerRef.current
@@ -219,6 +223,35 @@ export function Editor({ pageId }: Props) {
     container.addEventListener('click', onClick)
     return () => container.removeEventListener('click', onClick)
   }, [selectPage])
+
+  // Notion-style toggle Enter: when the cursor is inside an OPEN toggle block,
+  // pressing Enter creates a nested child paragraph rather than a sibling.
+  // When the toggle is closed, fall through to default sibling-insert behavior.
+  useEffect(() => {
+    const container = editorContainerRef.current
+    if (!container) return
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+      const pos = editor.getTextCursorPosition()
+      const block = pos?.block as { type?: string; props?: { open?: boolean }; id?: string } | undefined
+      if (!block || block.type !== 'toggle') return
+      if (block.props?.open === false) return
+      e.preventDefault()
+      e.stopPropagation()
+      const inserted = editor.insertBlocks(
+        [{ type: 'paragraph' } as never],
+        block as never,
+        'nested' as never,
+      )
+      const newBlock = Array.isArray(inserted) ? inserted[0] : inserted
+      if (newBlock) {
+        editor.setTextCursorPosition(newBlock as never, 'start')
+      }
+    }
+    // Capture so we run before BlockNote/Tiptap default Enter handling.
+    container.addEventListener('keydown', onKeyDown, true)
+    return () => container.removeEventListener('keydown', onKeyDown, true)
+  }, [editor])
 
   // Load blocks from DB when pageId changes
   useEffect(() => {
@@ -703,7 +736,7 @@ export function Editor({ pageId }: Props) {
               triggerCharacter="/"
               suggestionMenuComponent={SlashMenu}
               getItems={async (query) =>
-                filterSuggestionItems(getNexusSlashMenuItems(editor), query)
+                filterSuggestionItems(slashItems, query)
               }
             />
 

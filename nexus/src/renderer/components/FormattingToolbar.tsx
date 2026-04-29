@@ -76,27 +76,32 @@ export function CustomFormattingToolbar() {
   const [colorPopover, setColorPopover] = useState<'text' | 'bg' | null>(null)
   const [pageLinkOpen, setPageLinkOpen] = useState(false)
   const [pageSearch, setPageSearch] = useState('')
+  const [urlLinkOpen, setUrlLinkOpen] = useState(false)
+  const [urlLinkValue, setUrlLinkValue] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
+  const urlInputRef = useRef<HTMLInputElement>(null)
 
   // Close popovers on outside click
   useEffect(() => {
-    if (!colorPopover && !pageLinkOpen) return
+    if (!colorPopover && !pageLinkOpen && !urlLinkOpen) return
     const onDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null
       if (!target) return
       if (
         target.closest('.nx-fmt-popover') ||
         target.closest('.nx-fmt-btn-wrap') ||
-        target.closest('.nx-page-link-popover')
+        target.closest('.nx-page-link-popover') ||
+        target.closest('.nx-url-link-popover')
       ) {
         return
       }
       setColorPopover(null)
       setPageLinkOpen(false)
+      setUrlLinkOpen(false)
     }
     window.addEventListener('mousedown', onDown)
     return () => window.removeEventListener('mousedown', onDown)
-  }, [colorPopover, pageLinkOpen])
+  }, [colorPopover, pageLinkOpen, urlLinkOpen])
 
   // Focus search input when page-link popover opens
   useEffect(() => {
@@ -105,6 +110,14 @@ export function CustomFormattingToolbar() {
       setTimeout(() => searchRef.current?.focus(), 30)
     }
   }, [pageLinkOpen])
+
+  // Focus URL input when external-link popover opens
+  useEffect(() => {
+    if (urlLinkOpen) {
+      setUrlLinkValue('')
+      setTimeout(() => urlInputRef.current?.focus(), 30)
+    }
+  }, [urlLinkOpen])
 
   const toggle = (key: StyleKey) => {
     const isOn = Boolean((active as Record<string, unknown>)[key])
@@ -136,17 +149,37 @@ export function CustomFormattingToolbar() {
     editor.focus()
   }
 
-  const createExternalLink = () => {
-    const url = window.prompt('Link URL')
-    if (!url) return
-    editor.createLink(url)
+  // BlockNote 0.24's createLink wraps the active text selection. If the
+  // selection is empty we pass the URL as the link text so the URL itself
+  // becomes the inserted anchor — otherwise the call silently no-ops.
+  const applyLink = (url: string, fallbackText: string) => {
+    const selectedText = (() => {
+      try {
+        return (editor as unknown as { getSelectedText?: () => string }).getSelectedText?.() ?? ''
+      } catch {
+        return ''
+      }
+    })()
+    if (selectedText.length > 0) {
+      editor.createLink(url)
+    } else {
+      editor.createLink(url, fallbackText)
+    }
     editor.focus()
   }
 
+  const submitExternalLink = () => {
+    const raw = urlLinkValue.trim()
+    if (!raw) return
+    // If the user types a bare domain, normalize to https://.
+    const url = /^[a-z]+:\/\//i.test(raw) || raw.startsWith('mailto:') ? raw : `https://${raw}`
+    setUrlLinkOpen(false)
+    applyLink(url, raw)
+  }
+
   const createPageLink = (page: Page) => {
-    editor.createLink(`nexus://${page.id}`)
     setPageLinkOpen(false)
-    editor.focus()
+    applyLink(`nexus://${page.id}`, page.title || 'Untitled')
   }
 
   const filteredPages = pages
@@ -229,12 +262,52 @@ export function CustomFormattingToolbar() {
       <div className="nx-fmt-sep" />
 
       {/* External URL link */}
-      <button type="button" className="nx-fmt-btn" title="External link (⌘K)" onClick={createExternalLink}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
-          <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
-        </svg>
-      </button>
+      <div className="nx-fmt-btn-wrap">
+        <button
+          type="button"
+          className={`nx-fmt-btn ${urlLinkOpen ? 'is-on' : ''}`}
+          title="External link"
+          onClick={() => {
+            setColorPopover(null)
+            setPageLinkOpen(false)
+            setUrlLinkOpen((v) => !v)
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
+            <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
+          </svg>
+        </button>
+        {urlLinkOpen && (
+          <div className="nx-url-link-popover nx-fmt-popover" style={{ width: 240, left: '50%', transform: 'translateX(-50%)' }}>
+            <input
+              ref={urlInputRef}
+              type="text"
+              placeholder="https://example.com"
+              value={urlLinkValue}
+              onChange={(e) => setUrlLinkValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setUrlLinkOpen(false)
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  submitExternalLink()
+                }
+              }}
+              className="w-full bg-[var(--nx-bg-base)] border border-[var(--nx-border-subtle)] rounded-[var(--nx-radius-sm)] px-2 py-1.5 text-[12px] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] outline-none focus:border-[var(--nx-accent)]/40"
+            />
+            <button
+              type="button"
+              className="w-full mt-1.5 px-2 py-1.5 rounded-[var(--nx-radius-sm)] text-[12px] text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] hover:text-[var(--nx-text-primary)] transition-colors duration-75"
+              onMouseDown={(e) => {
+                e.preventDefault()
+                submitExternalLink()
+              }}
+            >
+              Add link
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Page link — wraps selected text as nexus://pageId link */}
       <div className="nx-fmt-btn-wrap">
