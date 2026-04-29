@@ -1,0 +1,405 @@
+{
+  "nexus_version": "1.0",
+  "exported_at": "2026-04-29T00:00:00.000Z",
+  "page": {
+    "id": "fixture-chem-blocks",
+    "title": "Chemistry — every block type",
+    "icon": "doc",
+    "type_id": "note",
+    "page_width": 720,
+    "created_at": "2026-04-29 00:00:00",
+    "updated_at": "2026-04-29 00:00:00"
+  },
+  "blocks": [
+    {
+      "block_type": "heading",
+      "sort_order": 0,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-h1",
+        "type": "heading",
+        "props": { "level": 1, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Chemistry — every block type", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "paragraph",
+      "sort_order": 1,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-p-styles",
+        "type": "paragraph",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [
+          { "type": "text", "text": "Inline styles: ", "styles": {} },
+          { "type": "text", "text": "bold", "styles": { "bold": true } },
+          { "type": "text", "text": ", ", "styles": {} },
+          { "type": "text", "text": "italic", "styles": { "italic": true } },
+          { "type": "text", "text": ", ", "styles": {} },
+          { "type": "text", "text": "underline", "styles": { "underline": true } },
+          { "type": "text", "text": ", ", "styles": {} },
+          { "type": "text", "text": "strikethrough", "styles": { "strike": true } },
+          { "type": "text", "text": ", ", "styles": {} },
+          { "type": "text", "text": "inline code", "styles": { "code": true } },
+          { "type": "text", "text": ", ", "styles": {} },
+          { "type": "text", "text": "purple text", "styles": { "textColor": "purple" } },
+          { "type": "text", "text": ", and ", "styles": {} },
+          { "type": "text", "text": "yellow highlight", "styles": { "backgroundColor": "yellow" } },
+          { "type": "text", "text": ".", "styles": {} }
+        ],
+        "children": []
+      }
+    },
+    {
+      "block_type": "heading",
+      "sort_order": 2,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-h2-atoms",
+        "type": "heading",
+        "props": { "level": 2, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Atoms — lists", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "bulletListItem",
+      "sort_order": 3,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-bullet-1",
+        "type": "bulletListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Proton — positive, in nucleus", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "bulletListItem",
+      "sort_order": 4,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-bullet-2",
+        "type": "bulletListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Neutron — neutral, in nucleus", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "bulletListItem",
+      "sort_order": 5,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-bullet-3",
+        "type": "bulletListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Electron — negative, in orbitals", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "numberedListItem",
+      "sort_order": 6,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-numbered-1",
+        "type": "numberedListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Weigh sample on analytical balance", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "numberedListItem",
+      "sort_order": 7,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-numbered-2",
+        "type": "numberedListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Dissolve in deionised water", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "numberedListItem",
+      "sort_order": 8,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-numbered-3",
+        "type": "numberedListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Titrate to endpoint", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "checkListItem",
+      "sort_order": 9,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-check-1",
+        "type": "checkListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left", "checked": true },
+        "content": [{ "type": "text", "text": "Goggles on", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "checkListItem",
+      "sort_order": 10,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-check-2",
+        "type": "checkListItem",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left", "checked": false },
+        "content": [{ "type": "text", "text": "Logbook open", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "heading",
+      "sort_order": 11,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-h2-code",
+        "type": "heading",
+        "props": { "level": 2, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Code & quote", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "codeBlock",
+      "sort_order": 12,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-code",
+        "type": "codeBlock",
+        "props": { "language": "python" },
+        "content": [
+          { "type": "text", "text": "ATOMIC = {\"H\": 1.008, \"C\": 12.011, \"O\": 15.999}\n\ndef molar_mass(formula):\n    return sum(ATOMIC[el] * n for el, n in formula.items())\n\nprint(molar_mass({\"C\": 6, \"H\": 12, \"O\": 6}))  # 180.156", "styles": {} }
+        ],
+        "children": []
+      }
+    },
+    {
+      "block_type": "quote",
+      "sort_order": 13,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-quote",
+        "type": "quote",
+        "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [
+          { "type": "text", "text": "Nothing in life is to be feared, it is only to be understood. — ", "styles": {} },
+          { "type": "text", "text": "Marie Curie", "styles": { "italic": true } }
+        ],
+        "children": []
+      }
+    },
+    {
+      "block_type": "callout",
+      "sort_order": 14,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-callout-warn",
+        "type": "callout",
+        "props": { "icon": "warning", "color": "red" },
+        "content": [
+          { "type": "text", "text": "Concentrated H₂SO₄ — wear goggles, add acid to water (never the reverse).", "styles": {} }
+        ],
+        "children": []
+      }
+    },
+    {
+      "block_type": "callout",
+      "sort_order": 15,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-callout-info",
+        "type": "callout",
+        "props": { "icon": "bulb", "color": "blue" },
+        "content": [
+          { "type": "text", "text": "Mnemonic: ", "styles": {} },
+          { "type": "text", "text": "OIL RIG", "styles": { "bold": true } },
+          { "type": "text", "text": " — Oxidation Is Loss, Reduction Is Gain.", "styles": {} }
+        ],
+        "children": []
+      }
+    },
+    {
+      "block_type": "toggle",
+      "sort_order": 16,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-toggle",
+        "type": "toggle",
+        "props": { "open": true },
+        "content": [
+          { "type": "text", "text": "Detailed pH derivation (click to fold)", "styles": {} }
+        ],
+        "children": [
+          {
+            "id": "fb-toggle-child-1",
+            "type": "paragraph",
+            "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+            "content": [
+              { "type": "text", "text": "For a weak acid HA at concentration C with dissociation constant K", "styles": {} },
+              { "type": "text", "text": "a", "styles": {} },
+              { "type": "text", "text": ":", "styles": {} }
+            ],
+            "children": []
+          },
+          {
+            "id": "fb-toggle-child-2",
+            "type": "paragraph",
+            "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+            "content": [
+              { "type": "text", "text": "[H⁺]² ≈ Ka · C, so pH ≈ ½(pKa − log C).", "styles": { "italic": true } }
+            ],
+            "children": []
+          }
+        ]
+      }
+    },
+    {
+      "block_type": "heading",
+      "sort_order": 17,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-h2-table",
+        "type": "heading",
+        "props": { "level": 2, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Indicators (table)", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "table",
+      "sort_order": 18,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-table",
+        "type": "table",
+        "props": { "textColor": "default" },
+        "content": {
+          "type": "tableContent",
+          "columnWidths": [null, null, null, null],
+          "rows": [
+            { "cells": [
+              [{ "type": "text", "text": "Indicator", "styles": { "bold": true } }],
+              [{ "type": "text", "text": "Acidic", "styles": { "bold": true } }],
+              [{ "type": "text", "text": "Basic", "styles": { "bold": true } }],
+              [{ "type": "text", "text": "pH range", "styles": { "bold": true } }]
+            ]},
+            { "cells": [
+              [{ "type": "text", "text": "Methyl orange", "styles": {} }],
+              [{ "type": "text", "text": "Red", "styles": {} }],
+              [{ "type": "text", "text": "Yellow", "styles": {} }],
+              [{ "type": "text", "text": "3.1 – 4.4", "styles": {} }]
+            ]},
+            { "cells": [
+              [{ "type": "text", "text": "Phenolphthalein", "styles": {} }],
+              [{ "type": "text", "text": "Clear", "styles": {} }],
+              [{ "type": "text", "text": "Pink", "styles": {} }],
+              [{ "type": "text", "text": "8.2 – 10", "styles": {} }]
+            ]},
+            { "cells": [
+              [{ "type": "text", "text": "Bromothymol blue", "styles": {} }],
+              [{ "type": "text", "text": "Yellow", "styles": {} }],
+              [{ "type": "text", "text": "Blue", "styles": {} }],
+              [{ "type": "text", "text": "6.0 – 7.6", "styles": {} }]
+            ]}
+          ]
+        },
+        "children": []
+      }
+    },
+    {
+      "block_type": "heading",
+      "sort_order": 19,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-h2-cols",
+        "type": "heading",
+        "props": { "level": 2, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+        "content": [{ "type": "text", "text": "Reactions (two columns)", "styles": {} }],
+        "children": []
+      }
+    },
+    {
+      "block_type": "columnList",
+      "sort_order": 20,
+      "parent_block_id": null,
+      "content": {
+        "id": "fb-collist",
+        "type": "columnList",
+        "children": [
+          {
+            "id": "fb-col-left",
+            "type": "column",
+            "props": { "width": 1 },
+            "children": [
+              {
+                "id": "fb-col-left-h",
+                "type": "heading",
+                "props": { "level": 3, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [{ "type": "text", "text": "Reactants", "styles": {} }],
+                "children": []
+              },
+              {
+                "id": "fb-col-left-1",
+                "type": "bulletListItem",
+                "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [{ "type": "text", "text": "2 H₂", "styles": {} }],
+                "children": []
+              },
+              {
+                "id": "fb-col-left-2",
+                "type": "bulletListItem",
+                "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [{ "type": "text", "text": "O₂", "styles": {} }],
+                "children": []
+              }
+            ]
+          },
+          {
+            "id": "fb-col-right",
+            "type": "column",
+            "props": { "width": 1 },
+            "children": [
+              {
+                "id": "fb-col-right-h",
+                "type": "heading",
+                "props": { "level": 3, "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [{ "type": "text", "text": "Products", "styles": {} }],
+                "children": []
+              },
+              {
+                "id": "fb-col-right-1",
+                "type": "bulletListItem",
+                "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [{ "type": "text", "text": "2 H₂O", "styles": {} }],
+                "children": []
+              },
+              {
+                "id": "fb-col-right-2",
+                "type": "paragraph",
+                "props": { "textColor": "default", "backgroundColor": "default", "textAlignment": "left" },
+                "content": [
+                  { "type": "text", "text": "ΔH = ", "styles": {} },
+                  { "type": "text", "text": "−483.6 kJ/mol", "styles": { "bold": true } }
+                ],
+                "children": []
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "links": []
+}

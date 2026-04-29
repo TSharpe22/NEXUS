@@ -4,6 +4,7 @@ import Fuse from 'fuse.js'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
 import { shortcutLabel } from '../utils/shortcuts'
+import { PageIcon } from '../blocks/icons'
 
 export function CommandPalette() {
   const {
@@ -243,7 +244,9 @@ export function CommandPalette() {
                   }}
                   className={itemClass}
                 >
-                  <span className="text-[14px] leading-none">{page.icon || ''}</span>
+                  <span className="text-[var(--nx-text-tertiary)] shrink-0">
+                    <PageIcon iconKey={page.icon} size={14} />
+                  </span>
                   <span className="truncate">{page.title || 'Untitled'}</span>
                 </Command.Item>
               ))}

@@ -81,11 +81,6 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
           ids.push(id)
         }
       }
-      // TEMP instrumentation — remove after lasso highlight is verified working.
-      if (ids.length > 0) {
-        // eslint-disable-next-line no-console
-        console.log('[nx-lasso] ids', ids.length, ids.slice(0, 3))
-      }
       selectBlocks(ids)
     },
     [selectBlocks],
