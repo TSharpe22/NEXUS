@@ -1,7 +1,7 @@
 import { Menu, type MenuSection, type MenuItem } from './Menu'
 import { COLOR_KEYS, COLORS } from '../blocks/callout-colors'
 import type { NexusEditor } from '../blocks/schema'
-import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 
 // Right-click menu for blocks inside the editor. Two primary sections:
 //   1. Block actions (delete, duplicate, copy, cut, move up/down)
@@ -69,7 +69,7 @@ function blockToPlainText(block: AnyBlock): string {
 }
 
 export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockIds = [] }: Props) {
-  const currentPageId = useAppStore((s) => s.currentPage?.id)
+  const currentPageId = useEditorStore((s) => s.currentPage?.id)
   const isMultiSelect = selectedBlockIds.length > 1
   const isCallout = !isMultiSelect && block.type === 'callout'
 

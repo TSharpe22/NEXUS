@@ -135,6 +135,7 @@ export interface NexusAPI {
     hardDelete(id: string): Promise<void>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
+    emptyTrash(): Promise<number>
   }
   blocks: {
     getByPageId(pageId: string): Promise<Block[]>
@@ -166,6 +167,10 @@ export interface NexusAPI {
     }): Promise<string[] | null>
     showSelectFolder(): Promise<string | null>
   }
+}
+
+export interface NexusLifecycle {
+  onFlushPending(handler: () => Promise<void> | void): () => void
 }
 
 // ============================================================

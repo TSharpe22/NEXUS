@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 
 interface OverlayRect {
   id: string
@@ -26,7 +26,7 @@ interface Props {
  * container's coordinate space. Zero interaction with BlockNote's DOM.
  */
 export function SelectionOverlay({ editorContainerRef, scrollContainerRef }: Props) {
-  const selectedBlockIds = useAppStore((s) => s.selectedBlockIds)
+  const selectedBlockIds = useEditorStore((s) => s.selectedBlockIds)
   const [rects, setRects] = useState<OverlayRect[]>([])
 
   const compute = useCallback(() => {

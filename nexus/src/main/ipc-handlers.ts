@@ -59,6 +59,11 @@ export function registerIpcHandlers(): void {
     catch (e) { rethrowIpcError('pages:duplicate', e) }
   })
 
+  ipcMain.handle('pages:emptyTrash', () => {
+    try { return db.emptyTrash() }
+    catch (e) { rethrowIpcError('pages:emptyTrash', e) }
+  })
+
   // Blocks
   ipcMain.handle('blocks:getByPageId', (_, pageId: string) => {
     try { return db.getBlocksByPageId(pageId) }

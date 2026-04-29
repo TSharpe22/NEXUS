@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 import { relativeTime } from '../hooks/use-relative-time'
 import { ContextMenu } from './ContextMenu'
 import { shortcutLabel } from '../utils/shortcuts'
@@ -8,18 +9,32 @@ import { PageIcon } from '../blocks/icons'
 
 export function Sidebar() {
   const {
-    pages, selectedPageId, sidebarWidth, sidebarCollapsed,
+    pages, sidebarWidth, sidebarCollapsed,
     searchQuery, showTrash, deletedPages,
-    loadPages, selectPage, createPage,
-    updatePage, deletePage, restorePage, hardDeletePage, duplicatePage,
+    loadPages, createPage,
+    updatePage, deletePage, restorePage, hardDeletePage, duplicatePage, emptyTrash,
     setSidebarWidth, setSearchQuery, setShowTrash,
   } = useAppStore()
+  const selectedPageId = useEditorStore((s) => s.selectedPageId)
+  const selectPage = useEditorStore((s) => s.selectPage)
 
   const isResizing = useRef(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; pageId: string } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
+
+  // Debounce filter at 150ms (per spec §3.3) — but bypass debounce when the
+  // user clears the input so the full list returns instantly.
+  const [debouncedSearch, setDebouncedSearch] = useState(searchQuery)
+  useEffect(() => {
+    if (!searchQuery) {
+      setDebouncedSearch('')
+      return
+    }
+    const t = setTimeout(() => setDebouncedSearch(searchQuery), 150)
+    return () => clearTimeout(t)
+  }, [searchQuery])
 
   useEffect(() => { loadPages() }, [loadPages])
 
@@ -152,7 +167,7 @@ export function Sidebar() {
       e.preventDefault()
       const onMouseMove = (e: MouseEvent) => {
         if (!isResizing.current) return
-        setSidebarWidth(Math.max(220, Math.min(480, e.clientX)))
+        setSidebarWidth(Math.max(200, Math.min(480, e.clientX)))
       }
       const onMouseUp = () => {
         isResizing.current = false
@@ -169,9 +184,9 @@ export function Sidebar() {
     [setSidebarWidth]
   )
 
-  const filteredPages = searchQuery
+  const filteredPages = debouncedSearch
     ? pages.filter((p) =>
-        (p.title || 'Untitled').toLowerCase().includes(searchQuery.toLowerCase())
+        (p.title || 'Untitled').toLowerCase().includes(debouncedSearch.toLowerCase())
       )
     : pages
 
@@ -182,6 +197,7 @@ export function Sidebar() {
         <div className="h-[var(--nx-titlebar-height)] titlebar-drag w-full" />
         <button
           onClick={createPage}
+          aria-label="New page"
           className="w-9 h-9 flex items-center justify-center rounded-[var(--nx-radius-md)] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150 mt-1"
           title={`New page (${shortcutLabel('N')})`}
         >
@@ -213,6 +229,7 @@ export function Sidebar() {
         <div className="px-3 pt-1 pb-2 flex flex-col gap-1.5 shrink-0">
           <button
             onClick={createPage}
+            aria-label="New page"
             className="w-full flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-secondary)] hover:text-[var(--nx-text-primary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -256,6 +273,7 @@ export function Sidebar() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search pages..."
+              aria-label="Search pages"
               className="w-full pl-8 pr-3 py-[6px] bg-[var(--nx-bg-base)] border border-[var(--nx-border-subtle)] rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] focus:outline-none focus:border-[var(--nx-accent)]/30 transition-all duration-150"
             />
           </div>
@@ -278,9 +296,27 @@ export function Sidebar() {
                 Back to pages
               </button>
 
-              <p className="px-2.5 text-[10px] font-semibold tracking-[0.12em] uppercase text-[var(--nx-text-tertiary)] mb-2">
-                Trash
-              </p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="px-2.5 text-[10px] font-semibold tracking-[0.12em] uppercase text-[var(--nx-text-tertiary)]">
+                  Trash
+                </p>
+                {deletedPages.length > 0 && (
+                  <button
+                    onClick={async () => {
+                      if (!confirm(`Permanently delete ${deletedPages.length} page${deletedPages.length === 1 ? '' : 's'}? This cannot be undone.`)) return
+                      try {
+                        const count = await emptyTrash()
+                        toast.success(`Emptied trash (${count} page${count === 1 ? '' : 's'})`)
+                      } catch {
+                        toast.error('Failed to empty trash')
+                      }
+                    }}
+                    className="text-[11px] px-2 py-0.5 mr-2 rounded text-[var(--nx-danger)] hover:bg-[var(--nx-danger)]/10 transition-colors"
+                  >
+                    Empty
+                  </button>
+                )}
+              </div>
 
               {deletedPages.length === 0 ? (
                 <div className="px-2.5 py-10 text-center">
@@ -351,7 +387,9 @@ export function Sidebar() {
                     <line x1="16" y1="17" x2="8" y2="17" />
                   </svg>
                   <p className="text-[13px] text-[var(--nx-text-tertiary)]">
-                    {searchQuery ? 'No pages match your search' : 'No pages yet'}
+                    {searchQuery
+                      ? <>No pages match <span className="text-[var(--nx-text-secondary)]">"{searchQuery}"</span></>
+                      : 'No pages yet'}
                   </p>
                   {!searchQuery && (
                     <button
@@ -363,9 +401,11 @@ export function Sidebar() {
                   )}
                 </div>
               ) : (
-                filteredPages.map((page) => (
+                filteredPages.map((page, idx) => (
                   <div
                     key={page.id}
+                    tabIndex={renamingId === page.id ? -1 : 0}
+                    role="button"
                     onClick={() => {
                       if (renamingId !== page.id) selectPage(page.id)
                     }}
@@ -374,6 +414,34 @@ export function Sidebar() {
                       setCtxMenu({ x: e.clientX, y: e.clientY, pageId: page.id })
                     }}
                     onDoubleClick={() => startRename(page.id)}
+                    onKeyDown={(e) => {
+                      if (renamingId === page.id) return
+                      const target = e.currentTarget
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        selectPage(page.id)
+                        return
+                      }
+                      if (e.key === 'F2') {
+                        e.preventDefault()
+                        startRename(page.id)
+                        return
+                      }
+                      if (e.key === 'ArrowDown') {
+                        e.preventDefault()
+                        const next = target.nextElementSibling as HTMLElement | null
+                        next?.focus()
+                        return
+                      }
+                      if (e.key === 'ArrowUp') {
+                        e.preventDefault()
+                        const prev = target.previousElementSibling as HTMLElement | null
+                        prev?.focus()
+                        return
+                      }
+                    }}
+                    data-page-list-item
+                    data-page-index={idx}
                     className={`
                       relative group flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
                       ${

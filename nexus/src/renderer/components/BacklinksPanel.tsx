@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 import type { BacklinkResult } from '../../shared/types'
 import { PageIcon } from '../blocks/icons'
 
@@ -8,9 +8,9 @@ interface Props {
 }
 
 export function BacklinksPanel({ pageId }: Props) {
-  const selectPage = useAppStore((s) => s.selectPage)
-  const expanded = useAppStore((s) => s.backlinksExpanded)
-  const setExpanded = useAppStore((s) => s.setBacklinksExpanded)
+  const selectPage = useEditorStore((s) => s.selectPage)
+  const expanded = useEditorStore((s) => s.backlinksExpanded)
+  const setExpanded = useEditorStore((s) => s.setBacklinksExpanded)
   const [backlinks, setBacklinks] = useState<BacklinkResult[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -57,7 +57,7 @@ export function BacklinksPanel({ pageId }: Props) {
         <div className="mt-3 space-y-0.5 animate-fade-in">
           {backlinks.length === 0 ? (
             <p className="text-[12px] text-[var(--nx-text-tertiary)] pl-5">
-              No other pages link here.
+              No pages link here yet.
             </p>
           ) : (
             backlinks.map((bl) => (

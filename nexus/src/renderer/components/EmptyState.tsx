@@ -2,7 +2,8 @@ import React from 'react'
 import { useAppStore } from '../stores/app-store'
 
 export function EmptyState() {
-  const { createPage } = useAppStore()
+  const { createPage, pages } = useAppStore()
+  const noPagesYet = pages.length === 0
 
   return (
     <div className="h-full flex flex-col items-center justify-center text-center px-6 animate-fade-in">
@@ -17,8 +18,13 @@ export function EmptyState() {
         </svg>
       </div>
 
-      <p className="text-[var(--nx-text-tertiary)] text-[14px] mb-5 max-w-[240px] leading-relaxed">
-        Select a page or create a new one to get started
+      <p className="text-[var(--nx-text-secondary)] text-[14px] mb-1.5 max-w-[280px] leading-relaxed font-medium">
+        {noPagesYet ? 'Your workspace is empty' : 'No page selected'}
+      </p>
+      <p className="text-[var(--nx-text-tertiary)] text-[13px] mb-5 max-w-[280px] leading-relaxed">
+        {noPagesYet
+          ? 'Press ⌘N to create your first page'
+          : 'Select a page from the sidebar or press ⌘N'}
       </p>
 
       <button

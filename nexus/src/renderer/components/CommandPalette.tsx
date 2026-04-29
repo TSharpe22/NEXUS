@@ -1,19 +1,33 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { Command } from 'cmdk'
 import Fuse from 'fuse.js'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 import { shortcutLabel } from '../utils/shortcuts'
 
 export function CommandPalette() {
   const {
     commandPaletteOpen, setCommandPaletteOpen,
-    pages, selectPage, createPage, loadPages,
-    selectedPageId,
+    pages, createPage, loadPages,
     sidebarCollapsed, setSidebarCollapsed,
     setShowTrash,
   } = useAppStore()
+  const selectedPageId = useEditorStore((s) => s.selectedPageId)
+  const selectPage = useEditorStore((s) => s.selectPage)
   const [query, setQuery] = useState('')
+  const previouslyFocused = useRef<HTMLElement | null>(null)
+
+  // Capture the element that had focus when the palette opens, restore it
+  // on close so keyboard users don't lose their place.
+  useEffect(() => {
+    if (commandPaletteOpen) {
+      previouslyFocused.current = (document.activeElement as HTMLElement) ?? null
+    } else if (previouslyFocused.current) {
+      previouslyFocused.current.focus()
+      previouslyFocused.current = null
+    }
+  }, [commandPaletteOpen])
 
   // Toggle shortcut
   useEffect(() => {
@@ -55,12 +69,14 @@ export function CommandPalette() {
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]">
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+        className="absolute inset-0 backdrop-blur-sm"
+        style={{ background: 'var(--nx-overlay)' }}
         onClick={() => setCommandPaletteOpen(false)}
       />
 
       {/* Dialog */}
       <Command
+        label="Command palette"
         className="relative w-[560px] max-h-[420px] bg-[var(--nx-bg-elevated)] border border-[var(--nx-border-subtle)] rounded-[var(--nx-radius-lg)] overflow-hidden animate-fade-in"
         style={{ boxShadow: 'var(--nx-shadow-lg)' }}
         onKeyDown={(e) => {
@@ -71,6 +87,7 @@ export function CommandPalette() {
           placeholder="Search pages or type a command..."
           value={query}
           onValueChange={setQuery}
+          aria-label="Command palette"
           className="w-full px-4 py-3.5 bg-transparent text-[14px] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] outline-none border-b border-[var(--nx-border-subtle)]"
           autoFocus
         />

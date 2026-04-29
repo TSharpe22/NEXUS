@@ -1,9 +1,51 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { appendFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { randomUUID } from 'crypto'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc-handlers'
 
+function logFilePath(): string {
+  const dir = join(app.getPath('userData'), 'data')
+  try { mkdirSync(dir, { recursive: true }) } catch { /* ignore */ }
+  return join(dir, 'nexus.log')
+}
+
+function logError(scope: string, err: unknown): void {
+  const timestamp = new Date().toISOString()
+  const detail = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err)
+  const line = `[${timestamp}] ${scope}: ${detail}\n`
+  try {
+    appendFileSync(logFilePath(), line)
+  } catch {
+    /* nothing left to do */
+  }
+}
+
 let mainWindow: BrowserWindow | null = null
+let didFlushBeforeQuit = false
+
+// Ask the renderer to drain debounced writes, with a hard timeout so a wedged
+// renderer can't block app exit indefinitely.
+function flushRendererPending(timeoutMs = 1500): Promise<void> {
+  return new Promise((resolve) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return resolve()
+    const requestId = randomUUID()
+    let settled = false
+    const finish = () => {
+      if (settled) return
+      settled = true
+      ipcMain.removeListener('lifecycle:flush-ack', listener)
+      resolve()
+    }
+    const listener = (_e: unknown, id: string) => {
+      if (id === requestId) finish()
+    }
+    ipcMain.on('lifecycle:flush-ack', listener)
+    mainWindow.webContents.send('lifecycle:flush-pending', requestId)
+    setTimeout(finish, timeoutMs)
+  })
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -47,7 +89,19 @@ function createWindow(): void {
 // ============================================================
 
 app.whenReady().then(() => {
-  initDatabase()
+  try {
+    initDatabase()
+  } catch (err) {
+    const dbPath = join(app.getPath('userData'), 'data', 'nexus.db')
+    const message = err instanceof Error ? err.message : String(err)
+    logError('initDatabase', err)
+    dialog.showErrorBox(
+      'Nexus could not start',
+      `The local database could not be opened.\n\nPath: ${dbPath}\n\n${message}`
+    )
+    app.exit(1)
+    return
+  }
   registerIpcHandlers()
   createWindow()
 
@@ -58,13 +112,21 @@ app.whenReady().then(() => {
   })
 })
 
+process.on('uncaughtException', (err) => {
+  logError('uncaughtException', err)
+})
+
 app.on('window-all-closed', () => {
-  closeDatabase()
   if (process.platform !== 'darwin') {
     app.quit()
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', async (e) => {
+  if (didFlushBeforeQuit) return
+  e.preventDefault()
+  didFlushBeforeQuit = true
+  await flushRendererPending()
   closeDatabase()
+  app.exit(0)
 })

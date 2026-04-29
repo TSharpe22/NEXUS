@@ -24,6 +24,8 @@ export function initDatabase(): void {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
   db.pragma('busy_timeout = 5000')
+  // Spec §4.1 — 32MB cache. Negative value = KiB.
+  db.pragma('cache_size = -32000')
 
   runMigrations()
 }
@@ -221,6 +223,16 @@ export function getDeletedPages(): Page[] {
   ).all() as unknown[]).map(mapPage)
 }
 
+// Hard-delete every soft-deleted page in a single transaction. Block and link
+// rows cascade via FK. Returns the number of pages permanently deleted.
+export function emptyTrash(): number {
+  const trx = db.transaction(() => {
+    const result = db.prepare('DELETE FROM pages WHERE is_deleted = 1').run()
+    return result.changes
+  })
+  return trx() as number
+}
+
 export function duplicatePage(id: string): Page {
   const source = getPageById(id)
   if (!source) throw new Error(`Page not found: ${id}`)
@@ -231,7 +243,7 @@ export function duplicatePage(id: string): Page {
   db.prepare(`
     INSERT INTO pages (id, type_id, title, icon, cover, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(newId, source.type_id, `${source.title} (copy)`, source.icon, source.cover, timestamp, timestamp)
+  `).run(newId, source.type_id, `Copy of ${source.title || 'Untitled'}`, source.icon, source.cover, timestamp, timestamp)
 
   // Duplicate blocks while preserving parent-child relationships.
   const blocks = db.prepare(

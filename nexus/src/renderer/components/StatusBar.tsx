@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react'
-import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 
 export function StatusBar() {
-  const { saveStatus, currentPage } = useAppStore()
+  const { saveStatus, currentPage } = useEditorStore()
   const [showSaved, setShowSaved] = useState(false)
+
+  const setSaveStatus = useEditorStore((s) => s.setSaveStatus)
 
   // Keep the "Saved" badge visible briefly, then fade.
   useEffect(() => {
@@ -16,6 +18,14 @@ export function StatusBar() {
       setShowSaved(false)
     }
   }, [saveStatus])
+
+  // Stuck-state guard: if "Saving…" persists >5s the IPC likely never resolved.
+  // Surface the failure rather than leaving the dot spinning forever.
+  useEffect(() => {
+    if (saveStatus !== 'saving') return
+    const t = setTimeout(() => setSaveStatus('idle'), 5000)
+    return () => clearTimeout(t)
+  }, [saveStatus, setSaveStatus])
 
   return (
     <div className="h-7 flex items-center px-4 border-t border-[var(--nx-border-subtle)] text-[10px] text-[var(--nx-text-tertiary)] shrink-0 bg-[var(--nx-bg-surface)]">

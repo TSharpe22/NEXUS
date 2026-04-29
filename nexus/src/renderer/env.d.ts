@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-import type { NexusAPI } from '../shared/types'
+import type { NexusAPI, NexusLifecycle } from '../shared/types'
 
 declare global {
   interface Window {
@@ -10,5 +10,6 @@ declare global {
       writeFile(path: string, content: string): Promise<void>
       writeFiles(folder: string, files: { filename: string; content: string }[]): Promise<void>
     }
+    lifecycle: NexusLifecycle
   }
 }

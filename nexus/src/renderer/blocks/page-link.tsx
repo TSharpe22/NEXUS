@@ -1,6 +1,7 @@
 import React from 'react'
 import { createReactInlineContentSpec } from '@blocknote/react'
 import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 import { PageIcon } from './icons'
 
 export const pageMention = createReactInlineContentSpec(
@@ -36,7 +37,7 @@ function PageMentionChip({
   pageTitle: string
   pageIcon: string
 }) {
-  const selectPage = useAppStore((s) => s.selectPage)
+  const selectPage = useEditorStore((s) => s.selectPage)
   const pages = useAppStore((s) => s.pages)
   const deletedPages = useAppStore((s) => s.deletedPages)
 

@@ -12,6 +12,7 @@ const api: NexusAPI = {
     hardDelete: (id) => ipcRenderer.invoke('pages:hardDelete', id),
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
     duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id),
+    emptyTrash: () => ipcRenderer.invoke('pages:emptyTrash'),
   },
   blocks: {
     getByPageId: (pageId) => ipcRenderer.invoke('blocks:getByPageId', pageId),
@@ -45,5 +46,21 @@ const fs = {
     ipcRenderer.invoke('fs:writeFiles', folder, files),
 }
 
+// Lifecycle: main process notifies renderer to flush pending writes before quit.
+const lifecycle = {
+  onFlushPending(handler: () => Promise<void> | void): () => void {
+    const listener = async (_e: unknown, requestId: string) => {
+      try {
+        await handler()
+      } finally {
+        ipcRenderer.send('lifecycle:flush-ack', requestId)
+      }
+    }
+    ipcRenderer.on('lifecycle:flush-pending', listener)
+    return () => ipcRenderer.removeListener('lifecycle:flush-pending', listener)
+  },
+}
+
 contextBridge.exposeInMainWorld('api', api)
 contextBridge.exposeInMainWorld('fs', fs)
+contextBridge.exposeInMainWorld('lifecycle', lifecycle)

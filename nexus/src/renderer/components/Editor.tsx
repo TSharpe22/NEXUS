@@ -10,6 +10,7 @@ import { multiColumnDropCursor } from '@blocknote/xl-multi-column'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 import { useDebounce } from '../hooks/use-debounce'
 import type { Block as NexusBlock, Page } from '../../shared/types'
 import { v4 as uuidv4 } from 'uuid'
@@ -22,6 +23,8 @@ import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
 import { LassoSelect } from './LassoSelect'
 import { ColumnResizeHandles } from './ColumnResizeHandles'
 import { SelectionOverlay } from './SelectionOverlay'
+import { registerFlusher } from '../utils/flush-registry'
+import { nx } from '../utils/toast'
 import type { LinkTarget } from '../../shared/types'
 
 const WIDTH_ICON = (
@@ -123,8 +126,9 @@ function resetToggles(blocks: unknown[]): void {
 }
 
 export function Editor({ pageId }: Props) {
-  const { setSaveStatus, updatePage, currentPage, pages, createPage, loadPages, selectPage } = useAppStore()
-  const { selectedBlockIds, isLassoActive, deselectAllBlocks, selectBlocks, toggleBlockSelection } = useAppStore()
+  const { updatePage, pages, createPage, loadPages } = useAppStore()
+  const { setSaveStatus, currentPage, selectPage } = useEditorStore()
+  const { selectedBlockIds, isLassoActive, deselectAllBlocks, selectBlocks, toggleBlockSelection } = useEditorStore()
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
@@ -241,15 +245,25 @@ export function Editor({ pageId }: Props) {
       }
 
       const sorted = [...blocks].sort((a, b) => a.sort_order - b.sort_order)
-      const parsedBlocks = sorted
-        .map((b) => {
-          try {
-            return b.content ? JSON.parse(b.content) : null
-          } catch {
-            return null
+      // Spec §5.4: malformed block content must render a placeholder, not
+      // silently disappear. Surface a visible paragraph so the user can see
+      // (and choose to delete) corrupted blocks instead of losing them.
+      const parsedBlocks = sorted.map((b) => {
+        try {
+          return b.content ? JSON.parse(b.content) : { type: 'paragraph', content: '' }
+        } catch {
+          return {
+            type: 'paragraph',
+            content: [
+              {
+                type: 'text',
+                text: '⚠ This block could not be loaded',
+                styles: { italic: true, textColor: 'gray' },
+              },
+            ],
           }
-        })
-        .filter(Boolean)
+        }
+      })
 
       // Toggle state is ephemeral — always start expanded on load.
       resetToggles(parsedBlocks)
@@ -315,6 +329,7 @@ export function Editor({ pageId }: Props) {
           await persistBlocks(nexusBlocks, editorBlocks)
         } catch {
           setSaveStatus('idle')
+          nx.warning('Failed to save — your changes may be lost')
         }
       },
       [persistBlocks, setSaveStatus],
@@ -361,14 +376,18 @@ export function Editor({ pageId }: Props) {
     titleRef.current.style.height = titleRef.current.scrollHeight + 'px'
   }, [pageId, currentPage?.title])
 
-  // Flush all pending saves on unload / page switch
+  // Flush all pending saves on unload / page switch / app quit
   useEffect(() => {
-    const onBeforeUnload = () => {
+    const flush = () => {
       debouncedSave.flush()
       debouncedTitleSave.flush()
     }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    const unregister = registerFlusher(flush)
+    window.addEventListener('beforeunload', flush)
+    return () => {
+      window.removeEventListener('beforeunload', flush)
+      unregister()
+    }
   }, [debouncedSave, debouncedTitleSave])
 
   // Deselect blocks when page changes

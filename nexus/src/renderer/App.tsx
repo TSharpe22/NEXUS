@@ -7,21 +7,31 @@ import { EmptyState } from './components/EmptyState'
 import { StatusBar } from './components/StatusBar'
 import { CommandPalette } from './components/CommandPalette'
 import { useAppStore } from './stores/app-store'
+import { useEditorStore } from './stores/editor-store'
 import { isMac } from './utils/shortcuts'
+import { flushAllPending } from './utils/flush-registry'
 
 export function App() {
   const {
-    selectedPageId,
     sidebarCollapsed, setSidebarCollapsed,
     createPage, deletePage,
-    loadPages, selectPage,
+    loadPages,
     loadDeletedPages,
   } = useAppStore()
+  const selectedPageId = useEditorStore((s) => s.selectedPageId)
+  const selectPage = useEditorStore((s) => s.selectPage)
 
   // Load trash count on mount
   useEffect(() => {
     loadDeletedPages()
   }, [loadDeletedPages])
+
+  // Main process asks the renderer to drain debounced writes before quitting.
+  useEffect(() => {
+    return window.lifecycle.onFlushPending(async () => {
+      await flushAllPending()
+    })
+  }, [])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -146,8 +156,10 @@ export function App() {
 
       <Toaster
         position="bottom-right"
+        gutter={8}
         toastOptions={{
           duration: 3000,
+          ariaProps: { role: 'status', 'aria-live': 'polite' },
           style: {
             background: 'var(--nx-bg-tertiary)',
             color: 'var(--nx-text)',
@@ -155,7 +167,10 @@ export function App() {
             fontSize: '13px',
             borderRadius: 'var(--nx-radius-md)',
             boxShadow: 'var(--nx-shadow-lg)',
+            maxWidth: '320px',
           },
+          success: { duration: 2500 },
+          error: { duration: 5000 },
         }}
       />
     </div>

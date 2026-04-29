@@ -1,5 +1,5 @@
 import React, { useCallback, useRef, useEffect, useState } from 'react'
-import { useAppStore } from '../stores/app-store'
+import { useEditorStore } from '../stores/editor-store'
 
 interface Props {
   // The scroll container — we listen for mousedown here via native listener
@@ -21,7 +21,7 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
     selectBlocks,
     deselectAllBlocks,
     setLassoActive,
-  } = useAppStore()
+  } = useEditorStore()
 
   // Lasso rect lives locally — it updates every mouse frame and we don't
   // want to trigger re-renders in every Zustand subscriber while dragging.

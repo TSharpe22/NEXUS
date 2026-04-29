@@ -1,20 +1,20 @@
 import { create } from 'zustand'
 import type { Page } from '../../shared/types'
+import { nx } from '../utils/toast'
+import {
+  useEditorStore,
+  patchCurrentPageIfMatches,
+  clearSelectionIfMatches,
+} from './editor-store'
 
 const nowSql = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 
 interface AppState {
-  // Sidebar
+  // Sidebar / page list
   pages: Page[]
-  selectedPageId: string | null
   sidebarWidth: number
   sidebarCollapsed: boolean
   searchQuery: string
-
-  // Editor
-  currentPage: Page | null
-  isSaving: boolean
-  saveStatus: 'idle' | 'saving' | 'saved'
 
   // Trash
   showTrash: boolean
@@ -23,56 +23,31 @@ interface AppState {
   // Command palette
   commandPaletteOpen: boolean
 
-  // Multi-select (Phase 03)
-  selectedBlockIds: string[]
-  isLassoActive: boolean
-  lassoRect: { x: number; y: number; width: number; height: number } | null
-
-  // Backlinks panel — persist expanded state across page navigation
-  backlinksExpanded: boolean
-
   // Actions
   loadPages(): Promise<void>
   loadDeletedPages(): Promise<void>
-  selectPage(id: string | null): Promise<void>
   createPage(): Promise<void>
   updatePage(id: string, data: Partial<Page>): Promise<void>
   deletePage(id: string): Promise<void>
   restorePage(id: string): Promise<void>
   hardDeletePage(id: string): Promise<void>
   duplicatePage(id: string): Promise<void>
+  emptyTrash(): Promise<number>
   setSidebarWidth(w: number): void
   setSidebarCollapsed(c: boolean): void
   setSearchQuery(q: string): void
   setShowTrash(v: boolean): void
   setCommandPaletteOpen(v: boolean): void
-  setSaveStatus(s: 'idle' | 'saving' | 'saved'): void
-
-  // Multi-select actions
-  selectBlocks(ids: string[]): void
-  deselectAllBlocks(): void
-  toggleBlockSelection(id: string): void
-  setLassoActive(active: boolean): void
-  setLassoRect(rect: { x: number; y: number; width: number; height: number } | null): void
-  setBacklinksExpanded(v: boolean): void
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
   pages: [],
-  selectedPageId: null,
   sidebarWidth: parseInt(localStorage.getItem('nx-sidebar-width') || '280'),
   sidebarCollapsed: localStorage.getItem('nx-sidebar-collapsed') === 'true',
   searchQuery: '',
-  currentPage: null,
-  isSaving: false,
-  saveStatus: 'idle',
   showTrash: false,
   deletedPages: [],
   commandPaletteOpen: false,
-  selectedBlockIds: [],
-  isLassoActive: false,
-  lassoRect: null,
-  backlinksExpanded: false,
 
   async loadPages() {
     const pages = await window.api.pages.getAll()
@@ -84,76 +59,92 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ deletedPages })
   },
 
-  async selectPage(id) {
-    if (!id) {
-      set({ selectedPageId: null, currentPage: null })
-      return
-    }
-    const page = await window.api.pages.getById(id)
-    set({ selectedPageId: id, currentPage: page, showTrash: false })
-  },
-
   async createPage() {
-    const page = await window.api.pages.create()
-    await get().loadPages()
-    await get().selectPage(page.id)
+    try {
+      const page = await window.api.pages.create()
+      await get().loadPages()
+      await useEditorStore.getState().selectPage(page.id)
+    } catch {
+      nx.error('Failed to create page')
+    }
   },
 
   async updatePage(id, data) {
-    await window.api.pages.update(id, data)
+    try {
+      await window.api.pages.update(id, data)
+    } catch {
+      nx.error('Failed to save changes')
+      return
+    }
     const updatedAt = nowSql()
     set((state) => {
       const pages = state.pages
         .map((page) => (
-          page.id === id
-            ? { ...page, ...data, updated_at: updatedAt }
-            : page
+          page.id === id ? { ...page, ...data, updated_at: updatedAt } : page
         ))
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
-
-      const currentPage = state.currentPage?.id === id
-        ? { ...state.currentPage, ...data, updated_at: updatedAt }
-        : state.currentPage
 
       const deletedPages = state.deletedPages
         .map((page) => (
-          page.id === id
-            ? { ...page, ...data, updated_at: updatedAt }
-            : page
+          page.id === id ? { ...page, ...data, updated_at: updatedAt } : page
         ))
         .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
 
-      return { pages, currentPage, deletedPages }
+      return { pages, deletedPages }
     })
+    patchCurrentPageIfMatches(id, { ...data, updated_at: updatedAt })
   },
 
   async deletePage(id) {
-    await window.api.pages.softDelete(id)
+    try {
+      await window.api.pages.softDelete(id)
+    } catch {
+      nx.error('Failed to delete page')
+      return
+    }
     await get().loadPages()
     await get().loadDeletedPages()
-    if (get().selectedPageId === id) {
-      set({ selectedPageId: null, currentPage: null })
-    }
+    clearSelectionIfMatches(id)
   },
 
   async restorePage(id) {
-    await window.api.pages.restore(id)
+    try {
+      await window.api.pages.restore(id)
+    } catch {
+      nx.error('Failed to restore page')
+      return
+    }
     await get().loadPages()
     await get().loadDeletedPages()
+    // Spec §1.2: restoring a page from trash auto-selects it.
+    await useEditorStore.getState().selectPage(id)
   },
 
   async hardDeletePage(id) {
-    await window.api.pages.hardDelete(id)
-    await get().loadDeletedPages()
-    if (get().selectedPageId === id) {
-      set({ selectedPageId: null, currentPage: null })
+    try {
+      await window.api.pages.hardDelete(id)
+    } catch {
+      nx.error('Failed to permanently delete page')
+      return
     }
+    await get().loadDeletedPages()
+    clearSelectionIfMatches(id)
   },
 
   async duplicatePage(id) {
-    const newPage = await window.api.pages.duplicate(id)
-    await get().loadPages()
-    await get().selectPage(newPage.id)
+    try {
+      const newPage = await window.api.pages.duplicate(id)
+      await get().loadPages()
+      await useEditorStore.getState().selectPage(newPage.id)
+    } catch {
+      nx.error('Failed to duplicate page')
+    }
+  },
+
+  async emptyTrash() {
+    const count = await window.api.pages.emptyTrash()
+    await get().loadDeletedPages()
+    return count
   },
 
   setSidebarWidth(w) {
@@ -166,50 +157,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sidebarCollapsed: c })
   },
 
-  setSearchQuery(q) {
-    set({ searchQuery: q })
-  },
+  setSearchQuery(q) { set({ searchQuery: q }) },
 
   setShowTrash(v) {
     set({ showTrash: v })
     if (v) get().loadDeletedPages()
   },
 
-  setCommandPaletteOpen(v) {
-    set({ commandPaletteOpen: v })
-  },
-
-  setSaveStatus(s) {
-    set({ saveStatus: s })
-  },
-
-  selectBlocks(ids) {
-    set({ selectedBlockIds: ids })
-  },
-
-  deselectAllBlocks() {
-    set({ selectedBlockIds: [], isLassoActive: false, lassoRect: null })
-  },
-
-  toggleBlockSelection(id) {
-    set((state) => {
-      const current = state.selectedBlockIds
-      if (current.includes(id)) {
-        return { selectedBlockIds: current.filter((bid) => bid !== id) }
-      }
-      return { selectedBlockIds: [...current, id] }
-    })
-  },
-
-  setLassoActive(active) {
-    set({ isLassoActive: active })
-  },
-
-  setLassoRect(rect) {
-    set({ lassoRect: rect })
-  },
-
-  setBacklinksExpanded(v) {
-    set({ backlinksExpanded: v })
-  },
+  setCommandPaletteOpen(v) { set({ commandPaletteOpen: v }) },
 }))
