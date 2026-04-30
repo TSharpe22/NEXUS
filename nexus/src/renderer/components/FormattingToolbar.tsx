@@ -80,6 +80,10 @@ export function CustomFormattingToolbar() {
   const [urlLinkValue, setUrlLinkValue] = useState('')
   const searchRef = useRef<HTMLInputElement>(null)
   const urlInputRef = useRef<HTMLInputElement>(null)
+  // Selection range captured at the moment a link popover opens. When the
+  // popover input takes focus the editor's text selection collapses, so we
+  // need to restore from this snapshot before calling editor.createLink.
+  const savedSelection = useRef<{ from: number; to: number; text: string } | null>(null)
 
   // Close popovers on outside click
   useEffect(() => {
@@ -149,18 +153,40 @@ export function CustomFormattingToolbar() {
     editor.focus()
   }
 
-  // BlockNote 0.24's createLink wraps the active text selection. If the
-  // selection is empty we pass the URL as the link text so the URL itself
-  // becomes the inserted anchor — otherwise the call silently no-ops.
+  // Capture the editor's current selection so we can restore it after the
+  // popover input steals focus. Called from the link button onMouseDown
+  // (mousedown on toolbar buttons doesn't move focus thanks to the parent
+  // preventDefault, but clicking the popover input WILL collapse selection).
+  const captureSelection = () => {
+    const tiptap = (editor as unknown as { _tiptapEditor?: { state: { selection: { from: number; to: number }; doc: { textBetween: (a: number, b: number) => string } } } })._tiptapEditor
+    if (!tiptap) return
+    const { from, to } = tiptap.state.selection
+    savedSelection.current = {
+      from,
+      to,
+      text: tiptap.state.doc.textBetween(from, to),
+    }
+  }
+
+  // BlockNote 0.24's createLink wraps the active text selection. The popover
+  // input takes focus and collapses the editor's selection, so we restore it
+  // from the captured range before applying. If the original range was empty
+  // we pass the fallback text so the URL itself is inserted.
   const applyLink = (url: string, fallbackText: string) => {
-    const selectedText = (() => {
-      try {
-        return (editor as unknown as { getSelectedText?: () => string }).getSelectedText?.() ?? ''
-      } catch {
-        return ''
+    const tiptap = (editor as unknown as {
+      _tiptapEditor?: {
+        commands: { focus: () => boolean; setTextSelection: (r: { from: number; to: number }) => boolean }
       }
-    })()
-    if (selectedText.length > 0) {
+    })._tiptapEditor
+    const saved = savedSelection.current
+    savedSelection.current = null
+
+    if (tiptap && saved) {
+      tiptap.commands.focus()
+      tiptap.commands.setTextSelection({ from: saved.from, to: saved.to })
+    }
+
+    if (saved && saved.text.length > 0) {
       editor.createLink(url)
     } else {
       editor.createLink(url, fallbackText)
@@ -270,7 +296,11 @@ export function CustomFormattingToolbar() {
           onClick={() => {
             setColorPopover(null)
             setPageLinkOpen(false)
-            setUrlLinkOpen((v) => !v)
+            setUrlLinkOpen((v) => {
+              const next = !v
+              if (next) captureSelection()
+              return next
+            })
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -317,7 +347,12 @@ export function CustomFormattingToolbar() {
           title="Link to page"
           onClick={() => {
             setColorPopover(null)
-            setPageLinkOpen((v) => !v)
+            setUrlLinkOpen(false)
+            setPageLinkOpen((v) => {
+              const next = !v
+              if (next) captureSelection()
+              return next
+            })
           }}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">

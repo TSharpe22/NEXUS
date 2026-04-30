@@ -227,25 +227,38 @@ export function Editor({ pageId }: Props) {
   // Notion-style toggle Enter: when the cursor is inside an OPEN toggle block,
   // pressing Enter creates a nested child paragraph rather than a sibling.
   // When the toggle is closed, fall through to default sibling-insert behavior.
+  //
+  // BlockNote's `insertBlocks` only supports 'before' | 'after' — there is no
+  // 'nested' placement. To create a child we update the toggle block with a
+  // new `children` array (BlockNote's updateBlock supports children), then
+  // re-fetch to learn the auto-generated id of the inserted child and move
+  // the text cursor into it.
   useEffect(() => {
     const container = editorContainerRef.current
     if (!container) return
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
       const pos = editor.getTextCursorPosition()
-      const block = pos?.block as { type?: string; props?: { open?: boolean }; id?: string } | undefined
-      if (!block || block.type !== 'toggle') return
+      const block = pos?.block as
+        | { id: string; type?: string; props?: { open?: boolean }; children?: unknown[] }
+        | undefined
+      if (!block || block.type !== 'toggle' || !block.id) return
       if (block.props?.open === false) return
       e.preventDefault()
       e.stopPropagation()
-      const inserted = editor.insertBlocks(
-        [{ type: 'paragraph' } as never],
-        block as never,
-        'nested' as never,
-      )
-      const newBlock = Array.isArray(inserted) ? inserted[0] : inserted
-      if (newBlock) {
-        editor.setTextCursorPosition(newBlock as never, 'start')
+
+      const existingChildren = Array.isArray(block.children) ? block.children : []
+      editor.updateBlock(block.id as never, {
+        children: [...existingChildren, { type: 'paragraph' }] as never,
+      } as never)
+
+      const refreshed = editor.getBlock(block.id as never) as
+        | { children?: { id: string }[] }
+        | undefined
+      const children = refreshed?.children ?? []
+      const newChild = children[children.length - 1]
+      if (newChild?.id) {
+        editor.setTextCursorPosition(newChild.id as never, 'start')
       }
     }
     // Capture so we run before BlockNote/Tiptap default Enter handling.
