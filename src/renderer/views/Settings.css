@@ -1,0 +1,43 @@
+.nx-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-5);
+  max-width: 560px;
+}
+
+.nx-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+}
+
+.nx-settings__accent-swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-accent);
+  display: inline-block;
+  margin-right: var(--nx-space-2);
+  vertical-align: middle;
+}
+
+.nx-settings__shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-2);
+}
+
+.nx-settings__shortcut {
+  display: flex;
+  justify-content: space-between;
+}
+
+.nx-settings__kbd {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-text-dim);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  padding: 1px 6px;
+}

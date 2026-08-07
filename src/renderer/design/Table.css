@@ -1,0 +1,42 @@
+.nx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+}
+
+.nx-table thead th {
+  background: var(--nx-table-head);
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: left;
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border-bottom: 1px solid var(--nx-border);
+}
+
+.nx-table tbody tr {
+  border-bottom: 1px solid var(--nx-row-line);
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-table tbody tr.nx-table-row--clickable {
+  cursor: pointer;
+}
+
+.nx-table tbody tr.nx-table-row--clickable:hover {
+  background: var(--nx-row-line);
+}
+
+.nx-table tbody tr.nx-table-row--selected {
+  background: var(--nx-accent-tint);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.nx-table td {
+  padding: var(--nx-space-2) var(--nx-space-3);
+  color: var(--nx-text);
+}

@@ -1,0 +1,53 @@
+.nx-button {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm);
+  padding: var(--nx-space-2) var(--nx-space-3);
+  cursor: pointer;
+  transition: background var(--nx-motion), color var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-button--primary {
+  background: var(--nx-accent);
+  color: #14120d;
+}
+
+.nx-button--primary:hover:not(:disabled) {
+  background: var(--nx-accent-hover);
+}
+
+.nx-button--primary:active:not(:disabled) {
+  background: var(--nx-accent-pressed);
+}
+
+.nx-button--ghost {
+  background: transparent;
+  color: var(--nx-text-dim);
+  border-color: var(--nx-border);
+}
+
+.nx-button--ghost:hover:not(:disabled) {
+  background: var(--nx-row-line);
+  color: var(--nx-text);
+}
+
+.nx-button--critical {
+  background: transparent;
+  color: var(--nx-critical);
+  border-color: var(--nx-critical);
+}
+
+.nx-button--critical:hover:not(:disabled) {
+  background: var(--nx-critical-tint);
+}
+
+.nx-button:disabled {
+  background: var(--nx-row-line);
+  color: var(--nx-text-dim);
+  border-color: var(--nx-border);
+  cursor: not-allowed;
+}

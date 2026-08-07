@@ -1,0 +1,20 @@
+.nx-panel {
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  padding: var(--nx-space-4);
+  transition: border-color var(--nx-motion);
+}
+
+.nx-panel--dense {
+  padding: var(--nx-space-3);
+}
+
+.nx-panel--error {
+  border-color: var(--nx-critical);
+  background: linear-gradient(var(--nx-critical-tint), var(--nx-critical-tint)), var(--nx-panel);
+}
+
+.nx-panel__title {
+  margin: 0 0 var(--nx-space-3);
+}

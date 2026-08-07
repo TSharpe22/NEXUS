@@ -1,0 +1,30 @@
+.nx-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border-radius: var(--nx-radius-sm);
+  border-left: 2px solid transparent;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  background: transparent;
+  transition: background var(--nx-motion), color var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-nav-item:hover {
+  background: var(--nx-row-line);
+}
+
+.nx-nav-item--selected {
+  background: var(--nx-accent-tint);
+  border-left-color: var(--nx-accent);
+  color: var(--nx-accent);
+}
+
+.nx-nav-item:focus-visible {
+  outline: 1.5px solid var(--nx-accent);
+  outline-offset: -1.5px;
+}

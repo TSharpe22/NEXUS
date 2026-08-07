@@ -1,0 +1,256 @@
+@import '@blocknote/core/style.css';
+@import '@blocknote/react/style.css';
+@import '@blocknote/ariakit/style.css';
+
+.nx-editor-title {
+  width: 100%;
+  resize: none;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 0;
+  margin-bottom: var(--nx-space-4);
+}
+
+.nx-editor-title::placeholder {
+  color: var(--nx-text-dim);
+}
+
+.bn-container {
+  background: transparent;
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+}
+
+.bn-editor {
+  padding: 0;
+}
+
+.bn-inline-content code {
+  font-family: var(--nx-font-mono);
+  background: var(--nx-row-line);
+  padding: 1px 4px;
+  border-radius: var(--nx-radius-sm);
+}
+
+.bn-container ::placeholder {
+  color: var(--nx-text-dim);
+  opacity: 1;
+}
+
+/*
+ * @blocknote/ariakit ships its own hardcoded light-theme colors for the
+ * popup chrome (menus, toolbar, tooltips) — independent of BlockNote core's
+ * --bn-colors-* variables and not actually wired to its own `.dark` CSS
+ * (the class exists in ariakit's stylesheet but nothing in the package
+ * applies it). These overrides restyle that chrome to match DESIGN.md
+ * directly rather than fighting the library's theme system.
+ */
+.bn-ak-menu,
+.bn-ak-popover {
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  color: var(--nx-text);
+  box-shadow: none;
+  font-family: var(--nx-font-sans);
+}
+
+/* these popovers portal to document.body, outside .bn-container, so
+   font-family doesn't inherit from it — force it on every descendant. */
+.bn-ak-menu *,
+.bn-ak-popover *,
+.bn-ak-tooltip {
+  font-family: var(--nx-font-sans);
+}
+
+.bn-ak-group-label {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nx-text-dim);
+}
+
+.bn-ak-menu-item,
+.bn-grid-suggestion-menu-item {
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+}
+
+.bn-ak-menu-item[aria-selected='true'],
+.bn-ak-menu-item:hover,
+.bn-grid-suggestion-menu-item[aria-selected='true'],
+.bn-grid-suggestion-menu-item:hover {
+  background: var(--nx-accent-tint) !important;
+  color: var(--nx-text) !important;
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.bn-ak-suggestion-menu-item-subtitle {
+  color: var(--nx-text-dim);
+}
+
+/* keyboard shortcut chips inside menu items */
+.bn-ak-menu-item kbd,
+.bn-ak-suggestion-menu-item-section[data-position='right'] {
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+  color: var(--nx-text-dim);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+}
+
+.bn-toolbar,
+.bn-toolbar .bn-ak-button {
+  background: var(--nx-panel);
+  border-color: var(--nx-border);
+  color: var(--nx-text);
+}
+
+.bn-toolbar .bn-ak-button[data-selected],
+.bn-toolbar .bn-ak-button:hover {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+}
+
+.bn-ak-tooltip {
+  background: var(--nx-panel) !important;
+  border-color: var(--nx-border) !important;
+  color: var(--nx-text) !important;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  border-radius: var(--nx-radius-sm);
+  box-shadow: none;
+}
+
+.bn-ak-input {
+  background: var(--nx-bg) !important;
+  border-color: var(--nx-border) !important;
+  color: var(--nx-text) !important;
+  border-radius: var(--nx-radius-sm);
+  font-family: var(--nx-font-sans);
+}
+
+.nx-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-space-1);
+  width: 100%;
+}
+
+.nx-toggle__chevron {
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  padding: 2px;
+  margin-top: 3px;
+  transform: rotate(0deg);
+  transition: transform var(--nx-motion);
+  flex-shrink: 0;
+}
+
+.nx-toggle[data-open='true'] .nx-toggle__chevron {
+  transform: rotate(90deg);
+}
+
+.nx-toggle__summary {
+  flex: 1;
+}
+
+.bn-block-outer:has(> .bn-block > .bn-block-content .nx-toggle[data-open='false']) > .bn-block-group {
+  display: none;
+}
+
+.nx-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-3);
+  border-left: 2px solid;
+  background: var(--nx-panel);
+  border-radius: var(--nx-radius-md);
+  width: 100%;
+}
+
+.nx-callout__marker {
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+
+.nx-callout__content {
+  flex: 1;
+}
+
+.nx-page-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px 1px 4px;
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-row-line);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-size: 12px;
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-page-mention:hover {
+  background: var(--nx-accent-tint);
+  border-color: var(--nx-accent);
+}
+
+.nx-page-mention--trashed {
+  text-decoration: line-through;
+  color: var(--nx-text-dim);
+  cursor: default;
+}
+
+.nx-page-mention--deleted {
+  color: var(--nx-text-dim);
+  cursor: default;
+  border-style: dashed;
+}
+
+.nx-link-menu {
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  padding: var(--nx-space-1);
+  min-width: 220px;
+  font-family: var(--nx-font-sans);
+}
+
+.nx-link-menu__header {
+  padding: var(--nx-space-1) var(--nx-space-2);
+}
+
+.nx-link-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  width: 100%;
+  padding: var(--nx-space-2);
+  background: none;
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nx-link-menu__item:hover,
+.nx-link-menu__item--selected {
+  background: var(--nx-accent-tint);
+}

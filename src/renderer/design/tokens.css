@@ -1,0 +1,139 @@
+/* latin-subset only — the full 400.css pulls every subset (cyrillic, thai,
+   vietnamese, etc.), which bloats the renderer bundle for no benefit here. */
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/chakra-petch/latin-400.css';
+@import '@fontsource/chakra-petch/latin-600.css';
+
+:root {
+  /* color — shared neutrals */
+  --nx-bg: #121316;
+  --nx-panel: #0e0f12;
+  --nx-border: #262832;
+  --nx-border-2: #2c2e38;
+  --nx-text: #e3e4ea;
+  --nx-text-dim: #6b6d78;
+  --nx-table-head: #0a0b0d;
+  --nx-row-line: #1c1e24;
+
+  /* color — shared semantic status */
+  --nx-success: #7fae7a;
+  --nx-info: #7ea3c9;
+  --nx-critical: #d9604f;
+
+  /* color — brand accent (NEXUS = amber; doubles as "warning" in this app) */
+  --nx-accent: #c9a26b;
+  --nx-accent-hover: #d9b483;
+  --nx-accent-pressed: #b3895a;
+  --nx-accent-tint: rgba(201, 162, 107, 0.12);
+  --nx-critical-tint: rgba(217, 96, 79, 0.1);
+
+  /* typography */
+  --nx-font-sans: 'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
+  --nx-font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+
+  /* spacing scale */
+  --nx-space-1: 4px;
+  --nx-space-2: 8px;
+  --nx-space-3: 12px;
+  --nx-space-4: 16px;
+  --nx-space-5: 24px;
+  --nx-space-6: 32px;
+
+  /* radius */
+  --nx-radius-sm: 2px;
+  --nx-radius-md: 3px;
+
+  /* motion */
+  --nx-motion: 100ms ease-out;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--nx-bg);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--nx-accent-tint);
+  color: var(--nx-text);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* type scale utility classes */
+.nx-type-display {
+  font-family: var(--nx-font-sans);
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.nx-type-heading {
+  font-family: var(--nx-font-sans);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.nx-type-panel-title {
+  font-family: var(--nx-font-sans);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.nx-type-body {
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.nx-type-label {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nx-text-dim);
+}
+
+.nx-type-data {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--nx-text-dim);
+}
+
+.nx-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--nx-border-2) transparent;
+}
+
+.nx-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.nx-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--nx-border-2);
+  border-radius: var(--nx-radius-sm);
+}

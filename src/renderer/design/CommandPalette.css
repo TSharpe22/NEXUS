@@ -1,0 +1,71 @@
+.nx-palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: center;
+  padding-top: 14vh;
+  z-index: 100;
+}
+
+.nx-palette {
+  width: 480px;
+  max-height: 60vh;
+  background: var(--nx-panel);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--nx-font-sans);
+}
+
+.nx-palette [cmdk-input] {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--nx-border);
+  padding: var(--nx-space-3) var(--nx-space-4);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 14px;
+  outline: none;
+}
+
+.nx-palette [cmdk-list] {
+  overflow-y: auto;
+  padding: var(--nx-space-2);
+}
+
+.nx-palette [cmdk-group-heading] {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--nx-text-dim);
+  padding: var(--nx-space-2) var(--nx-space-2) var(--nx-space-1);
+}
+
+.nx-palette [cmdk-item] {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-2);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.nx-palette [cmdk-item][data-selected='true'] {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+}
+
+.nx-palette [cmdk-empty] {
+  padding: var(--nx-space-4);
+  color: var(--nx-text-dim);
+  font-size: 13px;
+  text-align: center;
+}

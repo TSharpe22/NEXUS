@@ -1,0 +1,73 @@
+.nx-app {
+  display: flex;
+  height: 100%;
+  background: var(--nx-bg);
+}
+
+.nx-sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--nx-border);
+  padding: var(--nx-space-5) var(--nx-space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-5);
+}
+
+.nx-sidebar__logo {
+  color: var(--nx-accent);
+  font-family: var(--nx-font-sans);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 var(--nx-space-3);
+}
+
+.nx-sidebar__nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-1);
+}
+
+.nx-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nx-topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: var(--nx-space-5) var(--nx-space-6) var(--nx-space-4);
+  border-bottom: 1px solid var(--nx-border);
+}
+
+.nx-topbar__title {
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.nx-topbar__title span {
+  color: var(--nx-text-dim);
+  font-weight: 400;
+}
+
+.nx-topbar__clock {
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+}
+
+.nx-topbar__clock .nx-online {
+  color: var(--nx-success);
+}
+
+.nx-content {
+  flex: 1;
+  overflow: auto;
+  padding: var(--nx-space-6);
+}
