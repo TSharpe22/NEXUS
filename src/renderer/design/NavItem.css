@@ -1,30 +1,41 @@
 .nx-nav-item {
   display: flex;
   align-items: center;
-  gap: var(--nx-space-2);
-  padding: var(--nx-space-2) var(--nx-space-3);
+  gap: var(--nx-space-3);
+  width: 100%;
+  padding: 7px var(--nx-space-2);
+  border: none;
   border-radius: var(--nx-radius-sm);
-  border-left: 2px solid transparent;
-  color: var(--nx-text-dim);
+  color: var(--nx-text-muted);
   font-family: var(--nx-font-sans);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 400;
+  text-align: left;
   cursor: pointer;
   background: transparent;
-  transition: background var(--nx-motion), color var(--nx-motion), border-color var(--nx-motion);
+  transition: background var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-nav-item__rule {
+  width: 2px;
+  height: 14px;
+  border-radius: 2px;
+  background: transparent;
+  flex-shrink: 0;
+  transition: background var(--nx-motion);
 }
 
 .nx-nav-item:hover {
-  background: var(--nx-row-line);
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
 }
 
 .nx-nav-item--selected {
-  background: var(--nx-accent-tint);
-  border-left-color: var(--nx-accent);
-  color: var(--nx-accent);
+  background: var(--nx-accent-tint-soft);
+  color: var(--nx-text);
+  font-weight: 600;
 }
 
-.nx-nav-item:focus-visible {
-  outline: 1.5px solid var(--nx-accent);
-  outline-offset: -1.5px;
+.nx-nav-item--selected .nx-nav-item__rule {
+  background: var(--nx-accent);
 }

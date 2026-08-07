@@ -1,19 +1,21 @@
 .nx-button {
-  font-family: var(--nx-font-mono);
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  font-family: var(--nx-font-sans);
+  font-size: 12.5px;
+  font-weight: 500;
   border: 1px solid transparent;
   border-radius: var(--nx-radius-sm);
-  padding: var(--nx-space-2) var(--nx-space-3);
+  padding: 5px 10px;
   cursor: pointer;
+  white-space: nowrap;
   transition: background var(--nx-motion), color var(--nx-motion), border-color var(--nx-motion);
 }
 
 .nx-button--primary {
   background: var(--nx-accent);
-  color: #14120d;
+  color: #17130c;
 }
 
 .nx-button--primary:hover:not(:disabled) {
@@ -26,13 +28,33 @@
 
 .nx-button--ghost {
   background: transparent;
-  color: var(--nx-text-dim);
+  color: var(--nx-text-muted);
   border-color: var(--nx-border);
 }
 
 .nx-button--ghost:hover:not(:disabled) {
-  background: var(--nx-row-line);
+  background: var(--nx-row-hover);
   color: var(--nx-text);
+  border-color: var(--nx-border-2);
+}
+
+/* Used for the selected item in a row of toggles (the type picker). */
+.nx-button--selected {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+  border-color: transparent;
+}
+
+.nx-button--quiet {
+  background: transparent;
+  color: var(--nx-text-dim);
+  border-color: transparent;
+  padding: 4px 6px;
+}
+
+.nx-button--quiet:hover:not(:disabled) {
+  color: var(--nx-text);
+  background: var(--nx-row-hover);
 }
 
 .nx-button--critical {
@@ -46,8 +68,6 @@
 }
 
 .nx-button:disabled {
-  background: var(--nx-row-line);
-  color: var(--nx-text-dim);
-  border-color: var(--nx-border);
+  opacity: 0.45;
   cursor: not-allowed;
 }

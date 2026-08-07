@@ -1,17 +1,32 @@
+import { useEffect, useState } from 'react'
 import toast from 'react-hot-toast'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
+import { useAppStore } from '../store/app-store'
 import './Settings.css'
 
 const SHORTCUTS: [string, string][] = [
-  ['Cmd/Ctrl + K', 'Command palette'],
+  ['Cmd/Ctrl + K', 'Search pages and jump between views'],
   ['Cmd/Ctrl + N', 'New page'],
-  ['[[', 'Link to a page'],
-  ['/', 'Slash command menu']
+  ['/', 'Block menu (headings, lists, toggle, callout…)'],
+  ['[[', 'Link to another page'],
+  ['Cmd/Ctrl + B / I / U', 'Bold, italic, underline']
 ]
 
 export function Settings() {
+  const refresh = useAppStore((s) => s.refresh)
+  const pages = useAppStore((s) => s.pages)
+  const [dataDir, setDataDir] = useState('')
+
+  useEffect(() => {
+    window.api.stats.getDataDir().then(setDataDir)
+  }, [])
+
   const exportAll = async () => {
+    if (pages.length === 0) {
+      toast.error('Nothing to export yet')
+      return
+    }
     const folder = await window.api.dialog.showSelectFolder()
     if (!folder) return
     const files = await window.api.io.exportAllMarkdown()
@@ -27,41 +42,50 @@ export function Settings() {
     if (!paths || paths.length === 0) return
 
     let imported = 0
+    let failed = 0
     for (const filePath of paths) {
-      const content = await window.fs.readFile(filePath)
-      const filename = filePath.split('/').pop() ?? filePath
-      if (filename.endsWith('.json')) await window.api.io.importJSON(content)
-      else await window.api.io.importMarkdown(content, filename)
-      imported++
+      try {
+        const content = await window.fs.readFile(filePath)
+        // Windows paths use backslashes; splitting on '/' alone kept the whole
+        // path as the fallback title.
+        const filename = filePath.split(/[/\\]/).pop() ?? filePath
+        if (filename.endsWith('.json')) await window.api.io.importJSON(content)
+        else await window.api.io.importMarkdown(content, filename)
+        imported++
+      } catch (e) {
+        console.error('[nexus] import failed', filePath, e)
+        failed++
+      }
     }
-    toast.success(`Imported ${imported} file${imported === 1 ? '' : 's'}`)
+
+    await refresh()
+    if (imported) toast.success(`Imported ${imported} file${imported === 1 ? '' : 's'}`)
+    if (failed) toast.error(`${failed} file${failed === 1 ? '' : 's'} could not be imported`)
   }
 
   return (
     <div className="nx-settings">
-      <Panel title="Appearance">
-        <div className="nx-settings__row">
-          <span className="nx-type-body">Accent</span>
-          <span className="nx-type-data">
-            <span className="nx-settings__accent-swatch" />
-            amber
-          </span>
-        </div>
-        <div className="nx-settings__row" style={{ marginTop: 'var(--nx-space-3)' }}>
-          <span className="nx-type-body">Theme</span>
-          <span className="nx-type-data">dark (fixed)</span>
-        </div>
-      </Panel>
-
       <Panel title="Data">
         <div className="nx-settings__row">
-          <span className="nx-type-body">Export all pages as Markdown</span>
+          <div>
+            <div className="nx-type-body">Database location</div>
+            <div className="nx-type-data nx-settings__path">{dataDir || '—'}</div>
+          </div>
+        </div>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Export all pages as Markdown</div>
+            <div className="nx-type-data">One .md file per page, into a folder you choose.</div>
+          </div>
           <Button variant="ghost" onClick={exportAll}>
             Export
           </Button>
         </div>
-        <div className="nx-settings__row" style={{ marginTop: 'var(--nx-space-3)' }}>
-          <span className="nx-type-body">Import Markdown / JSON files</span>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Import Markdown or JSON</div>
+            <div className="nx-type-data">Each file becomes a new page.</div>
+          </div>
           <Button variant="ghost" onClick={importFiles}>
             Import
           </Button>
@@ -76,6 +100,17 @@ export function Settings() {
               <span className="nx-settings__kbd">{key}</span>
             </div>
           ))}
+        </div>
+      </Panel>
+
+      <Panel title="About">
+        <div className="nx-settings__row">
+          <span className="nx-type-body">Theme</span>
+          <span className="nx-type-data">Dark</span>
+        </div>
+        <div className="nx-settings__row">
+          <span className="nx-type-body">Network access</span>
+          <span className="nx-type-data">None — Nexus runs fully offline</span>
         </div>
       </Panel>
     </div>

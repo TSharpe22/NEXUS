@@ -1,8 +1,13 @@
 import { HTMLAttributes, TdHTMLAttributes, ThHTMLAttributes } from 'react'
 import './Table.css'
 
+/** Wrapped in its own scroll container so a wide table never widens the page. */
 export function Table(props: HTMLAttributes<HTMLTableElement>) {
-  return <table className="nx-table" {...props} />
+  return (
+    <div className="nx-table-scroll">
+      <table className="nx-table" {...props} />
+    </div>
+  )
 }
 
 export function TableHead(props: HTMLAttributes<HTMLTableSectionElement>) {

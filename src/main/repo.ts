@@ -11,6 +11,9 @@ import type {
   StorageStats,
   PageSummary,
   GraphPreview,
+  GraphData,
+  GraphNode,
+  GraphEdge,
   TypeDef,
   PropertyDefinition
 } from '../shared/types'
@@ -67,9 +70,12 @@ export function getPageById(id: string): Page | null {
   return (getDb().prepare('SELECT * FROM pages WHERE id = ?').get(id) as Page) ?? null
 }
 
-export function updatePage(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width'>>): void {
+export function updatePage(
+  id: string,
+  data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width' | 'type_id'>>
+): void {
   const db = getDb()
-  const allowed = ['title', 'icon', 'content', 'page_width'] as const
+  const allowed = ['title', 'icon', 'content', 'page_width', 'type_id'] as const
   const sets: string[] = []
   const values: unknown[] = []
 
@@ -86,7 +92,8 @@ export function updatePage(id: string, data: Partial<Pick<Page, 'title' | 'icon'
   db.prepare(`UPDATE pages SET ${sets.join(', ')} WHERE id = ?`).run(...values)
 
   if ('title' in data) logActivity(id, 'renamed', `renamed to "${data.title}"`)
-  else if ('content' in data) logActivity(id, 'edited', 'content saved')
+  else if ('type_id' in data) logActivity(id, 'retyped', 'type changed')
+  else if ('content' in data) logEdit(id)
 }
 
 export function softDeletePage(id: string): void {
@@ -101,6 +108,13 @@ export function restorePage(id: string): void {
 
 export function hardDeletePage(id: string): void {
   getDb().prepare('DELETE FROM pages WHERE id = ?').run(id)
+}
+
+export function emptyTrash(): number {
+  const db = getDb()
+  const { c } = db.prepare('SELECT COUNT(*) AS c FROM pages WHERE is_deleted = 1').get() as { c: number }
+  db.prepare('DELETE FROM pages WHERE is_deleted = 1').run()
+  return c
 }
 
 export function getDeletedPages(): Page[] {
@@ -146,6 +160,37 @@ export function createType(name: string, icon: string | null = null): TypeDef {
   return db.prepare('SELECT * FROM types WHERE id = ?').get(id) as TypeDef
 }
 
+export function renameType(id: string, name: string): TypeDef {
+  const db = getDb()
+  db.prepare('UPDATE types SET name = ? WHERE id = ?').run(name, id)
+  return db.prepare('SELECT * FROM types WHERE id = ?').get(id) as TypeDef
+}
+
+/**
+ * Deleting a type reassigns its pages to the base 'note' type rather than
+ * cascading into them — losing a type's schema should never take the notes
+ * with it. Its property definitions do go (they describe the type, not the
+ * page), but the values already set on pages are left alone so re-creating
+ * the property brings them back.
+ */
+export function deleteType(id: string): { reassigned: number } {
+  if (id === 'note') throw new Error('The base Note type cannot be deleted')
+
+  const db = getDb()
+  const trx = db.transaction(() => {
+    const { c } = db.prepare('SELECT COUNT(*) AS c FROM pages WHERE type_id = ?').get(id) as { c: number }
+    db.prepare(`UPDATE pages SET type_id = 'note' WHERE type_id = ?`).run(id)
+    db.prepare('DELETE FROM property_definitions WHERE type_id = ?').run(id)
+    db.prepare('DELETE FROM types WHERE id = ?').run(id)
+    return { reassigned: c }
+  })
+  return trx()
+}
+
+export function setPageType(pageId: string, typeId: string): void {
+  updatePage(pageId, { type_id: typeId })
+}
+
 export function getPropertyDefinitions(typeId: string): PropertyDefinition[] {
   return getDb()
     .prepare('SELECT * FROM property_definitions WHERE type_id = ? ORDER BY sort_order, created_at')
@@ -179,6 +224,41 @@ export function defineProperty(typeId: string, name: string, propertyType: Prope
   ).run(id, typeId, key, name, propertyType, (maxOrder ?? -1) + 1)
 
   return db.prepare('SELECT * FROM property_definitions WHERE type_id = ? AND key = ?').get(typeId, key) as PropertyDefinition
+}
+
+export function renamePropertyDefinition(id: string, name: string): PropertyDefinition {
+  const db = getDb()
+  // The key is deliberately left alone — it's what already-set values on pages
+  // are stored against, so renaming is display-only.
+  db.prepare('UPDATE property_definitions SET name = ? WHERE id = ?').run(name, id)
+  return db.prepare('SELECT * FROM property_definitions WHERE id = ?').get(id) as PropertyDefinition
+}
+
+/** Removes the property from the type's schema and its values from every page of that type. */
+export function removePropertyDefinition(id: string): void {
+  const db = getDb()
+  const def = db.prepare('SELECT type_id, key FROM property_definitions WHERE id = ?').get(id) as
+    | { type_id: string; key: string }
+    | undefined
+  if (!def) return
+
+  const trx = db.transaction(() => {
+    db.prepare(
+      `DELETE FROM properties
+       WHERE key = ? AND page_id IN (SELECT id FROM pages WHERE type_id = ?)`
+    ).run(def.key, def.type_id)
+    db.prepare('DELETE FROM property_definitions WHERE id = ?').run(id)
+  })
+  trx()
+}
+
+export function reorderPropertyDefinitions(typeId: string, orderedIds: string[]): void {
+  const db = getDb()
+  const update = db.prepare('UPDATE property_definitions SET sort_order = ? WHERE id = ? AND type_id = ?')
+  const trx = db.transaction(() => {
+    orderedIds.forEach((id, index) => update.run(index, id, typeId))
+  })
+  trx()
 }
 
 // ============================================================
@@ -247,7 +327,18 @@ export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
       .all(pageId) as { id: string; target_page_id: string }[]
 
     const existingTargets = new Set(existing.map((e) => e.target_page_id))
-    const newTargets = new Map(linkTargets.map((lt) => [lt.targetPageId, lt.context]))
+
+    // A mention whose target has since been permanently deleted still sits in
+    // the document text. Inserting a link to it violates the foreign key and
+    // would fail the whole save — so the page just becomes unsaveable. Drop
+    // those targets instead; the chip stays in the text, it simply stops
+    // contributing a backlink.
+    const known = new Set(
+      (db.prepare('SELECT id FROM pages').all() as { id: string }[]).map((p) => p.id)
+    )
+    const newTargets = new Map(
+      linkTargets.filter((lt) => known.has(lt.targetPageId)).map((lt) => [lt.targetPageId, lt.context])
+    )
 
     for (const row of existing) {
       if (!newTargets.has(row.target_page_id)) {
@@ -273,14 +364,21 @@ export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
   trx()
 }
 
-export function searchPagesForLink(query: string): Page[] {
+export function searchPagesForLink(query: string, excludePageId?: string): Page[] {
   const db = getDb()
+  // A page linking to itself is never what's wanted and would show up as its
+  // own backlink, so the page being edited is filtered out of its own picker.
+  const exclude = excludePageId ?? ''
   if (!query.trim()) {
-    return db.prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC LIMIT 20').all() as Page[]
+    return db
+      .prepare('SELECT * FROM pages WHERE is_deleted = 0 AND id != ? ORDER BY updated_at DESC LIMIT 20')
+      .all(exclude) as Page[]
   }
   return db
-    .prepare('SELECT * FROM pages WHERE is_deleted = 0 AND title LIKE ? ORDER BY updated_at DESC LIMIT 20')
-    .all(`%${query}%`) as Page[]
+    .prepare(
+      'SELECT * FROM pages WHERE is_deleted = 0 AND id != ? AND title LIKE ? ORDER BY updated_at DESC LIMIT 20'
+    )
+    .all(exclude, `%${query}%`) as Page[]
 }
 
 // ============================================================
@@ -291,6 +389,34 @@ export function logActivity(pageId: string | null, eventType: string, message: s
   getDb()
     .prepare('INSERT INTO activity_log (id, page_id, event_type, message, created_at) VALUES (?, ?, ?, ?, ?)')
     .run(uuidv4(), pageId, eventType, message, now())
+}
+
+/** How long a single "edited" entry keeps absorbing further edits to a page. */
+const EDIT_COALESCE_MINUTES = 15
+
+/**
+ * Content saves fire on a short debounce while typing, so logging each one
+ * verbatim buries every other event under hundreds of identical "content
+ * saved" rows. One editing session on a page collapses into a single entry
+ * whose timestamp moves forward as the session continues.
+ */
+function logEdit(pageId: string): void {
+  const db = getDb()
+  const recent = db
+    .prepare(
+      `SELECT id FROM activity_log
+       WHERE page_id = ? AND event_type = 'edited'
+         AND created_at >= datetime('now', ?)
+       ORDER BY created_at DESC LIMIT 1`
+    )
+    .get(pageId, `-${EDIT_COALESCE_MINUTES} minutes`) as { id: string } | undefined
+
+  if (recent) {
+    db.prepare('UPDATE activity_log SET created_at = ? WHERE id = ?').run(now(), recent.id)
+    return
+  }
+
+  logActivity(pageId, 'edited', 'edited')
 }
 
 export function getRecentActivity(limit = 20): ActivityLogEntry[] {
@@ -324,28 +450,42 @@ export function getStorageStats(): StorageStats {
   }
 }
 
+/**
+ * The whole link graph over live pages. Small enough to send in one go — this
+ * is a single-user vault, not a crawl — which lets the renderer lay it out and
+ * respond to hover/drag without a round trip per interaction.
+ */
+export function getGraph(): GraphData {
+  const db = getDb()
+
+  const nodes = db
+    .prepare(
+      `SELECT p.id, p.title, p.type_id, p.updated_at,
+              (SELECT COUNT(*) FROM links l
+                 WHERE l.source_page_id = p.id OR l.target_page_id = p.id) AS degree
+       FROM pages p
+       WHERE p.is_deleted = 0
+       ORDER BY p.updated_at DESC`
+    )
+    .all() as GraphNode[]
+
+  // Restricted to live pages on both ends so the renderer never has to draw an
+  // edge to a node it wasn't given.
+  const edges = db
+    .prepare(
+      `SELECT l.source_page_id AS source, l.target_page_id AS target
+       FROM links l
+       JOIN pages s ON s.id = l.source_page_id AND s.is_deleted = 0
+       JOIN pages t ON t.id = l.target_page_id AND t.is_deleted = 0`
+    )
+    .all() as GraphEdge[]
+
+  return { nodes, edges }
+}
+
 export function getGraphPreview(): GraphPreview {
   const db = getDb()
   const edgeCount = (db.prepare('SELECT COUNT(*) AS c FROM links').get() as { c: number }).c
   const nodeCount = (db.prepare('SELECT COUNT(*) AS c FROM pages WHERE is_deleted = 0').get() as { c: number }).c
-
-  const center = db
-    .prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC LIMIT 1')
-    .get() as Page | undefined
-
-  if (!center) return { nodeCount, edgeCount, center: null, neighbors: [] }
-
-  const neighbors = db
-    .prepare(
-      `SELECT DISTINCT p.* FROM pages p
-       WHERE p.is_deleted = 0 AND p.id != ? AND p.id IN (
-         SELECT target_page_id FROM links WHERE source_page_id = ?
-         UNION
-         SELECT source_page_id FROM links WHERE target_page_id = ?
-       )
-       LIMIT 4`
-    )
-    .all(center.id, center.id, center.id) as Page[]
-
-  return { nodeCount, edgeCount, center, neighbors }
+  return { nodeCount, edgeCount }
 }

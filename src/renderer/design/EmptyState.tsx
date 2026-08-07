@@ -1,29 +1,20 @@
-import { Icon, IconShape } from './Icon'
+import { ReactNode } from 'react'
+import './EmptyState.css'
 
 interface EmptyStateProps {
-  icon?: IconShape
   text: string
   meta?: string
+  /** A primary action rendered under the message — an empty screen with no
+      way forward is a dead end. */
+  action?: ReactNode
 }
 
-export function EmptyState({ icon = 'diamond', text, meta }: EmptyStateProps) {
+export function EmptyState({ text, meta, action }: EmptyStateProps) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 'var(--nx-space-2)',
-        padding: 'var(--nx-space-6)',
-        color: 'var(--nx-text-dim)'
-      }}
-    >
-      <Icon shape={icon} size={22} color="var(--nx-text-dim)" />
-      <div className="nx-type-body" style={{ color: 'var(--nx-text-dim)' }}>
-        {text}
-      </div>
-      {meta && <div className="nx-type-data">{meta}</div>}
+    <div className="nx-empty">
+      <div className="nx-empty__text">{text}</div>
+      {meta && <div className="nx-empty__meta nx-type-data">{meta}</div>}
+      {action && <div className="nx-empty__action">{action}</div>}
     </div>
   )
 }

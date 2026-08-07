@@ -50,13 +50,14 @@ export interface LinkMenuItem {
  * text would trigger this menu.
  */
 export function getLinkMenuItems(
-  onSelect: (page: Page | null, title: string) => void
+  onSelect: (page: Page | null, title: string) => void,
+  currentPageId?: string
 ): (query: string) => Promise<LinkMenuItem[]> {
   return async (query: string) => {
     if (query.length === 0 || query[0] !== '[') return []
 
     const search = query.slice(1).trim()
-    const filtered = await window.api.links.searchPages(search)
+    const filtered = await window.api.links.searchPages(search, currentPageId)
 
     const items: LinkMenuItem[] = filtered.map((page) => ({
       id: page.id,

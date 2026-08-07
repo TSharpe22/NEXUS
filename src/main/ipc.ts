@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
+import { getDataDir } from './database'
 import type { PropertyType, LinkTarget } from '../shared/types'
 
 function rethrow(channel: string, error: unknown): never {
@@ -82,6 +83,20 @@ export function registerIpcHandlers(): void {
       rethrow('pages:duplicate', e)
     }
   })
+  ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
+    try {
+      return repo.setPageType(pageId, typeId)
+    } catch (e) {
+      rethrow('pages:setType', e)
+    }
+  })
+  ipcMain.handle('pages:emptyTrash', () => {
+    try {
+      return repo.emptyTrash()
+    } catch (e) {
+      rethrow('pages:emptyTrash', e)
+    }
+  })
 
   ipcMain.handle('properties:getForPage', (_, pageId: string) => {
     try {
@@ -136,6 +151,34 @@ export function registerIpcHandlers(): void {
       rethrow('types:defineProperty', e)
     }
   })
+  ipcMain.handle('types:rename', (_, id: string, name: string) => {
+    try {
+      return repo.renameType(id, name)
+    } catch (e) {
+      rethrow('types:rename', e)
+    }
+  })
+  ipcMain.handle('types:remove', (_, id: string) => {
+    try {
+      return repo.deleteType(id)
+    } catch (e) {
+      rethrow('types:remove', e)
+    }
+  })
+  ipcMain.handle('types:renameProperty', (_, definitionId: string, name: string) => {
+    try {
+      return repo.renamePropertyDefinition(definitionId, name)
+    } catch (e) {
+      rethrow('types:renameProperty', e)
+    }
+  })
+  ipcMain.handle('types:removeProperty', (_, definitionId: string) => {
+    try {
+      return repo.removePropertyDefinition(definitionId)
+    } catch (e) {
+      rethrow('types:removeProperty', e)
+    }
+  })
 
   ipcMain.handle('links:getBacklinks', (_, pageId: string) => {
     try {
@@ -151,9 +194,9 @@ export function registerIpcHandlers(): void {
       rethrow('links:syncLinks', e)
     }
   })
-  ipcMain.handle('links:searchPages', (_, query: string) => {
+  ipcMain.handle('links:searchPages', (_, query: string, excludePageId?: string) => {
     try {
-      return repo.searchPagesForLink(query)
+      return repo.searchPagesForLink(query, excludePageId)
     } catch (e) {
       rethrow('links:searchPages', e)
     }
@@ -179,6 +222,20 @@ export function registerIpcHandlers(): void {
       return repo.getGraphPreview()
     } catch (e) {
       rethrow('stats:getGraphPreview', e)
+    }
+  })
+  ipcMain.handle('stats:getGraph', () => {
+    try {
+      return repo.getGraph()
+    } catch (e) {
+      rethrow('stats:getGraph', e)
+    }
+  })
+  ipcMain.handle('stats:getDataDir', () => {
+    try {
+      return getDataDir()
+    } catch (e) {
+      rethrow('stats:getDataDir', e)
     }
   })
 

@@ -13,3 +13,5 @@ export const nexusSchema = BlockNoteSchema.create({
     pageMention
   }
 })
+
+export type NexusEditor = typeof nexusSchema.BlockNoteEditor

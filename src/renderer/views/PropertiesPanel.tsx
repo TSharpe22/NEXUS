@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
 import type { Page, Property, PropertyDefinition, PropertyType } from '@shared/types'
+import { useAppStore } from '../store/app-store'
 import { Button } from '../design/Button'
 
 interface Props {
@@ -12,7 +14,7 @@ const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: 'date', label: 'Date' },
   { value: 'boolean', label: 'Checkbox' },
   { value: 'select', label: 'Select' },
-  { value: 'multi_select', label: 'Multi-select' },
+  { value: 'multi_select', label: 'Tags' },
   { value: 'url', label: 'URL' },
   { value: 'relation', label: 'Relation' }
 ]
@@ -26,24 +28,27 @@ function valueOf(prop: Property | undefined): string | number | null {
 }
 
 export function PropertiesPanel({ page }: Props) {
+  const types = useAppStore((s) => s.types)
+  const setPageType = useAppStore((s) => s.setPageType)
+
   const [definitions, setDefinitions] = useState<PropertyDefinition[]>([])
   const [values, setValues] = useState<Record<string, Property>>({})
   const [adding, setAdding] = useState(false)
   const [newName, setNewName] = useState('')
   const [newType, setNewType] = useState<PropertyType>('text')
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     const [defs, props] = await Promise.all([
       window.api.types.getPropertyDefinitions(page.type_id),
       window.api.properties.getForPage(page.id)
     ])
     setDefinitions(defs)
     setValues(Object.fromEntries(props.map((p) => [p.key, p])))
-  }
+  }, [page.id, page.type_id])
 
   useEffect(() => {
     refresh()
-  }, [page.id, page.type_id])
+  }, [refresh])
 
   const save = async (def: PropertyDefinition, value: string | number | null) => {
     await window.api.properties.set(page.id, def.key, def.property_type, value)
@@ -60,28 +65,78 @@ export function PropertiesPanel({ page }: Props) {
     await refresh()
   }
 
+  const removeProperty = async (def: PropertyDefinition) => {
+    const typeLabel = types.find((t) => t.id === page.type_id)?.name ?? 'this type'
+    if (
+      !window.confirm(
+        `Remove "${def.name}" from ${typeLabel}? Its values will be cleared from every page of this type.`
+      )
+    ) {
+      return
+    }
+    await window.api.types.removeProperty(def.id)
+    await refresh()
+    toast.success(`Removed "${def.name}"`)
+  }
+
   return (
     <div className="nx-properties">
+      <div className="nx-properties__header">
+        <span className="nx-type-label">Properties</span>
+        {/* A page's type was fixed at creation — the only way to change it was
+            to make a new page. It drives the whole property schema, so it
+            belongs here. */}
+        <label className="nx-properties__type">
+          <span className="nx-type-label">Type</span>
+          <select
+            className="nx-select"
+            value={page.type_id}
+            onChange={(e) => setPageType(page.id, e.target.value)}
+          >
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {definitions.length === 0 && !adding && (
+        <div className="nx-properties__hint">
+          No properties yet — adding one applies it to every page of this type.
+        </div>
+      )}
+
       {definitions.map((def) => (
-        <PropertyRow key={def.id} def={def} value={values[def.key]} onSave={(v) => save(def, v)} />
+        <PropertyRow
+          key={def.id}
+          def={def}
+          value={values[def.key]}
+          onSave={(v) => save(def, v)}
+          onRemove={() => removeProperty(def)}
+        />
       ))}
 
       {adding ? (
-        <div className="nx-properties__row nx-properties__add-form">
+        <div className="nx-properties__add-form">
           <input
-            className="nx-properties__tag-input"
-            style={{ width: 140 }}
-            placeholder="property name"
+            className="nx-input"
+            style={{ width: 150 }}
+            placeholder="Property name"
             autoFocus
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') addProperty()
-              if (e.key === 'Escape') setAdding(false)
+              if (e.key === 'Escape') {
+                setAdding(false)
+                setNewName('')
+              }
             }}
           />
           <select
-            className="nx-properties__type-select"
+            className="nx-select"
             value={newType}
             onChange={(e) => setNewType(e.target.value as PropertyType)}
           >
@@ -91,12 +146,13 @@ export function PropertiesPanel({ page }: Props) {
               </option>
             ))}
           </select>
-          <Button variant="ghost" onClick={addProperty}>
-            Add
+          <Button onClick={addProperty}>Add</Button>
+          <Button variant="quiet" onClick={() => setAdding(false)}>
+            Cancel
           </Button>
         </div>
       ) : (
-        <button className="nx-properties__add-btn nx-type-label" onClick={() => setAdding(true)}>
+        <button className="nx-properties__add-btn" onClick={() => setAdding(true)}>
           + Add property
         </button>
       )}
@@ -107,66 +163,80 @@ export function PropertiesPanel({ page }: Props) {
 function PropertyRow({
   def,
   value,
-  onSave
+  onSave,
+  onRemove
 }: {
   def: PropertyDefinition
   value: Property | undefined
   onSave: (value: string | number | null) => void
+  onRemove: () => void
 }) {
   const current = valueOf(value)
 
-  if (def.property_type === 'multi_select') {
-    return <MultiSelectField def={def} value={typeof current === 'string' ? current : null} onSave={onSave} />
-  }
+  const field = (() => {
+    if (def.property_type === 'multi_select') {
+      return <MultiSelectField def={def} value={typeof current === 'string' ? current : null} onSave={onSave} />
+    }
 
-  if (def.property_type === 'boolean') {
-    return (
-      <div className="nx-properties__row">
-        <span className="nx-type-label">{def.name}</span>
-        <input type="checkbox" checked={current === 'true'} onChange={(e) => onSave(e.target.checked ? 'true' : 'false')} />
-      </div>
-    )
-  }
+    if (def.property_type === 'boolean') {
+      return (
+        <input
+          type="checkbox"
+          className="nx-properties__checkbox"
+          checked={current === 'true'}
+          onChange={(e) => onSave(e.target.checked ? 'true' : 'false')}
+        />
+      )
+    }
 
-  if (def.property_type === 'date') {
-    return (
-      <div className="nx-properties__row">
-        <span className="nx-type-label">{def.name}</span>
+    if (def.property_type === 'date') {
+      return (
         <input
           type="date"
-          className="nx-properties__tag-input"
+          className="nx-input"
+          // Keyed by the stored value so an external change (duplicating a
+          // page, switching pages) refreshes an uncontrolled input.
+          key={String(current ?? '')}
           defaultValue={typeof current === 'string' ? current : ''}
           onBlur={(e) => onSave(e.target.value || null)}
         />
-      </div>
-    )
-  }
+      )
+    }
 
-  if (def.property_type === 'number') {
-    return (
-      <div className="nx-properties__row">
-        <span className="nx-type-label">{def.name}</span>
+    if (def.property_type === 'number') {
+      return (
         <input
           type="number"
-          className="nx-properties__tag-input"
+          className="nx-input"
+          key={String(current ?? '')}
           defaultValue={typeof current === 'number' ? current : ''}
           onBlur={(e) => onSave(e.target.value === '' ? null : Number(e.target.value))}
         />
-      </div>
-    )
-  }
+      )
+    }
 
-  // text, select, url, relation — all a plain text field for now
-  return (
-    <div className="nx-properties__row">
-      <span className="nx-type-label">{def.name}</span>
+    // text, select, url, relation — a plain text field for now
+    return (
       <input
         type={def.property_type === 'url' ? 'url' : 'text'}
-        className="nx-properties__tag-input"
-        style={{ width: 160 }}
+        className="nx-input"
+        key={String(current ?? '')}
+        placeholder="Empty"
         defaultValue={typeof current === 'string' ? current : ''}
         onBlur={(e) => onSave(e.target.value || null)}
       />
+    )
+  })()
+
+  return (
+    <div className="nx-properties__row">
+      <span className="nx-properties__row-label" title={def.name}>
+        {def.name}
+      </span>
+      <span className="nx-properties__row-field">{field}</span>
+      <button className="nx-properties__remove" onClick={onRemove} title={`Remove ${def.name}`} aria-label={`Remove ${def.name}`}>
+        ×
+      </button>
     </div>
   )
 }
@@ -200,28 +270,33 @@ function MultiSelectField({
   }
 
   return (
-    <div className="nx-properties__row">
-      <span className="nx-type-label">{def.name}</span>
-      <div className="nx-properties__tags">
-        {items.map((item) => (
-          <span key={item} className="nx-properties__tag">
-            {item}
-            <button onClick={() => commit(items.filter((i) => i !== item))} aria-label={`Remove ${item}`}>
-              ×
-            </button>
-          </span>
-        ))}
-        <input
-          className="nx-properties__tag-input"
-          placeholder={`+ ${def.name.toLowerCase()}`}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') add()
-          }}
-          onBlur={add}
-        />
-      </div>
+    <div className="nx-properties__tags">
+      {items.map((item) => (
+        <span key={item} className="nx-properties__tag">
+          {item}
+          <button onClick={() => commit(items.filter((i) => i !== item))} aria-label={`Remove ${item}`}>
+            ×
+          </button>
+        </span>
+      ))}
+      <input
+        className="nx-properties__tag-input"
+        placeholder={`Add ${def.name.toLowerCase()}…`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            add()
+          }
+          // Backspace on an empty field removes the last tag — standard for
+          // this control and quicker than aiming at a 10px ×.
+          if (e.key === 'Backspace' && !draft && items.length) {
+            commit(items.slice(0, -1))
+          }
+        }}
+        onBlur={add}
+      />
     </div>
   )
 }

@@ -5,10 +5,10 @@
 }
 
 .nx-sidebar {
-  width: 240px;
+  width: 208px;
   flex-shrink: 0;
   border-right: 1px solid var(--nx-border);
-  padding: var(--nx-space-5) var(--nx-space-3);
+  padding: var(--nx-space-5) var(--nx-space-3) var(--nx-space-3);
   display: flex;
   flex-direction: column;
   gap: var(--nx-space-5);
@@ -17,16 +17,22 @@
 .nx-sidebar__logo {
   color: var(--nx-accent);
   font-family: var(--nx-font-sans);
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: 0.02em;
-  padding: 0 var(--nx-space-3);
+  letter-spacing: 0.14em;
+  padding: 0 var(--nx-space-2);
 }
 
 .nx-sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: var(--nx-space-1);
+  gap: 1px;
+}
+
+.nx-sidebar__foot {
+  margin-top: auto;
+  padding: 0 var(--nx-space-2);
+  font-size: 11px;
 }
 
 .nx-main {
@@ -38,36 +44,40 @@
 
 .nx-topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
-  padding: var(--nx-space-5) var(--nx-space-6) var(--nx-space-4);
+  gap: var(--nx-space-4);
+  padding: var(--nx-space-4) var(--nx-space-6);
   border-bottom: 1px solid var(--nx-border);
+  flex-shrink: 0;
 }
 
 .nx-topbar__title {
   color: var(--nx-text);
   font-family: var(--nx-font-sans);
-  font-size: 20px;
+  font-size: 15px;
   font-weight: 600;
 }
 
-.nx-topbar__title span {
-  color: var(--nx-text-dim);
-  font-weight: 400;
-}
-
-.nx-topbar__clock {
-  color: var(--nx-text-dim);
+.nx-save {
   font-family: var(--nx-font-mono);
-  font-size: 12px;
+  font-size: 11px;
+  color: var(--nx-text-dim);
 }
 
-.nx-topbar__clock .nx-online {
-  color: var(--nx-success);
+.nx-save--error {
+  color: var(--nx-critical);
 }
 
 .nx-content {
   flex: 1;
   overflow: auto;
   padding: var(--nx-space-6);
+  min-height: 0;
+}
+
+/* Notes manages its own scrolling in two independent columns. */
+.nx-content:has(.nx-notes) {
+  overflow: hidden;
+  padding: 0;
 }

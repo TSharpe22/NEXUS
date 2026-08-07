@@ -1,0 +1,95 @@
+.nx-home {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--nx-space-5);
+  align-items: start;
+}
+
+/* On a narrow window the side rail drops under the main column rather than
+   squeezing the graph into a sliver. */
+@media (max-width: 1080px) {
+  .nx-home {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.nx-home__main,
+.nx-home__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-5);
+  min-width: 0;
+}
+
+.nx-home__more {
+  width: 100%;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--nx-row-line);
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  padding: var(--nx-space-3);
+  text-align: left;
+}
+
+.nx-home__more:hover {
+  color: var(--nx-accent);
+}
+
+.nx-home__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--nx-space-4) var(--nx-space-3);
+}
+
+.nx-home__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nx-home__stat-value {
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.nx-home__activity {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nx-home__activity-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nx-space-2);
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  font-size: 12.5px;
+  padding: 4px var(--nx-space-2);
+  text-align: left;
+}
+
+.nx-home__activity-row:hover:not(:disabled) {
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
+}
+
+.nx-home__activity-row:disabled {
+  cursor: default;
+}
+
+.nx-home__activity-when {
+  flex-shrink: 0;
+  font-size: 11px;
+}

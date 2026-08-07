@@ -1,23 +1,25 @@
 .nx-palette-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.55);
   display: flex;
   justify-content: center;
-  padding-top: 14vh;
+  padding-top: 13vh;
   z-index: 100;
 }
 
 .nx-palette {
-  width: 480px;
-  max-height: 60vh;
-  background: var(--nx-panel);
-  border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-md);
+  width: 520px;
+  max-width: calc(100vw - 48px);
+  max-height: 62vh;
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-lg);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   font-family: var(--nx-font-sans);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.5);
 }
 
 .nx-palette [cmdk-input] {
@@ -28,43 +30,61 @@
   padding: var(--nx-space-3) var(--nx-space-4);
   color: var(--nx-text);
   font-family: var(--nx-font-sans);
-  font-size: 14px;
+  font-size: 14.5px;
   outline: none;
+}
+
+.nx-palette [cmdk-input]::placeholder {
+  color: var(--nx-text-dim);
 }
 
 .nx-palette [cmdk-list] {
   overflow-y: auto;
   padding: var(--nx-space-2);
+  scrollbar-width: thin;
+  scrollbar-color: var(--nx-border-2) transparent;
 }
 
 .nx-palette [cmdk-group-heading] {
   font-family: var(--nx-font-mono);
-  font-size: 10.5px;
-  font-weight: 600;
+  font-size: 10px;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
   color: var(--nx-text-dim);
-  padding: var(--nx-space-2) var(--nx-space-2) var(--nx-space-1);
+  padding: var(--nx-space-3) var(--nx-space-2) var(--nx-space-1);
+}
+
+.nx-palette [cmdk-group]:first-child [cmdk-group-heading] {
+  padding-top: var(--nx-space-1);
 }
 
 .nx-palette [cmdk-item] {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--nx-space-2);
-  padding: var(--nx-space-2);
+  padding: 7px var(--nx-space-2);
   border-radius: var(--nx-radius-sm);
   color: var(--nx-text);
   cursor: pointer;
-  font-size: 13px;
+  font-size: 13.5px;
 }
 
 .nx-palette [cmdk-item][data-selected='true'] {
   background: var(--nx-accent-tint);
-  color: var(--nx-accent);
+  color: var(--nx-text);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.nx-palette__hint {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  color: var(--nx-text-dim);
 }
 
 .nx-palette [cmdk-empty] {
-  padding: var(--nx-space-4);
+  padding: var(--nx-space-5);
   color: var(--nx-text-dim);
   font-size: 13px;
   text-align: center;

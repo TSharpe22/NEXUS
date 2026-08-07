@@ -6,46 +6,70 @@
 @import '@fontsource/chakra-petch/latin-600.css';
 
 :root {
-  /* color — shared neutrals */
-  --nx-bg: #121316;
-  --nx-panel: #0e0f12;
-  --nx-border: #262832;
-  --nx-border-2: #2c2e38;
-  --nx-text: #e3e4ea;
-  --nx-text-dim: #6b6d78;
-  --nx-table-head: #0a0b0d;
-  --nx-row-line: #1c1e24;
+  /* ----------------------------------------------------------------
+     Surfaces.
 
-  /* color — shared semantic status */
+     Three levels, and the order matters: the app background sits above
+     sunken wells and below raised panels. Previously panels were *darker*
+     than the page behind them, which read as holes rather than cards and
+     was a good part of why the UI looked muddy.
+     ---------------------------------------------------------------- */
+  --nx-bg: #0f1013;
+  --nx-surface: #16181d;
+  --nx-surface-raised: #1c1f25;
+  --nx-surface-sunken: #0b0c0e;
+
+  --nx-border: #23262e;
+  --nx-border-2: #2e323c;
+
+  /* Text. A genuine mid-grey for secondary text — the old --nx-text-dim was
+     dark enough against the panel to sit under 3:1 contrast. */
+  --nx-text: #e6e7ec;
+  --nx-text-muted: #9b9ead;
+  --nx-text-dim: #71747f;
+
+  --nx-row-line: #1b1e24;
+  --nx-row-hover: #1f232a;
+
+  /* Status */
   --nx-success: #7fae7a;
   --nx-info: #7ea3c9;
   --nx-critical: #d9604f;
+  --nx-critical-tint: rgba(217, 96, 79, 0.12);
 
-  /* color — brand accent (NEXUS = amber; doubles as "warning" in this app) */
-  --nx-accent: #c9a26b;
-  --nx-accent-hover: #d9b483;
-  --nx-accent-pressed: #b3895a;
-  --nx-accent-tint: rgba(201, 162, 107, 0.12);
-  --nx-critical-tint: rgba(217, 96, 79, 0.1);
+  /* Accent — amber, kept as the identity but spent sparingly: selection,
+     links, focus, and the wordmark. Not on every label. */
+  --nx-accent: #d4a86a;
+  --nx-accent-hover: #e3bb84;
+  --nx-accent-pressed: #b98e52;
+  --nx-accent-tint: rgba(212, 168, 106, 0.14);
+  --nx-accent-tint-soft: rgba(212, 168, 106, 0.07);
 
-  /* typography */
+  /* Typography */
   --nx-font-sans: 'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
   --nx-font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  /* The editor body reads better in something less condensed than Chakra
+     Petch, which is a display face. */
+  --nx-font-reading: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
 
-  /* spacing scale */
+  /* Spacing */
   --nx-space-1: 4px;
   --nx-space-2: 8px;
   --nx-space-3: 12px;
   --nx-space-4: 16px;
   --nx-space-5: 24px;
   --nx-space-6: 32px;
+  --nx-space-7: 48px;
 
-  /* radius */
-  --nx-radius-sm: 2px;
-  --nx-radius-md: 3px;
+  /* Radius */
+  --nx-radius-sm: 3px;
+  --nx-radius-md: 6px;
+  --nx-radius-lg: 10px;
 
-  /* motion */
-  --nx-motion: 100ms ease-out;
+  --nx-motion: 120ms ease-out;
+
+  /* Width of the editor's reading column. */
+  --nx-reading-width: 720px;
 }
 
 * {
@@ -63,9 +87,9 @@ body {
   background: var(--nx-bg);
   color: var(--nx-text);
   font-family: var(--nx-font-sans);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -82,58 +106,119 @@ button {
   font-family: inherit;
 }
 
-/* type scale utility classes */
+/* Focus ring for controls only. The editor's contentEditable is focused the
+   whole time you're writing, and a global rule drew a permanent amber box
+   around the entire document. */
+:focus-visible {
+  outline: 1.5px solid var(--nx-accent);
+  outline-offset: 1px;
+}
+
+[contenteditable]:focus-visible,
+[contenteditable] :focus-visible,
+.bn-container [contenteditable],
+.bn-editor:focus-visible,
+.bn-editor *:focus-visible {
+  outline: none;
+}
+
+/* ----------------------------------------------------------------
+   Type scale.
+
+   `nx-type-label` is now the only uppercase-mono style and is reserved for
+   section headers and table columns. It used to be applied to ordinary
+   inline values too, which is what made every screen shout.
+   ---------------------------------------------------------------- */
+
 .nx-type-display {
   font-family: var(--nx-font-sans);
-  font-size: 28px;
+  font-size: 26px;
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .nx-type-heading {
   font-family: var(--nx-font-sans);
-  font-size: 20px;
+  font-size: 17px;
   font-weight: 600;
 }
 
 .nx-type-panel-title {
   font-family: var(--nx-font-sans);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 
 .nx-type-body {
   font-family: var(--nx-font-sans);
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 400;
 }
 
 .nx-type-label {
   font-family: var(--nx-font-mono);
   font-size: 10.5px;
-  font-weight: 600;
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.07em;
   color: var(--nx-text-dim);
 }
 
+/* Numbers, timestamps, ids — mono but not shouted. */
 .nx-type-data {
   font-family: var(--nx-font-mono);
-  font-size: 11px;
+  font-size: 11.5px;
   font-weight: 400;
-  color: var(--nx-text-dim);
+  color: var(--nx-text-muted);
 }
 
-.nx-scrollbar {
+.nx-scrollbar,
+.nx-content,
+.nx-notes__list-scroll {
   scrollbar-width: thin;
   scrollbar-color: var(--nx-border-2) transparent;
 }
 
-.nx-scrollbar::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+.nx-scrollbar::-webkit-scrollbar,
+.nx-content::-webkit-scrollbar,
+.nx-notes__list-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
 }
 
-.nx-scrollbar::-webkit-scrollbar-thumb {
+.nx-scrollbar::-webkit-scrollbar-thumb,
+.nx-content::-webkit-scrollbar-thumb,
+.nx-notes__list-scroll::-webkit-scrollbar-thumb {
   background: var(--nx-border-2);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Shared form controls — inputs and selects were previously styled ad hoc in
+   each view, which is why they didn't match each other. */
+.nx-input,
+.nx-select {
+  background: var(--nx-surface-sunken);
+  border: 1px solid var(--nx-border);
   border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  padding: 5px 8px;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-input::placeholder {
+  color: var(--nx-text-dim);
+}
+
+.nx-input:focus,
+.nx-select:focus {
+  outline: none;
+  border-color: var(--nx-accent);
+}
+
+.nx-select {
+  cursor: pointer;
 }

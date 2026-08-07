@@ -8,10 +8,12 @@ const api: NexusAPI = {
     getAllSummary: (typeId) => ipcRenderer.invoke('pages:getAllSummary', typeId),
     getById: (id) => ipcRenderer.invoke('pages:getById', id),
     update: (id, data) => ipcRenderer.invoke('pages:update', id, data),
+    setType: (pageId, typeId) => ipcRenderer.invoke('pages:setType', pageId, typeId),
     softDelete: (id) => ipcRenderer.invoke('pages:softDelete', id),
     restore: (id) => ipcRenderer.invoke('pages:restore', id),
     hardDelete: (id) => ipcRenderer.invoke('pages:hardDelete', id),
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
+    emptyTrash: () => ipcRenderer.invoke('pages:emptyTrash'),
     duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id)
   },
   properties: {
@@ -22,21 +24,27 @@ const api: NexusAPI = {
   types: {
     list: () => ipcRenderer.invoke('types:list'),
     create: (name, icon) => ipcRenderer.invoke('types:create', name, icon),
+    rename: (id, name) => ipcRenderer.invoke('types:rename', id, name),
+    remove: (id) => ipcRenderer.invoke('types:remove', id),
     getPropertyDefinitions: (typeId) => ipcRenderer.invoke('types:getPropertyDefinitions', typeId),
     defineProperty: (typeId, name, propertyType) =>
-      ipcRenderer.invoke('types:defineProperty', typeId, name, propertyType)
+      ipcRenderer.invoke('types:defineProperty', typeId, name, propertyType),
+    renameProperty: (definitionId, name) => ipcRenderer.invoke('types:renameProperty', definitionId, name),
+    removeProperty: (definitionId) => ipcRenderer.invoke('types:removeProperty', definitionId)
   },
   links: {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
     syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),
-    searchPages: (query) => ipcRenderer.invoke('links:searchPages', query)
+    searchPages: (query, excludePageId) => ipcRenderer.invoke('links:searchPages', query, excludePageId)
   },
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
   },
   stats: {
     getStorage: () => ipcRenderer.invoke('stats:getStorage'),
-    getGraphPreview: () => ipcRenderer.invoke('stats:getGraphPreview')
+    getGraphPreview: () => ipcRenderer.invoke('stats:getGraphPreview'),
+    getGraph: () => ipcRenderer.invoke('stats:getGraph'),
+    getDataDir: () => ipcRenderer.invoke('stats:getDataDir')
   },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),

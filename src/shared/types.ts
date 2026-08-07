@@ -81,8 +81,25 @@ export interface PageSummary extends Page {
 export interface GraphPreview {
   nodeCount: number
   edgeCount: number
-  center: Page | null
-  neighbors: Page[]
+}
+
+export interface GraphNode {
+  id: string
+  title: string
+  type_id: string
+  updated_at: string
+  /** Total links touching this page, in either direction. Drives node size. */
+  degree: number
+}
+
+export interface GraphEdge {
+  source: string
+  target: string
+}
+
+export interface GraphData {
+  nodes: GraphNode[]
+  edges: GraphEdge[]
 }
 
 // ============================================================
@@ -97,11 +114,13 @@ export interface NexusAPI {
     getById(id: string): Promise<Page | null>
     update(
       id: string,
-      data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width'>>
+      data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width' | 'type_id'>>
     ): Promise<void>
+    setType(pageId: string, typeId: string): Promise<void>
     softDelete(id: string): Promise<void>
     restore(id: string): Promise<void>
     hardDelete(id: string): Promise<void>
+    emptyTrash(): Promise<number>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
   }
@@ -118,13 +137,17 @@ export interface NexusAPI {
   types: {
     list(): Promise<TypeDef[]>
     create(name: string, icon?: string): Promise<TypeDef>
+    rename(id: string, name: string): Promise<TypeDef>
+    remove(id: string): Promise<{ reassigned: number }>
     getPropertyDefinitions(typeId: string): Promise<PropertyDefinition[]>
     defineProperty(typeId: string, name: string, propertyType: PropertyType): Promise<PropertyDefinition>
+    renameProperty(definitionId: string, name: string): Promise<PropertyDefinition>
+    removeProperty(definitionId: string): Promise<void>
   }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
     syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
-    searchPages(query: string): Promise<Page[]>
+    searchPages(query: string, excludePageId?: string): Promise<Page[]>
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
@@ -132,6 +155,8 @@ export interface NexusAPI {
   stats: {
     getStorage(): Promise<StorageStats>
     getGraphPreview(): Promise<GraphPreview>
+    getGraph(): Promise<GraphData>
+    getDataDir(): Promise<string>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>
