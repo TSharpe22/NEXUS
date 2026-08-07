@@ -45,6 +45,12 @@ export function Vault() {
     await refresh()
   }
 
+  const duplicate = async (id: string) => {
+    const copy = await window.api.pages.duplicate(id)
+    await refresh()
+    setActivePageId(copy.id)
+  }
+
   const restore = async (id: string) => {
     await window.api.pages.restore(id)
     await refresh()
@@ -92,16 +98,30 @@ export function Vault() {
                     <button onClick={() => hardDelete(page.id)}>delete</button>
                   </span>
                 ) : (
-                  <button
-                    className="nx-vault__item-delete"
-                    aria-label="Move to trash"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      softDelete(page.id)
-                    }}
-                  >
-                    <Icon shape="square" size={11} />
-                  </button>
+                  <span className="nx-vault__item-actions">
+                    <button
+                      className="nx-vault__item-delete"
+                      aria-label="Duplicate"
+                      title="Duplicate"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        duplicate(page.id)
+                      }}
+                    >
+                      <Icon shape="diamond" size={11} />
+                    </button>
+                    <button
+                      className="nx-vault__item-delete"
+                      aria-label="Move to trash"
+                      title="Move to trash"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        softDelete(page.id)
+                      }}
+                    >
+                      <Icon shape="square" size={11} />
+                    </button>
+                  </span>
                 )}
               </div>
             ))}

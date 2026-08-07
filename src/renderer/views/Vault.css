@@ -52,6 +52,13 @@
   text-overflow: ellipsis;
 }
 
+.nx-vault__item-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-1);
+  flex-shrink: 0;
+}
+
 .nx-vault__item-delete {
   background: none;
   border: none;
@@ -66,8 +73,12 @@
   opacity: 1;
 }
 
-.nx-vault__item-delete:hover {
+.nx-vault__item-delete[aria-label='Move to trash']:hover {
   color: var(--nx-critical);
+}
+
+.nx-vault__item-delete[aria-label='Duplicate']:hover {
+  color: var(--nx-accent);
 }
 
 .nx-vault__trash-toggle {
