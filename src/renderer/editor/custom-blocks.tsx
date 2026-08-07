@@ -48,10 +48,10 @@ export const toggleBlock = createReactBlockSpec(
 )
 
 const CALLOUT_COLORS = {
-  amber: 'var(--nx-accent)',
-  success: 'var(--nx-success)',
-  info: 'var(--nx-info)',
-  critical: 'var(--nx-critical)'
+  amber: ['var(--nx-accent)', 'var(--nx-accent-tint)'],
+  success: ['var(--nx-success)', 'rgba(127, 174, 122, 0.12)'],
+  info: ['var(--nx-info)', 'rgba(126, 163, 201, 0.12)'],
+  critical: ['var(--nx-critical)', 'var(--nx-critical-tint)']
 } as const
 
 export type CalloutColor = keyof typeof CALLOUT_COLORS
@@ -68,10 +68,10 @@ export const calloutBlock = createReactBlockSpec(
   {
     render: ({ block, contentRef }) => {
       const colorKey = (block.props.color in CALLOUT_COLORS ? block.props.color : 'amber') as CalloutColor
-      const color = CALLOUT_COLORS[colorKey]
+      const [color, tint] = CALLOUT_COLORS[colorKey]
 
       return (
-        <div className="nx-callout" style={{ borderColor: color }}>
+        <div className="nx-callout" style={{ borderColor: color, background: tint }}>
           <Icon shape="diamond" filled size={12} color={color} className="nx-callout__marker" />
           <div ref={contentRef} className="nx-callout__content" />
         </div>

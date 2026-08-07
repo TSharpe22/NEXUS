@@ -19,6 +19,13 @@ const api: NexusAPI = {
     set: (pageId, key, type, value) => ipcRenderer.invoke('properties:set', pageId, key, type, value),
     remove: (pageId, key) => ipcRenderer.invoke('properties:remove', pageId, key)
   },
+  types: {
+    list: () => ipcRenderer.invoke('types:list'),
+    create: (name, icon) => ipcRenderer.invoke('types:create', name, icon),
+    getPropertyDefinitions: (typeId) => ipcRenderer.invoke('types:getPropertyDefinitions', typeId),
+    defineProperty: (typeId, name, propertyType) =>
+      ipcRenderer.invoke('types:defineProperty', typeId, name, propertyType)
+  },
   links: {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
     syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),

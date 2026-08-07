@@ -30,6 +30,12 @@
 
 .bn-editor {
   padding: 0;
+  /* BlockNote's own default puts a hardcoded #1f1f1f rounded box
+     (--bn-colors-editor-background / --bn-border-radius-large) around
+     the whole document — a second, differently-colored "panel" nested
+     inside ours. Flatten it so content sits directly on the page. */
+  background: transparent !important;
+  border-radius: 0 !important;
 }
 
 .bn-inline-content code {
@@ -177,7 +183,6 @@
   gap: var(--nx-space-2);
   padding: var(--nx-space-3);
   border-left: 2px solid;
-  background: var(--nx-panel);
   border-radius: var(--nx-radius-md);
   width: 100%;
 }

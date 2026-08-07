@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Page } from '@shared/types'
+import type { Page, TypeDef } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
@@ -20,10 +20,20 @@ export function Vault() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const [loading, setLoading] = useState(true)
 
+  const [types, setTypes] = useState<TypeDef[]>([])
+  const [selectedTypeId, setSelectedTypeId] = useState<string>('note')
+  const [creatingType, setCreatingType] = useState(false)
+  const [newTypeName, setNewTypeName] = useState('')
+
   const refresh = async () => {
-    const [all, deleted] = await Promise.all([window.api.pages.getAll(), window.api.pages.getDeleted()])
+    const [all, deleted, typeList] = await Promise.all([
+      window.api.pages.getAll(),
+      window.api.pages.getDeleted(),
+      window.api.types.list()
+    ])
     setPages(all)
     setTrashedPages(deleted)
+    setTypes(typeList)
     setLoading(false)
   }
 
@@ -32,11 +42,22 @@ export function Vault() {
   }, [])
 
   const activePage = pages.find((p) => p.id === activePageId) ?? null
+  const typeName = (typeId: string) => types.find((t) => t.id === typeId)?.name ?? typeId
 
   const createPage = async () => {
-    const page = await window.api.pages.create()
+    const page = await window.api.pages.create(selectedTypeId)
     await refresh()
     setActivePageId(page.id)
+  }
+
+  const createType = async () => {
+    const name = newTypeName.trim()
+    if (!name) return
+    const type = await window.api.types.create(name)
+    setNewTypeName('')
+    setCreatingType(false)
+    await refresh()
+    setSelectedTypeId(type.id)
   }
 
   const softDelete = async (id: string) => {
@@ -69,9 +90,41 @@ export function Vault() {
         <div className="nx-vault__list-header">
           <span className="nx-type-label">{showTrash ? 'Trash' : 'Pages'}</span>
           {!showTrash && (
-            <Button variant="ghost" onClick={createPage}>
-              + New
-            </Button>
+            <div className="nx-vault__create">
+              {creatingType ? (
+                <input
+                  className="nx-properties__tag-input"
+                  autoFocus
+                  placeholder="type name"
+                  value={newTypeName}
+                  onChange={(e) => setNewTypeName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') createType()
+                    if (e.key === 'Escape') setCreatingType(false)
+                  }}
+                  onBlur={() => !newTypeName && setCreatingType(false)}
+                />
+              ) : (
+                <select
+                  className="nx-properties__type-select"
+                  value={selectedTypeId}
+                  onChange={(e) => {
+                    if (e.target.value === '__new__') setCreatingType(true)
+                    else setSelectedTypeId(e.target.value)
+                  }}
+                >
+                  {types.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                  <option value="__new__">+ New type…</option>
+                </select>
+              )}
+              <Button variant="ghost" onClick={createPage}>
+                + New
+              </Button>
+            </div>
           )}
         </div>
 
@@ -91,7 +144,10 @@ export function Vault() {
                 className={`nx-vault__item ${page.id === activePageId ? 'nx-vault__item--active' : ''}`}
                 onClick={() => !showTrash && setActivePageId(page.id)}
               >
-                <span className="nx-vault__item-title">{page.title || 'Untitled'}</span>
+                <span className="nx-vault__item-title">
+                  {page.title || 'Untitled'}
+                  <span className="nx-vault__item-type">{typeName(page.type_id)}</span>
+                </span>
                 {showTrash ? (
                   <span className="nx-vault__trash-actions">
                     <button onClick={() => restore(page.id)}>restore</button>

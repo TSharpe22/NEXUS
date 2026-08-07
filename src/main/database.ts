@@ -23,8 +23,22 @@ export function initDatabase(): void {
       icon  TEXT
     );
 
+    -- The only seeded type. Everything else — Directive, Book, Trade Log,
+    -- whatever — is created by the user, not predetermined here.
     INSERT OR IGNORE INTO types (id, name) VALUES ('note', 'Note');
-    INSERT OR IGNORE INTO types (id, name) VALUES ('directive', 'Directive');
+
+    CREATE TABLE IF NOT EXISTS property_definitions (
+      id             TEXT PRIMARY KEY,
+      type_id        TEXT NOT NULL REFERENCES types(id) ON DELETE CASCADE,
+      key            TEXT NOT NULL,
+      name           TEXT NOT NULL,
+      property_type  TEXT NOT NULL,
+      sort_order     REAL NOT NULL DEFAULT 0,
+      created_at     TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(type_id, key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_propdefs_type ON property_definitions(type_id);
 
     CREATE TABLE IF NOT EXISTS pages (
       id          TEXT PRIMARY KEY,

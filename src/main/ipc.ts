@@ -108,6 +108,35 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('types:list', () => {
+    try {
+      return repo.getTypes()
+    } catch (e) {
+      rethrow('types:list', e)
+    }
+  })
+  ipcMain.handle('types:create', (_, name: string, icon?: string) => {
+    try {
+      return repo.createType(name, icon ?? null)
+    } catch (e) {
+      rethrow('types:create', e)
+    }
+  })
+  ipcMain.handle('types:getPropertyDefinitions', (_, typeId: string) => {
+    try {
+      return repo.getPropertyDefinitions(typeId)
+    } catch (e) {
+      rethrow('types:getPropertyDefinitions', e)
+    }
+  })
+  ipcMain.handle('types:defineProperty', (_, typeId: string, name: string, propertyType: PropertyType) => {
+    try {
+      return repo.defineProperty(typeId, name, propertyType)
+    } catch (e) {
+      rethrow('types:defineProperty', e)
+    }
+  })
+
   ipcMain.handle('links:getBacklinks', (_, pageId: string) => {
     try {
       return repo.getBacklinks(pageId)

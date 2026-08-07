@@ -56,15 +56,26 @@ export interface ActivityLogEntry {
 export interface StorageStats {
   pageCount: number
   dbSizeBytes: number
-  taggedPercent: number
+  withPropertiesPercent: number
 }
 
-export const DIRECTIVE_STATUSES = ['active', 'pending', 'done'] as const
-export type DirectiveStatus = (typeof DIRECTIVE_STATUSES)[number]
+export interface TypeDef {
+  id: string
+  name: string
+  icon: string | null
+}
+
+export interface PropertyDefinition {
+  id: string
+  type_id: string
+  key: string
+  name: string
+  property_type: PropertyType
+  sort_order: number
+}
 
 export interface PageSummary extends Page {
-  tags: string[]
-  status: string | null
+  properties: Property[]
 }
 
 export interface GraphPreview {
@@ -103,6 +114,12 @@ export interface NexusAPI {
       value: string | number | null
     ): Promise<void>
     remove(pageId: string, key: string): Promise<void>
+  }
+  types: {
+    list(): Promise<TypeDef[]>
+    create(name: string, icon?: string): Promise<TypeDef>
+    getPropertyDefinitions(typeId: string): Promise<PropertyDefinition[]>
+    defineProperty(typeId: string, name: string, propertyType: PropertyType): Promise<PropertyDefinition>
   }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>

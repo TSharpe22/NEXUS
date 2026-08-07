@@ -64,15 +64,24 @@ and a "Directive" (task) all be the same underlying thing.
   save was the direct cause of a `created_at`-reset bug in the first build.
 - `properties` — `page_id, key, type, value_text, value_number, value_date,
   value_relation`. Sparse columns, not a JSON blob — keeps typed queries
-  (e.g. "all Directives with status=active") cheap.
+  cheap.
 - `links` — `source_page_id, target_page_id, context`. Backs `[[wiki-links]]`
   and the backlinks panel.
 - `activity_log` — `id, page_id, event_type, message, created_at`. Written
-  whenever a page is created/edited/tagged/status-changed. Backs the Flow
-  view and Atlas's recent-activity widget.
-- `types` — built-in types include a "Directive" type with a `status`
-  property (active / pending / done). The Command view is just a filtered
-  table over pages of that type — not a separate task subsystem.
+  whenever a page is created/edited/property-changed. Backs the Flow view
+  and Atlas's recent-activity widget.
+- `types` — user-created, not predetermined. The only seeded row is a base
+  "Note" type with no properties — everything else (Directive, Book, Trade
+  Log, whatever) is created from the Vault page-creation flow or wherever
+  a type picker appears. A type has no schema of its own beyond a name.
+- `property_definitions` — `type_id, key, name, property_type, sort_order`.
+  A type's actual schema. Rows are added by the user via "+ Add property"
+  on a page (Vault) — the moment you define a property on one page of a
+  type, every other page of that type gets a slot for it. The architecture
+  is created by using the app, not decided in advance by the codebase.
+  Command is a generic browser over this: pick a type, see a table whose
+  columns are exactly that type's property_definitions — it is not a
+  separate task subsystem with hardcoded status values.
 
 ### Data access
 
@@ -90,12 +99,15 @@ Five sections, each a thin view over the same page/property model:
 
 - **Atlas** — dashboard. A small graph widget (direct links of the active
   page, radial layout — not a full force-directed graph), a vault storage
-  stats widget, a preview of active Directives, a preview of recent Flow
-  activity, and an entries table (name / tags / modified / status) across
-  all pages.
-- **Vault** — the page list and the block editor. Opening a page shows the
-  BlockNote editor, a properties/tags panel, and the backlinks panel.
-- **Command** — table of Directive-typed pages, filterable by status.
+  stats widget, a preview of whichever type was last browsed in Command,
+  a preview of recent Flow activity, and an entries table (name / type /
+  properties / modified) across all pages.
+- **Vault** — the page list and the block editor. Creating a page picks (or
+  creates) a type inline. Opening a page shows the BlockNote editor, a
+  properties panel driven entirely by that page's type schema (with an
+  inline "+ Add property" to grow the schema), and the backlinks panel.
+- **Command** — pick any user-created type, see a table of its pages with
+  columns generated from that type's property_definitions.
 - **Flow** — chronological feed from `activity_log`.
 - **Settings** — accent info, keyboard shortcut reference, data folder
   location, import/export.

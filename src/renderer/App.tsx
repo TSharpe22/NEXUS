@@ -29,7 +29,7 @@ const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
 const VIEW_SUBTITLE: Record<View, string> = {
   atlas: 'overview',
   vault: 'notes',
-  command: 'directives',
+  command: 'browse',
   flow: 'activity',
   settings: 'preferences'
 }

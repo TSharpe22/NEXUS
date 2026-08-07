@@ -64,3 +64,15 @@
 .nx-flow-row {
   cursor: default;
 }
+
+.nx-atlas__link {
+  background: none;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  padding: 0;
+}
+
+.nx-atlas__link:hover {
+  color: var(--nx-accent);
+}

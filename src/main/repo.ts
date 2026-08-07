@@ -10,7 +10,9 @@ import type {
   ActivityLogEntry,
   StorageStats,
   PageSummary,
-  GraphPreview
+  GraphPreview,
+  TypeDef,
+  PropertyDefinition
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -44,20 +46,21 @@ export function getPagesSummary(typeId?: string): PageSummary[] {
       : db.prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC').all()
   ) as Page[]
 
-  const tagsStmt = db.prepare("SELECT value_text FROM properties WHERE page_id = ? AND key = 'tags'")
-  const statusStmt = db.prepare("SELECT value_text FROM properties WHERE page_id = ? AND key = 'status'")
+  if (rows.length === 0) return []
 
-  return rows.map((page) => {
-    const tagsRow = tagsStmt.get(page.id) as { value_text: string | null } | undefined
-    const statusRow = statusStmt.get(page.id) as { value_text: string | null } | undefined
-    let tags: string[] = []
-    try {
-      tags = tagsRow?.value_text ? JSON.parse(tagsRow.value_text) : []
-    } catch {
-      tags = []
-    }
-    return { ...page, tags, status: statusRow?.value_text ?? null }
-  })
+  const placeholders = rows.map(() => '?').join(',')
+  const allProps = db
+    .prepare(`SELECT * FROM properties WHERE page_id IN (${placeholders})`)
+    .all(...rows.map((r) => r.id)) as Property[]
+
+  const byPage = new Map<string, Property[]>()
+  for (const prop of allProps) {
+    const list = byPage.get(prop.page_id) ?? []
+    list.push(prop)
+    byPage.set(prop.page_id, list)
+  }
+
+  return rows.map((page) => ({ ...page, properties: byPage.get(page.id) ?? [] }))
 }
 
 export function getPageById(id: string): Page | null {
@@ -119,14 +122,68 @@ export function duplicatePage(id: string): Page {
   ).run(newId, source.type_id, `${source.title} (copy)`, source.icon, source.content, source.page_width, ts, ts)
 
   for (const prop of getPropertiesForPage(id)) {
-    setProperty(newId, prop.key, prop.type, prop.value_text ?? prop.value_number ?? prop.value_date)
+    const value = prop.type === 'date' ? prop.value_date : (prop.value_text ?? prop.value_number)
+    setProperty(newId, prop.key, prop.type, value)
   }
 
   return getPageById(newId)!
 }
 
 // ============================================================
-// Properties (tags are just a multi_select property, key = "tags")
+// Types and property definitions — the user-created schema.
+// A page's "shape" is entirely whatever properties have been defined
+// on its type; nothing here is predetermined beyond the base 'note' type.
+// ============================================================
+
+export function getTypes(): TypeDef[] {
+  return getDb().prepare('SELECT * FROM types ORDER BY name').all() as TypeDef[]
+}
+
+export function createType(name: string, icon: string | null = null): TypeDef {
+  const db = getDb()
+  const id = uuidv4()
+  db.prepare('INSERT INTO types (id, name, icon) VALUES (?, ?, ?)').run(id, name, icon)
+  return db.prepare('SELECT * FROM types WHERE id = ?').get(id) as TypeDef
+}
+
+export function getPropertyDefinitions(typeId: string): PropertyDefinition[] {
+  return getDb()
+    .prepare('SELECT * FROM property_definitions WHERE type_id = ? ORDER BY sort_order, created_at')
+    .all(typeId) as PropertyDefinition[]
+}
+
+function slugify(name: string): string {
+  return (
+    name
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '') || 'property'
+  )
+}
+
+export function defineProperty(typeId: string, name: string, propertyType: PropertyType): PropertyDefinition {
+  const db = getDb()
+  const key = slugify(name)
+  const maxOrder = (
+    db.prepare('SELECT MAX(sort_order) AS m FROM property_definitions WHERE type_id = ?').get(typeId) as {
+      m: number | null
+    }
+  ).m
+  const id = uuidv4()
+
+  db.prepare(
+    `INSERT INTO property_definitions (id, type_id, key, name, property_type, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(type_id, key) DO UPDATE SET name = excluded.name, property_type = excluded.property_type`
+  ).run(id, typeId, key, name, propertyType, (maxOrder ?? -1) + 1)
+
+  return db.prepare('SELECT * FROM property_definitions WHERE type_id = ? AND key = ?').get(typeId, key) as PropertyDefinition
+}
+
+// ============================================================
+// Properties — the actual values on a page, per the property
+// definitions of that page's type.
 // ============================================================
 
 export function getPropertiesForPage(pageId: string): Property[] {
@@ -141,17 +198,19 @@ export function setProperty(
 ): void {
   const db = getDb()
   const id = uuidv4()
-  const valueText = typeof value === 'string' ? value : null
+  const valueText = type === 'date' ? null : typeof value === 'string' ? value : null
   const valueNumber = typeof value === 'number' ? value : null
+  const valueDate = type === 'date' && typeof value === 'string' ? value : null
 
   db.prepare(
-    `INSERT INTO properties (id, page_id, key, type, value_text, value_number)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(page_id, key) DO UPDATE SET type = excluded.type, value_text = excluded.value_text, value_number = excluded.value_number`
-  ).run(id, pageId, key, type, valueText, valueNumber)
+    `INSERT INTO properties (id, page_id, key, type, value_text, value_number, value_date)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(page_id, key) DO UPDATE SET
+       type = excluded.type, value_text = excluded.value_text,
+       value_number = excluded.value_number, value_date = excluded.value_date`
+  ).run(id, pageId, key, type, valueText, valueNumber, valueDate)
 
-  if (key === 'status') logActivity(pageId, 'status', `status set to ${value}`)
-  else if (key === 'tags') logActivity(pageId, 'tagged', `tags updated`)
+  logActivity(pageId, 'property', `set "${key}"`)
 }
 
 export function removeProperty(pageId: string, key: string): void {
@@ -248,11 +307,7 @@ export function getStorageStats(): StorageStats {
   const db = getDb()
   const pageCount = (db.prepare('SELECT COUNT(*) AS c FROM pages WHERE is_deleted = 0').get() as { c: number }).c
   const taggedCount = (
-    db
-      .prepare(
-        `SELECT COUNT(DISTINCT page_id) AS c FROM properties WHERE key = 'tags' AND value_text IS NOT NULL AND value_text != '[]'`
-      )
-      .get() as { c: number }
+    db.prepare('SELECT COUNT(DISTINCT page_id) AS c FROM properties').get() as { c: number }
   ).c
 
   let dbSizeBytes = 0
@@ -265,7 +320,7 @@ export function getStorageStats(): StorageStats {
   return {
     pageCount,
     dbSizeBytes,
-    taggedPercent: pageCount === 0 ? 0 : Math.round((taggedCount / pageCount) * 100)
+    withPropertiesPercent: pageCount === 0 ? 0 : Math.round((taggedCount / pageCount) * 100)
   }
 }
 
