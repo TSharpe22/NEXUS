@@ -30,6 +30,9 @@ const api: NexusAPI = {
     importJSON: (content) => ipcRenderer.invoke('io:importJSON', content),
     importPlainText: (content, filename) => ipcRenderer.invoke('io:importPlainText', content, filename),
   },
+  shell: {
+    openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
+  },
   dialog: {
     showSaveDialog: (options) => ipcRenderer.invoke('dialog:showSaveDialog', options),
     showOpenDialog: (options) => ipcRenderer.invoke('dialog:showOpenDialog', options),

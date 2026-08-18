@@ -100,16 +100,32 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
       // Allow lasso to start from anywhere EXCEPT inside live editable text
       // or interactive controls. This kills the "dead click" / sticky-keys
       // feel the previous strict guard caused.
+      //
+      // IMPORTANT: use closest(), not tagName equality. Every button in the
+      // formatting toolbar and the side menu renders an <svg> icon, and the
+      // mousedown target is that <svg>/<path>, never the <button>. With a
+      // tagName check the guard missed, so mousedown fell through to the
+      // blur + removeAllRanges + preventDefault below — which destroyed the
+      // text selection the toolbar was anchored to, unmounting the toolbar
+      // before its onClick could ever fire. That made every toolbar action
+      // (bold, highlight, external link, link-to-page) silently dead.
       if (
         target.isContentEditable ||
         target.closest('[contenteditable="true"]') ||
-        target.tagName === 'INPUT' ||
-        target.tagName === 'TEXTAREA' ||
-        target.tagName === 'BUTTON' ||
-        target.tagName === 'A' ||
-        target.tagName === 'SELECT' ||
+        target.closest('input, textarea, button, a, select, label, [role="button"]') ||
         target.closest('[role="menu"]') ||
         target.closest('.nx-col-resize-handle') ||
+        // Floating UI that lives inside the editor scroll container: the
+        // formatting toolbar and its popovers, the [[ link menu, and the
+        // slash menu. A mousedown here must never clear the selection.
+        target.closest('.nx-fmt-toolbar') ||
+        target.closest('.nx-fmt-popover') ||
+        target.closest('.nx-url-link-popover') ||
+        target.closest('.nx-page-link-popover') ||
+        target.closest('.nx-link-menu') ||
+        target.closest('.nx-slash-menu') ||
+        target.closest('.bn-formatting-toolbar') ||
+        target.closest('.bn-suggestion-menu') ||
         // BlockNote side menu — the six-dots drag handle and the "+" add
         // button. Without this guard the lasso swallows mousedown and the
         // user can't grab/drag a block to reorder it or insert via the
@@ -194,6 +210,9 @@ export function LassoSelect({ scrollContainerRef, editorContainerRef }: Props) {
     }
 
     const onMouseUp = () => {
+      // Nothing to tear down unless a lasso gesture actually started here.
+      // Without this guard every click in the app ran the full reset path.
+      if (!startPos.current && !isDragging.current) return
       const wasDragging = isDragging.current
       startPos.current = null
       isDragging.current = false

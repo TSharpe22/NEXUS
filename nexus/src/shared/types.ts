@@ -153,6 +153,11 @@ export interface NexusAPI {
     importJSON(content: string): Promise<Page | { imported: number }>
     importPlainText(content: string, filename: string): Promise<Page>
   }
+  shell: {
+    /** Opens http/https/mailto URLs in the system browser. Resolves false if
+     *  the protocol isn't allowlisted in the main process. */
+    openExternal(url: string): Promise<boolean>
+  }
   dialog: {
     showSaveDialog(options: {
       title?: string

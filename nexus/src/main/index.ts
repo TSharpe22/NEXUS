@@ -30,8 +30,19 @@ function createWindow(): void {
 
   // Open external links in browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url)
+    if (/^https?:|^mailto:/i.test(url)) shell.openExternal(url)
     return { action: 'deny' }
+  })
+
+  // Hard guard: nothing inside the app may navigate the window away from the
+  // renderer bundle. Without this, a click on an <a href="https://..."> in the
+  // editor can replace the entire app with a web page and there is no way back.
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const rendererUrl = process.env.ELECTRON_RENDERER_URL
+    if (rendererUrl && url.startsWith(rendererUrl)) return
+    if (url.startsWith('file://')) return
+    event.preventDefault()
+    if (/^https?:|^mailto:/i.test(url)) shell.openExternal(url)
   })
 
   // Load renderer
