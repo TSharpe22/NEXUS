@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Page, Property, PropertyDefinition, PropertyType } from '@shared/types'
 import { useAppStore } from '../store/app-store'
@@ -261,42 +261,103 @@ function MultiSelectField({
 }) {
   const items = parseList(value)
   const [draft, setDraft] = useState('')
+  const [highlight, setHighlight] = useState(0)
+
+  // Values already used for this property elsewhere, so a multi-select behaves
+  // like a real select instead of asking you to retype a value you have used
+  // ten times before. Loaded once per property and filtered locally.
+  const [known, setKnown] = useState<string[]>([])
+  useEffect(() => {
+    let cancelled = false
+    window.api.properties.knownValues(def.key).then((values) => {
+      if (!cancelled) setKnown(values)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [def.key, value])
+
+  const suggestions = useMemo(() => {
+    const q = draft.trim().toLowerCase()
+    return known
+      .filter((v) => !items.includes(v))
+      .filter((v) => (q ? v.toLowerCase().includes(q) : true))
+      .slice(0, 6)
+  }, [known, draft, items])
 
   const commit = (next: string[]) => onSave(JSON.stringify(next))
-  const add = () => {
-    const v = draft.trim()
+  const add = (raw: string) => {
+    const v = raw.trim()
     if (v && !items.includes(v)) commit([...items, v])
     setDraft('')
+    setHighlight(0)
   }
 
   return (
     <div className="nx-properties__tags">
       {items.map((item) => (
-        <span key={item} className="nx-properties__tag">
-          {item}
-          <button onClick={() => commit(items.filter((i) => i !== item))} aria-label={`Remove ${item}`}>
+        <span key={item} className="nx-tag-chip nx-tag-chip--accent">
+          <span className="nx-tag-chip__label">{item}</span>
+          <button
+            className="nx-tag-chip__x"
+            aria-label={`Remove ${item}`}
+            onClick={() => commit(items.filter((i) => i !== item))}
+          >
             ×
           </button>
         </span>
       ))}
-      <input
-        className="nx-properties__tag-input"
-        placeholder={`Add ${def.name.toLowerCase()}…`}
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') {
-            e.preventDefault()
-            add()
-          }
-          // Backspace on an empty field removes the last tag — standard for
-          // this control and quicker than aiming at a 10px ×.
-          if (e.key === 'Backspace' && !draft && items.length) {
-            commit(items.slice(0, -1))
-          }
-        }}
-        onBlur={add}
-      />
+
+      <span className="nx-properties__tag-field">
+        <input
+          className="nx-properties__tag-input"
+          placeholder={`Add ${def.name.toLowerCase()}…`}
+          value={draft}
+          onChange={(e) => {
+            setDraft(e.target.value)
+            setHighlight(0)
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown' && suggestions.length) {
+              e.preventDefault()
+              setHighlight((h) => (h + 1) % suggestions.length)
+              return
+            }
+            if (e.key === 'ArrowUp' && suggestions.length) {
+              e.preventDefault()
+              setHighlight((h) => (h - 1 + suggestions.length) % suggestions.length)
+              return
+            }
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              add(draft.trim() ? draft : (suggestions[highlight] ?? ''))
+              return
+            }
+            // Backspace on an empty field removes the last tag — standard for
+            // this control and quicker than aiming at a 10px ×.
+            if (e.key === 'Backspace' && !draft && items.length) {
+              commit(items.slice(0, -1))
+            }
+          }}
+          onBlur={() => add(draft)}
+        />
+
+        {draft.trim() !== '' && suggestions.length > 0 && (
+          <span className="nx-properties__tag-menu">
+            {suggestions.map((option, i) => (
+              <button
+                key={option}
+                className={`nx-tagbar__option ${i === highlight ? 'is-highlighted' : ''}`}
+                onMouseEnter={() => setHighlight(i)}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => add(option)}
+              >
+                <span className="nx-tagbar__name">{option}</span>
+              </button>
+            ))}
+          </span>
+        )}
+      </span>
     </div>
   )
 }

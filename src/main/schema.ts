@@ -18,8 +18,11 @@ let db: Database.Database
  *     property_def_id, no `pages.content`.
  * 2 — this build: BlockNote document stored as one JSON blob on
  *     `pages.content`, `properties` keyed by (page_id, key), `activity_log`.
+ * 3 — organisation: `folders` tree with `pages.folder_id`, first-class
+ *     `tags` / `page_tags`. Purely additive — a v2 file needs no rebuild,
+ *     only the new tables and one ALTER.
  */
-const SCHEMA_VERSION = 2
+const SCHEMA_VERSION = 3
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -45,6 +48,24 @@ const CURRENT_SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_propdefs_type ON property_definitions(type_id);
 
+  -- Folders: a tree for organising pages in the Notes list. A page sits in at
+  -- most one folder (pages.folder_id); folders nest via parent_folder_id.
+  --
+  -- ON DELETE SET NULL on both references means removing a folder can never
+  -- cascade into losing pages — worst case they surface at the root.
+  -- deleteFolder() in repo.ts reparents explicitly so they land somewhere
+  -- deliberate instead.
+  CREATE TABLE IF NOT EXISTS folders (
+    id                TEXT PRIMARY KEY,
+    name              TEXT NOT NULL,
+    parent_folder_id  TEXT REFERENCES folders(id) ON DELETE SET NULL,
+    sort_order        REAL NOT NULL DEFAULT 0,
+    created_at        TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at        TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_folders_parent ON folders(parent_folder_id);
+
   CREATE TABLE IF NOT EXISTS pages (
     id          TEXT PRIMARY KEY,
     type_id     TEXT NOT NULL DEFAULT 'note' REFERENCES types(id),
@@ -52,6 +73,7 @@ const CURRENT_SCHEMA = `
     icon        TEXT,
     content     TEXT NOT NULL DEFAULT '[]',
     page_width  INTEGER NOT NULL DEFAULT 720,
+    folder_id   TEXT REFERENCES folders(id) ON DELETE SET NULL,
     is_deleted  INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
@@ -96,6 +118,31 @@ const CURRENT_SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_activity_created ON activity_log(created_at);
+
+
+  -- Tags are deliberately their own tables rather than a multi_select
+  -- property. Properties are schema-per-type: tagging a page through one
+  -- means first defining a property on its type, which is the wrong amount of
+  -- ceremony for "mark this note as reading". Structured multi-selects still
+  -- exist for data that genuinely belongs to a type.
+  CREATE TABLE IF NOT EXISTS tags (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    color       TEXT NOT NULL DEFAULT 'accent',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  -- Case-insensitive so "Reading" and "reading" can't split into two tags.
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name ON tags(name COLLATE NOCASE);
+
+  CREATE TABLE IF NOT EXISTS page_tags (
+    page_id     TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    tag_id      TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (page_id, tag_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON page_tags(tag_id);
 `
 
 // ============================================================
@@ -427,6 +474,15 @@ export function applySchema(
   }
 
   db.exec(CURRENT_SCHEMA)
+
+  // v3. `folders` is created by CURRENT_SCHEMA above, so the column's
+  // reference target exists by the time this runs. Additive, so a v2 file
+  // needs no backup and no table rebuild.
+  if (!columnExists('pages', 'folder_id')) {
+    db.exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_folder ON pages(folder_id)')
+
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 
   return backupPath

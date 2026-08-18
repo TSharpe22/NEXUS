@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
@@ -8,6 +8,8 @@ import { Editor } from '../editor/Editor'
 import { PropertiesPanel } from './PropertiesPanel'
 import { BacklinksPanel } from './BacklinksPanel'
 import { relativeTime } from '../hooks/use-relative-time'
+import { FolderTree } from './FolderTree'
+import { TagFilter } from './TagFilter'
 import './Notes.css'
 
 export function Notes() {
@@ -23,11 +25,15 @@ export function Notes() {
     trashPage,
     restorePage,
     deletePageForever,
-    emptyTrash
+    emptyTrash,
+    folders,
+    activeTagFilter,
+    createFolder
   } = useAppStore()
 
   const [showTrash, setShowTrash] = useState(false)
   const [query, setQuery] = useState('')
+  const [taggedPageIds, setTaggedPageIds] = useState<string[] | null>(null)
   const [newTypeName, setNewTypeName] = useState('')
   const [creatingType, setCreatingType] = useState(false)
   const [selectedTypeId, setSelectedTypeId] = useState('note')
@@ -42,12 +48,46 @@ export function Notes() {
 
   const typeName = (typeId: string) => types.find((t) => t.id === typeId)?.name ?? 'Note'
 
+  // Resolved in the main process so the page_tags join stays in SQL rather
+  // than shipping every page's tags to the renderer to filter a list.
+  useEffect(() => {
+    let cancelled = false
+    if (activeTagFilter.length === 0) {
+      setTaggedPageIds(null)
+      return
+    }
+    window.api.tags.pageIdsFor(activeTagFilter).then((ids) => {
+      if (!cancelled) setTaggedPageIds(ids)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [activeTagFilter])
+
   const list = useMemo(() => {
-    const source: Page[] = showTrash ? trashed : pages
+    let source: Page[] = showTrash ? trashed : pages
+
+    if (!showTrash && taggedPageIds) {
+      const allowed = new Set(taggedPageIds)
+      source = source.filter((p) => allowed.has(p.id))
+    }
+
     const q = query.trim().toLowerCase()
     if (!q) return source
-    return source.filter((p) => (p.title || 'Untitled').toLowerCase().includes(q))
-  }, [showTrash, trashed, pages, query])
+
+    // A page also matches when its folder's name does, so searching for a
+    // folder surfaces what's inside it.
+    const matchingFolderIds = new Set(
+      folders.filter((f) => f.name.toLowerCase().includes(q)).map((f) => f.id)
+    )
+    return source.filter(
+      (p) =>
+        (p.title || 'Untitled').toLowerCase().includes(q) ||
+        (p.folder_id ? matchingFolderIds.has(p.folder_id) : false)
+    )
+  }, [showTrash, trashed, pages, query, taggedPageIds, folders])
+
+  const filtering = query.trim().length > 0 || activeTagFilter.length > 0
 
   const handleCreateType = async () => {
     const name = newTypeName.trim()
@@ -125,22 +165,28 @@ export function Notes() {
                 </select>
               )}
               <Button onClick={() => createPage(selectedTypeId)}>New</Button>
+              <Button variant="quiet" onClick={() => createFolder('New folder', null)} title="New folder">
+                Folder
+              </Button>
             </div>
           )}
+
+          {!showTrash && <TagFilter />}
         </div>
 
         <div className="nx-notes__list-scroll">
           {!loaded ? (
             <div className="nx-notes__hint nx-type-data">Loading…</div>
-          ) : list.length === 0 ? (
+          ) : list.length === 0 && (showTrash || folders.length === 0) ? (
             <div className="nx-notes__hint nx-type-data">
-              {query
+              {filtering
                 ? 'No matches'
                 : showTrash
                   ? 'Trash is empty'
                   : 'No pages yet — create one above'}
             </div>
-          ) : (
+          ) : showTrash ? (
+            // Trash stays a flat list — folders are for organising live pages.
             list.map((page) => (
               <div
                 key={page.id}
@@ -155,53 +201,37 @@ export function Notes() {
                 </div>
 
                 <div className="nx-notes__item-actions">
-                  {showTrash ? (
-                    <>
-                      <button
-                        title="Restore"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          restorePage(page.id)
-                        }}
-                      >
-                        Restore
-                      </button>
-                      <button
-                        className="nx-notes__danger"
-                        title="Delete permanently"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          handleDeleteForever(page)
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button
-                        title="Duplicate"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          duplicatePage(page.id)
-                        }}
-                      >
-                        Copy
-                      </button>
-                      <button
-                        title="Move to trash"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          trashPage(page.id)
-                        }}
-                      >
-                        Trash
-                      </button>
-                    </>
-                  )}
+                  <button
+                    title="Restore"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      restorePage(page.id)
+                    }}
+                  >
+                    Restore
+                  </button>
+                  <button
+                    className="nx-notes__danger"
+                    title="Delete permanently"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      handleDeleteForever(page)
+                    }}
+                  >
+                    Delete
+                  </button>
                 </div>
               </div>
             ))
+          ) : (
+            <FolderTree
+              pages={list}
+              filtering={filtering}
+              query={query}
+              typeName={typeName}
+              onDuplicate={(page) => duplicatePage(page.id)}
+              onTrash={(page) => trashPage(page.id)}
+            />
           )}
         </div>
 

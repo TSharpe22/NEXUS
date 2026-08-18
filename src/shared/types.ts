@@ -7,9 +7,36 @@ export interface Page {
   icon: string | null
   content: string // JSON string of the BlockNote document
   page_width: PageWidth
+  /** Folder this page lives in. null = root of the tree. */
+  folder_id: string | null
   is_deleted: number
   created_at: string
   updated_at: string
+}
+
+/** A node in the Notes list tree. A page belongs to at most one folder. */
+export interface Folder {
+  id: string
+  name: string
+  parent_folder_id: string | null
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * Tags are first-class rather than a `multi_select` property: properties are
+ * defined per type, and tagging shouldn't require schema setup first.
+ */
+export interface Tag {
+  id: string
+  name: string
+  color: string
+  created_at: string
+}
+
+export interface TagWithCount extends Tag {
+  page_count: number
 }
 
 export type PropertyType = 'text' | 'number' | 'date' | 'boolean' | 'select' | 'multi_select' | 'relation' | 'url'
@@ -116,6 +143,8 @@ export interface NexusAPI {
       id: string,
       data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width' | 'type_id'>>
     ): Promise<void>
+    /** Move a page into a folder, or to the root when folderId is null. */
+    move(id: string, folderId: string | null): Promise<void>
     setType(pageId: string, typeId: string): Promise<void>
     softDelete(id: string): Promise<void>
     restore(id: string): Promise<void>
@@ -123,6 +152,27 @@ export interface NexusAPI {
     emptyTrash(): Promise<number>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
+  }
+  folders: {
+    list(): Promise<Folder[]>
+    create(name: string, parentFolderId: string | null): Promise<Folder>
+    rename(id: string, name: string): Promise<void>
+    /** Reparent a folder. Rejects a move that would create a cycle. */
+    move(id: string, parentFolderId: string | null): Promise<void>
+    /** Delete the folder; its pages and subfolders move up to its parent. */
+    remove(id: string): Promise<void>
+  }
+  tags: {
+    list(): Promise<TagWithCount[]>
+    getForPage(pageId: string): Promise<Tag[]>
+    /** Attach a tag by name, creating it when it doesn't exist yet. */
+    addToPage(pageId: string, name: string): Promise<Tag>
+    removeFromPage(pageId: string, tagId: string): Promise<void>
+    rename(id: string, name: string): Promise<void>
+    remove(id: string): Promise<void>
+    setColor(id: string, color: string): Promise<void>
+    /** Ids of pages carrying at least one of the given tags. */
+    pageIdsFor(tagIds: string[]): Promise<string[]>
   }
   properties: {
     getForPage(pageId: string): Promise<Property[]>
@@ -132,6 +182,8 @@ export interface NexusAPI {
       type: PropertyType,
       value: string | number | null
     ): Promise<void>
+    /** Distinct values already recorded for this property key. */
+    knownValues(key: string): Promise<string[]>
     remove(pageId: string, key: string): Promise<void>
   }
   types: {

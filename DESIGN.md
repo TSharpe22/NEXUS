@@ -67,6 +67,7 @@ Simple geometric forms only (square, circle, diamond) — no illustrative icon s
 
 - **1.5px outline stroke** as the default.
 - **Filled** reserved for the single "selected/active" state (current nav item, current node) — never for anything else.
+- **Callout markers** get distinction from shape × colour rather than from an icon set: three shapes across the four semantic colours is twelve legible variants, which is what an icon picker would have bought. Outline, like everything else — the marker is not a selected state.
 
 ## Motion
 

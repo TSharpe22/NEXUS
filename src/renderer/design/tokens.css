@@ -222,3 +222,113 @@ button {
 .nx-select {
   cursor: pointer;
 }
+
+/* ============================================================
+   Tag chip
+   ------------------------------------------------------------
+   Shared by the tag bar under a page title, the tag filter in the Notes
+   list, and the multi_select property editor, so all three read as one
+   control. Colour comes from a modifier class rather than an inline style —
+   tags carry one of the four semantic colour names.
+   ============================================================ */
+
+.nx-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--nx-tag-color, var(--nx-border-2));
+  border-radius: 99px;
+  background: var(--nx-tag-tint, transparent);
+  color: var(--nx-text);
+  font-size: 11.5px;
+  line-height: 16px;
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-tag-chip--accent {
+  --nx-tag-color: var(--nx-accent);
+  --nx-tag-tint: var(--nx-accent-tint-soft);
+}
+.nx-tag-chip--info {
+  --nx-tag-color: var(--nx-info);
+  --nx-tag-tint: rgba(126, 163, 201, 0.08);
+}
+.nx-tag-chip--success {
+  --nx-tag-color: var(--nx-success);
+  --nx-tag-tint: rgba(127, 174, 122, 0.08);
+}
+.nx-tag-chip--critical {
+  --nx-tag-color: var(--nx-critical);
+  --nx-tag-tint: rgba(217, 96, 79, 0.08);
+}
+
+/* Active = this tag is filtering the list. Per DESIGN.md a selection reads as
+   an accent-tinted fill, so the chip fills with its own colour. */
+.nx-tag-chip.is-active {
+  background: var(--nx-tag-color, var(--nx-accent));
+  border-color: var(--nx-tag-color, var(--nx-accent));
+}
+
+.nx-tag-chip.is-active .nx-tag-chip__label,
+.nx-tag-chip.is-active .nx-tag-chip__count {
+  color: var(--nx-surface-sunken);
+}
+
+.nx-tag-chip__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tag-chip__count {
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+}
+
+.nx-tag-chip__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--nx-motion), background var(--nx-motion);
+}
+
+.nx-tag-chip:hover .nx-tag-chip__x {
+  opacity: 0.6;
+}
+
+.nx-tag-chip__x:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nx-tag-chip__input {
+  min-width: 90px;
+  padding: 1px var(--nx-space-2);
+  font-size: 11.5px;
+  line-height: 16px;
+}

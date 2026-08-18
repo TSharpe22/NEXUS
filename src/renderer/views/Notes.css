@@ -422,3 +422,202 @@
   font-size: 12.5px;
   padding: var(--nx-space-1) 0;
 }
+
+/* ---------------- folder tree ---------------- */
+
+.nx-tree {
+  min-height: 48px;
+  border-radius: var(--nx-radius-sm);
+  transition: background var(--nx-motion), box-shadow var(--nx-motion);
+}
+
+.nx-tree.is-drop-target {
+  background: var(--nx-accent-tint-soft);
+  box-shadow: inset 0 0 0 1px var(--nx-accent-tint);
+}
+
+.nx-tree-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  padding: 5px var(--nx-space-2) 5px 0;
+  border-radius: var(--nx-radius-sm);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--nx-motion);
+}
+
+.nx-tree-row:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-tree-row.is-active {
+  background: var(--nx-accent-tint-soft);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.nx-tree-row.is-drop-target {
+  background: var(--nx-accent-tint);
+  box-shadow: inset 0 0 0 1px var(--nx-accent);
+}
+
+.nx-tree-row__chevron,
+.nx-tree-row__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--nx-text-dim);
+}
+
+.nx-tree-row__chevron {
+  width: 10px;
+}
+
+.nx-tree-row__icon {
+  width: 12px;
+}
+
+.nx-tree-row__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.nx-tree-row__title {
+  color: var(--nx-text);
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-tree-row__title--folder {
+  flex: 1;
+  min-width: 0;
+  color: var(--nx-text-muted);
+}
+
+.nx-tree-row__meta {
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-tree-row__count {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--nx-text-dim);
+}
+
+.nx-tree-row__actions {
+  /* Overlaid rather than in flow: four buttons in a 268px column stole enough
+     width to truncate every folder name to "New fol…" even while hidden. */
+  position: absolute;
+  right: var(--nx-space-2);
+  display: flex;
+  gap: var(--nx-space-1);
+  flex-shrink: 0;
+  padding-left: var(--nx-space-3);
+  background: linear-gradient(to right, transparent, var(--nx-row-hover) 12px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--nx-motion);
+}
+
+.nx-tree-row:hover .nx-tree-row__actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.nx-tree-row__actions button {
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  padding: 2px 4px;
+  border-radius: var(--nx-radius-sm);
+  transition: background var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-tree-row__actions button:hover {
+  background: var(--nx-surface-raised);
+  color: var(--nx-text);
+}
+
+.nx-tree-row__actions .nx-tree-row__danger:hover {
+  color: var(--nx-critical);
+}
+
+.nx-tree-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 1px var(--nx-space-2);
+  font-size: 13px;
+}
+
+.nx-tree-empty {
+  padding: 3px 0 5px;
+  font-size: 11px;
+  color: var(--nx-text-dim);
+  opacity: 0.7;
+  user-select: none;
+}
+
+/* ---------------- tag filter ---------------- */
+
+.nx-tagfilter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-1);
+}
+
+.nx-tagfilter__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nx-tagfilter__clear {
+  background: transparent;
+  border: none;
+  color: var(--nx-accent);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  padding: 0;
+}
+
+.nx-tagfilter__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nx-space-1);
+}
+
+/* Suggestion menu for the multi_select property editor. Shares
+   .nx-tagbar__option with the tag bar so both read the same. */
+.nx-properties__tag-field {
+  position: relative;
+  display: inline-flex;
+}
+
+.nx-properties__tag-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 160px;
+  max-height: 200px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--nx-space-1);
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+}

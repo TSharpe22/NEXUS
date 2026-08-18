@@ -151,7 +151,7 @@ db.pragma('foreign_keys = ON')
 // ------------------------------------------------------------------
 console.log('\nmigration from first-build schema:')
 check('backup taken before migrating', backupCalls, 1)
-check('user_version stamped', db.pragma('user_version', { simple: true }), 2)
+check('user_version stamped', db.pragma('user_version', { simple: true }), 3)
 check('legacy blocks table dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='blocks'`).get().c, 0)
 check('legacy property_values dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='property_values'`).get().c, 0)
 check('activity_log created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='activity_log'`).get().c, 1)
@@ -163,7 +163,14 @@ check('block order preserved', content.map((b) => b.type), ['heading', 'paragrap
 check('column contents unwrapped, not dropped', [content[2].content[0].text, content[3].content[0].text], ['left col', 'right col'])
 check('page_width preset coerced to number', p1.page_width, 900)
 check('page_width is a JS number', typeof p1.page_width, 'number')
-check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at'])
+check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at', 'folder_id'])
+
+// v3 — organisation tables. Additive, so they have to appear on a migrated
+// first-build file just as they do on a fresh one.
+check('folders table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='folders'`).get().c, 1)
+check('tags table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='tags'`).get().c, 1)
+check('page_tags table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='page_tags'`).get().c, 1)
+check('migrated pages start at the folder root', db.prepare('SELECT count(*) c FROM pages WHERE folder_id IS NOT NULL').get().c, 0)
 
 check('archived page folded into trash', db.prepare('SELECT is_deleted FROM pages WHERE id = ?').get('p2').is_deleted, 1)
 check('page with no blocks gets empty doc', db.prepare('SELECT content FROM pages WHERE id = ?').get('p3').content, '[]')

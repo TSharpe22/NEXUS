@@ -62,14 +62,26 @@ rebuilding either of those two things.
 
 Nexus's atomic unit is a **hybrid note-object**: every page has a body
 (BlockNote document) and a title, and can optionally be assigned a `type_id`
-that gives it typed properties. Tags are just a `multi_select` property —
-not a separate system. This is what lets a plain note, a tagged log entry,
-and a "Directive" (task) all be the same underlying thing.
+that gives it typed properties. This is what lets a plain note, a tagged log
+entry, and a "Directive" (task) all be the same underlying thing.
+
+**Tags are their own system, deliberately.** The original design made them a
+`multi_select` property. In practice that meant you could not tag anything
+until you had defined a property on the page's type — schema design as the
+price of admission for "mark this note as reading". Tags now have their own
+tables and their own chip UI, and `multi_select` properties remain for
+tag-shaped data that genuinely belongs to a type (a Trade Log's `setups`, a
+Book's `themes`). Two controls, because they answer two different questions.
+
+**Folders are their own axis too.** A page sits in at most one folder — that
+is what makes the Notes list a tree you can navigate — while tags stay
+many-to-many. Location and topic are different questions and neither
+substitutes for the other.
 
 ### Schema (simplified from the original)
 
 - `pages` — `id, title, icon, type_id, content (JSON blob of the BlockNote
-  document), page_width, is_deleted, created_at, updated_at`. The BlockNote
+  document), page_width, folder_id, is_deleted, created_at, updated_at`. The BlockNote
   document is stored as a single JSON blob, not exploded into a `blocks`
   table with parent/order columns. BlockNote already models a document as
   one ordered nested array — storing it as rows and reassembling on every
@@ -77,6 +89,17 @@ and a "Directive" (task) all be the same underlying thing.
 - `properties` — `page_id, key, type, value_text, value_number, value_date,
   value_relation`. Sparse columns, not a JSON blob — keeps typed queries
   cheap.
+- `folders` — `id, name, parent_folder_id, sort_order`. The Notes list tree.
+  Both this and `pages.folder_id` are `ON DELETE SET NULL`, so removing a
+  folder can never cascade into losing pages; `deleteFolder()` reparents its
+  contents onto its own parent first. `moveFolder()` refuses a move that
+  would place a folder inside its own subtree, which would otherwise detach
+  that subtree from the root and make it unreachable.
+- `tags` / `page_tags` — `tags(id, name, color)` with a case-insensitive
+  unique index on `name`, joined to pages through `page_tags(page_id,
+  tag_id)`. Renaming a tag onto an existing name merges the two rather than
+  failing the index. Colour is one of the four semantic names from
+  `tokens.css`, assigned round-robin on creation.
 - `links` — `source_page_id, target_page_id, context`. Backs `[[wiki-links]]`
   and the backlinks panel.
 - `activity_log` — `id, page_id, event_type, message, created_at`. Written
@@ -106,6 +129,10 @@ first build, and is migrated (blocks rows folded into one JSON document,
 to `nexus.db.backup-<timestamp>`. `user_version` is stamped afterwards so it
 runs once.
 
+`user_version` 3 adds folders and tags. That step is purely additive — new
+tables plus one `ALTER TABLE pages ADD COLUMN folder_id` — so a v2 file needs
+no rebuild and no backup, and existing pages simply start at the folder root.
+
 ### Data access
 
 `src/main/repo.ts` holds all reads/writes as plain functions, called by
@@ -124,12 +151,16 @@ Five sections, each a thin view over the same page/property model:
   vault (pan, zoom, drag a node, click to open), vault stats, recent
   activity, and an entries table (name / type / properties / modified)
   across all pages.
-- **Notes** — the page list and the block editor. Creating a page picks (or
-  creates) a type inline; the list is searchable and has a trash. Opening a
-  page shows the BlockNote editor in a centred reading column, a properties
-  panel driven entirely by that page's type schema (with an inline
-  "+ Add property" to grow the schema, and a type picker to re-type the
-  page), and the backlinks panel.
+- **Notes** — the page tree and the block editor. Creating a page picks (or
+  creates) a type inline; the list is a folder tree (drag a page or a folder
+  onto a folder to move it, expansion persists across restarts), filterable
+  by the tag chips above it and by search — searching also matches folder
+  names, and forces open any folder holding a match so nothing hides behind
+  a collapsed ancestor. Trash stays a flat list. Opening a page shows the
+  BlockNote editor in a centred reading column with its tag chips under the
+  title, a properties panel driven entirely by that page's type schema (with
+  an inline "+ Add property" to grow the schema, and a type picker to re-type
+  the page), and the backlinks panel.
 - **Tables** — pick any user-created type, see a table of its pages with
   columns generated from that type's property_definitions. Types can be
   renamed and deleted here; deleting a type re-homes its pages onto Note

@@ -15,7 +15,10 @@ import type {
   GraphNode,
   GraphEdge,
   TypeDef,
-  PropertyDefinition
+  PropertyDefinition,
+  Folder,
+  Tag,
+  TagWithCount
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -131,14 +134,23 @@ export function duplicatePage(id: string): Page {
   const newId = uuidv4()
   const ts = now()
   db.prepare(
-    `INSERT INTO pages (id, type_id, title, icon, content, page_width, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  ).run(newId, source.type_id, `${source.title} (copy)`, source.icon, source.content, source.page_width, ts, ts)
+    `INSERT INTO pages (id, type_id, title, icon, content, page_width, folder_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    newId, source.type_id, `${source.title} (copy)`, source.icon, source.content,
+    source.page_width, source.folder_id ?? null, ts, ts
+  )
 
   for (const prop of getPropertiesForPage(id)) {
     const value = prop.type === 'date' ? prop.value_date : (prop.value_text ?? prop.value_number)
     setProperty(newId, prop.key, prop.type, value)
   }
+
+  // A copy lands beside the original, in the same folder and with the same tags.
+  db.prepare(
+    `INSERT INTO page_tags (page_id, tag_id, created_at)
+     SELECT ?, tag_id, ? FROM page_tags WHERE page_id = ?`
+  ).run(newId, ts, id)
 
   return getPageById(newId)!
 }
@@ -291,6 +303,43 @@ export function setProperty(
   ).run(id, pageId, key, type, valueText, valueNumber, valueDate)
 
   logActivity(pageId, 'property', `set "${key}"`)
+}
+
+/**
+ * Every distinct value recorded for a property key, across all live pages.
+ * Multi-selects store a JSON array in value_text, so those are unpacked —
+ * this is what lets the multi_select editor suggest values already in use
+ * instead of asking for them to be retyped.
+ */
+export function getKnownPropertyValues(key: string): string[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT pr.value_text AS v
+       FROM properties pr
+       JOIN pages p ON p.id = pr.page_id AND p.is_deleted = 0
+       WHERE pr.key = ? AND pr.value_text IS NOT NULL`
+    )
+    .all(key) as { v: string }[]
+
+  const counts = new Map<string, number>()
+  const bump = (value: string) => {
+    const clean = value.trim()
+    if (clean) counts.set(clean, (counts.get(clean) ?? 0) + 1)
+  }
+
+  for (const row of rows) {
+    let parsed: unknown = null
+    try {
+      parsed = JSON.parse(row.v)
+    } catch {
+      // Not JSON — a plain select/text value, which counts as one value.
+    }
+    if (Array.isArray(parsed)) for (const item of parsed) if (typeof item === 'string') bump(item)
+    else bump(row.v)
+  }
+
+  // Most-used first: the value you reach for again is usually the common one.
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([value]) => value)
 }
 
 export function removeProperty(pageId: string, key: string): void {
@@ -488,4 +537,217 @@ export function getGraphPreview(): GraphPreview {
   const edgeCount = (db.prepare('SELECT COUNT(*) AS c FROM links').get() as { c: number }).c
   const nodeCount = (db.prepare('SELECT COUNT(*) AS c FROM pages WHERE is_deleted = 0').get() as { c: number }).c
   return { nodeCount, edgeCount }
+}
+
+// ============================================================
+// Folders
+// ============================================================
+
+export function getFolders(): Folder[] {
+  return getDb()
+    .prepare('SELECT * FROM folders ORDER BY sort_order ASC, name COLLATE NOCASE ASC')
+    .all() as Folder[]
+}
+
+export function createFolder(name: string, parentFolderId: string | null): Folder {
+  const db = getDb()
+  const id = uuidv4()
+  const ts = now()
+
+  // New folders append to the end of their level.
+  const { max } = db
+    .prepare('SELECT COALESCE(MAX(sort_order), -1) AS max FROM folders WHERE parent_folder_id IS ?')
+    .get(parentFolderId) as { max: number }
+
+  db.prepare(
+    `INSERT INTO folders (id, name, parent_folder_id, sort_order, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(id, name.trim() || 'New folder', parentFolderId, max + 1, ts, ts)
+
+  logActivity(null, 'folder', `created folder "${name.trim() || 'New folder'}"`)
+  return db.prepare('SELECT * FROM folders WHERE id = ?').get(id) as Folder
+}
+
+export function renameFolder(id: string, name: string): void {
+  const clean = name.trim()
+  if (!clean) return
+  getDb().prepare('UPDATE folders SET name = ?, updated_at = ? WHERE id = ?').run(clean, now(), id)
+}
+
+/** True when `candidateParentId` sits somewhere inside `folderId`'s subtree. */
+function isDescendantOf(candidateParentId: string, folderId: string): boolean {
+  const parentOf = getDb().prepare('SELECT parent_folder_id FROM folders WHERE id = ?')
+  let cursor: string | null = candidateParentId
+  // Bounded so a cycle already present in the data can't hang the main process.
+  for (let depth = 0; cursor && depth < 1000; depth++) {
+    if (cursor === folderId) return true
+    const row = parentOf.get(cursor) as { parent_folder_id: string | null } | undefined
+    cursor = row?.parent_folder_id ?? null
+  }
+  return false
+}
+
+export function moveFolder(id: string, parentFolderId: string | null): void {
+  if (id === parentFolderId) return
+  // Dropping a folder into its own descendant would detach that whole subtree
+  // from the root and make it unreachable in the list.
+  if (parentFolderId && isDescendantOf(parentFolderId, id)) {
+    throw new Error('A folder cannot be moved inside one of its own subfolders')
+  }
+
+  const db = getDb()
+  const { max } = db
+    .prepare(
+      'SELECT COALESCE(MAX(sort_order), -1) AS max FROM folders WHERE parent_folder_id IS ? AND id != ?'
+    )
+    .get(parentFolderId, id) as { max: number }
+
+  db.prepare('UPDATE folders SET parent_folder_id = ?, sort_order = ?, updated_at = ? WHERE id = ?').run(
+    parentFolderId,
+    max + 1,
+    now(),
+    id
+  )
+}
+
+/**
+ * Delete a folder, lifting its pages and subfolders to its own parent.
+ * Removing a container should never destroy notes.
+ */
+export function deleteFolder(id: string): void {
+  const db = getDb()
+  const run = db.transaction(() => {
+    const folder = db.prepare('SELECT name, parent_folder_id FROM folders WHERE id = ?').get(id) as
+      | { name: string; parent_folder_id: string | null }
+      | undefined
+    if (!folder) return
+    const parent = folder.parent_folder_id ?? null
+
+    db.prepare('UPDATE pages SET folder_id = ? WHERE folder_id = ?').run(parent, id)
+    db.prepare('UPDATE folders SET parent_folder_id = ? WHERE parent_folder_id = ?').run(parent, id)
+    db.prepare('DELETE FROM folders WHERE id = ?').run(id)
+    logActivity(null, 'folder', `deleted folder "${folder.name}"`)
+  })
+  run()
+}
+
+export function movePageToFolder(pageId: string, folderId: string | null): void {
+  getDb()
+    .prepare('UPDATE pages SET folder_id = ?, updated_at = ? WHERE id = ?')
+    .run(folderId, now(), pageId)
+}
+
+// ============================================================
+// Tags
+// ============================================================
+
+export function getTags(): TagWithCount[] {
+  return getDb()
+    .prepare(
+      `SELECT t.*, COUNT(p.id) AS page_count
+       FROM tags t
+       LEFT JOIN page_tags pt ON pt.tag_id = t.id
+       LEFT JOIN pages p ON p.id = pt.page_id AND p.is_deleted = 0
+       GROUP BY t.id
+       ORDER BY t.name COLLATE NOCASE ASC`
+    )
+    .all() as TagWithCount[]
+}
+
+export function getTagsForPage(pageId: string): Tag[] {
+  return getDb()
+    .prepare(
+      `SELECT t.* FROM tags t
+       JOIN page_tags pt ON pt.tag_id = t.id
+       WHERE pt.page_id = ?
+       ORDER BY t.name COLLATE NOCASE ASC`
+    )
+    .all(pageId) as Tag[]
+}
+
+/**
+ * The design system's four semantic colours. New tags cycle through them so a
+ * vault gets some variety without the user choosing a colour every time.
+ */
+const TAG_COLORS = ['accent', 'info', 'success', 'critical']
+
+export function addTagToPage(pageId: string, rawName: string): Tag {
+  const db = getDb()
+  const name = rawName.trim().replace(/^#/, '')
+  if (!name) throw new Error('A tag needs a name')
+
+  const run = db.transaction((): Tag => {
+    let tag = db.prepare('SELECT * FROM tags WHERE name = ? COLLATE NOCASE').get(name) as Tag | undefined
+
+    if (!tag) {
+      const { count } = db.prepare('SELECT COUNT(*) AS count FROM tags').get() as { count: number }
+      const id = uuidv4()
+      db.prepare('INSERT INTO tags (id, name, color, created_at) VALUES (?, ?, ?, ?)').run(
+        id,
+        name,
+        TAG_COLORS[count % TAG_COLORS.length],
+        now()
+      )
+      tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id) as Tag
+    }
+
+    db.prepare('INSERT OR IGNORE INTO page_tags (page_id, tag_id, created_at) VALUES (?, ?, ?)').run(
+      pageId,
+      tag.id,
+      now()
+    )
+    return tag
+  })
+
+  const tag = run()
+  logActivity(pageId, 'tag', `tagged "${tag.name}"`)
+  return tag
+}
+
+export function removeTagFromPage(pageId: string, tagId: string): void {
+  getDb().prepare('DELETE FROM page_tags WHERE page_id = ? AND tag_id = ?').run(pageId, tagId)
+}
+
+export function renameTag(id: string, rawName: string): void {
+  const db = getDb()
+  const name = rawName.trim().replace(/^#/, '')
+  if (!name) return
+
+  const run = db.transaction(() => {
+    // Renaming onto a name that already exists merges the two rather than
+    // failing the unique index — "these are the same tag" is the intent.
+    const existing = db
+      .prepare('SELECT id FROM tags WHERE name = ? COLLATE NOCASE AND id != ?')
+      .get(name, id) as { id: string } | undefined
+
+    if (existing) {
+      db.prepare(
+        `INSERT OR IGNORE INTO page_tags (page_id, tag_id, created_at)
+         SELECT page_id, ?, ? FROM page_tags WHERE tag_id = ?`
+      ).run(existing.id, now(), id)
+      db.prepare('DELETE FROM tags WHERE id = ?').run(id)
+      return
+    }
+
+    db.prepare('UPDATE tags SET name = ? WHERE id = ?').run(name, id)
+  })
+  run()
+}
+
+export function deleteTag(id: string): void {
+  getDb().prepare('DELETE FROM tags WHERE id = ?').run(id)
+}
+
+export function setTagColor(id: string, color: string): void {
+  getDb().prepare('UPDATE tags SET color = ? WHERE id = ?').run(color, id)
+}
+
+/** Ids of pages carrying at least one of the given tags. */
+export function getPageIdsForTags(tagIds: string[]): string[] {
+  if (tagIds.length === 0) return []
+  const placeholders = tagIds.map(() => '?').join(', ')
+  const rows = getDb()
+    .prepare(`SELECT DISTINCT page_id FROM page_tags WHERE tag_id IN (${placeholders})`)
+    .all(...tagIds) as { page_id: string }[]
+  return rows.map((r) => r.page_id)
 }

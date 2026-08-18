@@ -14,11 +14,30 @@ const api: NexusAPI = {
     hardDelete: (id) => ipcRenderer.invoke('pages:hardDelete', id),
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
     emptyTrash: () => ipcRenderer.invoke('pages:emptyTrash'),
-    duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id)
+    duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id),
+    move: (id, folderId) => ipcRenderer.invoke('pages:move', id, folderId)
+  },
+  folders: {
+    list: () => ipcRenderer.invoke('folders:list'),
+    create: (name, parentFolderId) => ipcRenderer.invoke('folders:create', name, parentFolderId),
+    rename: (id, name) => ipcRenderer.invoke('folders:rename', id, name),
+    move: (id, parentFolderId) => ipcRenderer.invoke('folders:move', id, parentFolderId),
+    remove: (id) => ipcRenderer.invoke('folders:remove', id)
+  },
+  tags: {
+    list: () => ipcRenderer.invoke('tags:list'),
+    getForPage: (pageId) => ipcRenderer.invoke('tags:getForPage', pageId),
+    addToPage: (pageId, name) => ipcRenderer.invoke('tags:addToPage', pageId, name),
+    removeFromPage: (pageId, tagId) => ipcRenderer.invoke('tags:removeFromPage', pageId, tagId),
+    rename: (id, name) => ipcRenderer.invoke('tags:rename', id, name),
+    remove: (id) => ipcRenderer.invoke('tags:remove', id),
+    setColor: (id, color) => ipcRenderer.invoke('tags:setColor', id, color),
+    pageIdsFor: (tagIds) => ipcRenderer.invoke('tags:pageIdsFor', tagIds)
   },
   properties: {
     getForPage: (pageId) => ipcRenderer.invoke('properties:getForPage', pageId),
     set: (pageId, key, type, value) => ipcRenderer.invoke('properties:set', pageId, key, type, value),
+    knownValues: (key) => ipcRenderer.invoke('properties:knownValues', key),
     remove: (pageId, key) => ipcRenderer.invoke('properties:remove', pageId, key)
   },
   types: {

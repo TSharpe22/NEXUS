@@ -8,6 +8,7 @@ import { getSlashMenuItems } from './slash-items'
 import { useAppStore } from '../store/app-store'
 import { useDebounce } from '../hooks/use-debounce'
 import { getLinkMenuItems, LinkMenu, extractLinkTargets } from './link-menu'
+import { TagBar } from './TagBar'
 import './Editor.css'
 
 interface EditorProps {
@@ -33,6 +34,7 @@ function parseInitialContent(content: string) {
 export function Editor({ page }: EditorProps) {
   const [title, setTitle] = useState(page.title)
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const editorRootRef = useRef<HTMLDivElement>(null)
   const setSaveStatus = useAppStore((s) => s.setSaveStatus)
   const patchPage = useAppStore((s) => s.patchPage)
 
@@ -90,6 +92,60 @@ export function Editor({ page }: EditorProps) {
     return () => window.removeEventListener('beforeunload', flush)
   }, [saveContent, saveTitle])
 
+  /**
+   * Enter inside an open toggle puts the new block INSIDE it.
+   *
+   * Without this a toggle can only ever be an empty header: Enter produced a
+   * sibling paragraph below it, so there was no way to put anything under the
+   * chevron except by pressing Tab afterwards, which nothing tells you about.
+   *
+   * BlockNote's `insertBlocks` placement argument only accepts "before" and
+   * "after" — there is no "nested". Getting a child means either inserting
+   * relative to an existing child, or inserting a sibling and then calling
+   * `nestBlock()`, which acts on whichever block holds the text cursor.
+   */
+  useEffect(() => {
+    const root = editorRootRef.current
+    if (!root) return
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter' || e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return
+
+      const block = editor.getTextCursorPosition()?.block as
+        | { id?: string; type?: string; props?: { open?: boolean }; children?: unknown[] }
+        | undefined
+      if (!block?.id || block.type !== 'toggle') return
+      // A closed toggle keeps the ordinary behaviour: Enter makes a sibling.
+      if (block.props?.open === false) return
+
+      e.preventDefault()
+      e.stopPropagation()
+
+      const firstChild = (Array.isArray(block.children) ? block.children[0] : undefined) as
+        | { id?: string }
+        | undefined
+
+      if (firstChild?.id) {
+        // Already has children — the new line goes to the top of the group,
+        // which is where Notion puts it too.
+        const inserted = editor.insertBlocks([{ type: 'paragraph' } as never], firstChild.id, 'before')
+        const created = Array.isArray(inserted) ? inserted[0] : inserted
+        if (created) editor.setTextCursorPosition(created as never, 'start')
+        return
+      }
+
+      const inserted = editor.insertBlocks([{ type: 'paragraph' } as never], block.id, 'after')
+      const created = Array.isArray(inserted) ? inserted[0] : inserted
+      if (!created) return
+      editor.setTextCursorPosition(created as never, 'start')
+      if (editor.canNestBlock()) editor.nestBlock()
+    }
+
+    // Capture, so this runs before BlockNote's own Enter handling.
+    root.addEventListener('keydown', onKeyDown, true)
+    return () => root.removeEventListener('keydown', onKeyDown, true)
+  }, [editor])
+
   const handleLinkSelect = async (target: Page | null, linkTitle: string) => {
     let targetPage = target
     if (!targetPage) {
@@ -106,7 +162,7 @@ export function Editor({ page }: EditorProps) {
   }
 
   return (
-    <div className="nx-editor">
+    <div className="nx-editor" ref={editorRootRef}>
       <textarea
         ref={titleRef}
         className="nx-editor__title"
@@ -126,6 +182,8 @@ export function Editor({ page }: EditorProps) {
           }
         }}
       />
+
+      <TagBar pageId={page.id} />
 
       <BlockNoteView
         editor={editor}

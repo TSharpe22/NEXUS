@@ -98,6 +98,110 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('pages:move', (_, id: string, folderId: string | null) => {
+    try {
+      return repo.movePageToFolder(id, folderId)
+    } catch (e) {
+      rethrow('pages:move', e)
+    }
+  })
+
+  // ---- Folders ----
+  ipcMain.handle('folders:list', () => {
+    try {
+      return repo.getFolders()
+    } catch (e) {
+      rethrow('folders:list', e)
+    }
+  })
+  ipcMain.handle('folders:create', (_, name: string, parentFolderId: string | null) => {
+    try {
+      return repo.createFolder(name, parentFolderId)
+    } catch (e) {
+      rethrow('folders:create', e)
+    }
+  })
+  ipcMain.handle('folders:rename', (_, id: string, name: string) => {
+    try {
+      return repo.renameFolder(id, name)
+    } catch (e) {
+      rethrow('folders:rename', e)
+    }
+  })
+  ipcMain.handle('folders:move', (_, id: string, parentFolderId: string | null) => {
+    try {
+      return repo.moveFolder(id, parentFolderId)
+    } catch (e) {
+      rethrow('folders:move', e)
+    }
+  })
+  ipcMain.handle('folders:remove', (_, id: string) => {
+    try {
+      return repo.deleteFolder(id)
+    } catch (e) {
+      rethrow('folders:remove', e)
+    }
+  })
+
+  // ---- Tags ----
+  ipcMain.handle('tags:list', () => {
+    try {
+      return repo.getTags()
+    } catch (e) {
+      rethrow('tags:list', e)
+    }
+  })
+  ipcMain.handle('tags:getForPage', (_, pageId: string) => {
+    try {
+      return repo.getTagsForPage(pageId)
+    } catch (e) {
+      rethrow('tags:getForPage', e)
+    }
+  })
+  ipcMain.handle('tags:addToPage', (_, pageId: string, name: string) => {
+    try {
+      return repo.addTagToPage(pageId, name)
+    } catch (e) {
+      rethrow('tags:addToPage', e)
+    }
+  })
+  ipcMain.handle('tags:removeFromPage', (_, pageId: string, tagId: string) => {
+    try {
+      return repo.removeTagFromPage(pageId, tagId)
+    } catch (e) {
+      rethrow('tags:removeFromPage', e)
+    }
+  })
+  ipcMain.handle('tags:rename', (_, id: string, name: string) => {
+    try {
+      return repo.renameTag(id, name)
+    } catch (e) {
+      rethrow('tags:rename', e)
+    }
+  })
+  ipcMain.handle('tags:remove', (_, id: string) => {
+    try {
+      return repo.deleteTag(id)
+    } catch (e) {
+      rethrow('tags:remove', e)
+    }
+  })
+  ipcMain.handle('tags:setColor', (_, id: string, color: string) => {
+    try {
+      return repo.setTagColor(id, color)
+    } catch (e) {
+      rethrow('tags:setColor', e)
+    }
+  })
+  ipcMain.handle('tags:pageIdsFor', (_, tagIds: unknown) => {
+    try {
+      if (!Array.isArray(tagIds)) throw new Error('tagIds must be an array')
+      return repo.getPageIdsForTags(tagIds as string[])
+    } catch (e) {
+      rethrow('tags:pageIdsFor', e)
+    }
+  })
+
   ipcMain.handle('properties:getForPage', (_, pageId: string) => {
     try {
       return repo.getPropertiesForPage(pageId)
@@ -115,6 +219,13 @@ export function registerIpcHandlers(): void {
       }
     }
   )
+  ipcMain.handle('properties:knownValues', (_, key: string) => {
+    try {
+      return repo.getKnownPropertyValues(key)
+    } catch (e) {
+      rethrow('properties:knownValues', e)
+    }
+  })
   ipcMain.handle('properties:remove', (_, pageId: string, key: string) => {
     try {
       return repo.removeProperty(pageId, key)

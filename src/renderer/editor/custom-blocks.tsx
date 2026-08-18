@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { createReactBlockSpec } from '@blocknote/react'
 import { Icon } from '../design/Icon'
 
@@ -64,38 +65,118 @@ const CALLOUT_COLORS = {
 
 export type CalloutColor = keyof typeof CALLOUT_COLORS
 
-/** Callout: tinted panel with a coloured left rule + geometric marker, no icon picker. */
+const COLOR_KEYS = Object.keys(CALLOUT_COLORS) as CalloutColor[]
+const SHAPE_KEYS = ['diamond', 'square', 'circle'] as const
+type CalloutShape = (typeof SHAPE_KEYS)[number]
+
+/**
+ * Callout: tinted panel with a coloured left rule and a marker.
+ *
+ * The marker is a shape + colour pair rather than an illustrative icon —
+ * DESIGN.md restricts iconography to square/circle/diamond outlines. Three
+ * shapes across four colours still gives twelve visually distinct callouts,
+ * which is what the icon set was doing. Outline by default because filled is
+ * reserved for the selected/active state.
+ */
 export const calloutBlock = createReactBlockSpec(
   {
     type: 'callout',
     content: 'inline',
     propSchema: {
-      color: { default: 'amber' }
+      color: { default: 'amber' },
+      shape: { default: 'diamond' }
     }
   },
   {
-    render: ({ block, contentRef }) => <CalloutBlock block={block} contentRef={contentRef} />
+    render: ({ block, editor, contentRef }) => (
+      <CalloutBlock block={block} editor={editor} contentRef={contentRef} />
+    )
   }
 )
 
 function CalloutBlock({
   block,
+  editor,
   contentRef
 }: {
-  block: { props: { color?: string } }
+  block: { props: { color?: string; shape?: string } }
+  editor: { updateBlock: (block: never, update: never) => unknown }
   contentRef: (element: HTMLElement | null) => void
 }) {
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const pickerRef = useRef<HTMLDivElement | null>(null)
+
   const colorKey = (
     block.props.color && block.props.color in CALLOUT_COLORS ? block.props.color : 'amber'
   ) as CalloutColor
+  const shapeKey = (
+    SHAPE_KEYS.includes(block.props.shape as CalloutShape) ? block.props.shape : 'diamond'
+  ) as CalloutShape
   const [color, tint] = CALLOUT_COLORS[colorKey]
+
+  useEffect(() => {
+    if (!pickerOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    return () => window.removeEventListener('mousedown', onDown)
+  }, [pickerOpen])
+
+  const apply = (next: { color?: CalloutColor; shape?: CalloutShape }) =>
+    editor.updateBlock(block as never, {
+      type: 'callout',
+      props: { color: colorKey, shape: shapeKey, ...next }
+    } as never)
 
   return (
     <div className="nx-callout" style={{ borderColor: color, background: tint }}>
       {/* contentEditable={false} keeps the marker out of the editable flow, so
           the caret can't be placed on it and Backspace can't delete it. */}
       <span className="nx-callout__marker" contentEditable={false}>
-        <Icon shape="diamond" filled size={12} color={color} />
+        <button
+          type="button"
+          className="nx-callout__marker-btn"
+          aria-label="Change callout marker"
+          title="Change callout marker"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => setPickerOpen((v) => !v)}
+        >
+          <Icon shape={shapeKey} size={12} color={color} />
+        </button>
+
+        {pickerOpen && (
+          <div className="nx-callout__picker" ref={pickerRef}>
+            <div className="nx-callout__picker-row">
+              {SHAPE_KEYS.map((shape) => (
+                <button
+                  key={shape}
+                  type="button"
+                  className={`nx-callout__picker-cell ${shape === shapeKey ? 'is-active' : ''}`}
+                  title={shape}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => apply({ shape })}
+                >
+                  <Icon shape={shape} size={12} color={color} filled={shape === shapeKey} />
+                </button>
+              ))}
+            </div>
+            <div className="nx-callout__picker-row">
+              {COLOR_KEYS.map((key) => (
+                <button
+                  key={key}
+                  type="button"
+                  className={`nx-callout__picker-cell ${key === colorKey ? 'is-active' : ''}`}
+                  title={key}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => apply({ color: key })}
+                >
+                  <Icon shape={shapeKey} size={12} color={CALLOUT_COLORS[key][0]} filled={key === colorKey} />
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </span>
       <div ref={contentRef} className="nx-callout__content" />
     </div>
