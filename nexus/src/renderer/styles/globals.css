@@ -47,7 +47,13 @@
      text-dim so the spec's pair still dominates. */
   --nx-text-primary:    #e3e4ea;
   --nx-text-secondary:  #6b6d78;
-  --nx-text-tertiary:   #4d4f58;   /* EXTENSION */
+  /* Deliberately an alias, not a third tone. An earlier pass added a dimmer
+     tier for kbd hints/placeholders/timestamps; measured against these
+     surfaces it landed at 2.3:1 contrast — legible only if you already knew
+     what it said. The system is two-tone on purpose and separates rank by
+     size, weight and family (mono vs sans) instead of by more grey. Kept as
+     an alias so components reading the old name don't churn. */
+  --nx-text-tertiary:   var(--nx-text-secondary);
   --nx-text:            var(--nx-text-primary);
 
   /* --- Brand accent — NEXUS amber --------------------------------------
@@ -158,6 +164,17 @@
   background: var(--nx-disabled-bg);
   color: var(--nx-disabled-fg);
   cursor: default;
+}
+
+/* Command palette row, selected — same idiom as every other list surface. */
+.nx-cmd-item[data-selected='true']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--nx-accent);
 }
 
 /* Chips and inputs take the 2px radius; panels and cards take 3px. */
@@ -370,7 +387,7 @@ button:focus-visible,
   margin-bottom: 0.2rem;
 }
 
-.bn-editor [data-content-type="codeBlock"] code,
+/* Inline code is a chip: bordered, 2px radius, accent text. */
 .bn-editor code {
   font-family: var(--nx-font-mono);
   font-size: var(--nx-text-data);
@@ -381,11 +398,25 @@ button:focus-visible,
   color: var(--nx-accent);
 }
 
+/* Code INSIDE a code block is not a chip. The rule above used to match both,
+   so every code block rendered its contents as a bordered accent-coloured
+   pill floating inside the block's own panel. The block is the container;
+   its text is just text. */
+.bn-editor [data-content-type="codeBlock"] code {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  color: var(--nx-text-primary);
+  font-size: 13px;
+}
+
 .bn-editor [data-content-type="codeBlock"] {
   background: var(--nx-bg-elevated) !important;
   border: 1px solid var(--nx-border-subtle);
   border-radius: var(--nx-radius-md);
-  margin: 0.75rem 0;
+  margin: var(--nx-space-3) 0;
+  padding: var(--nx-space-3);
 }
 
 .bn-editor blockquote,
@@ -542,7 +573,7 @@ button:focus-visible,
   background: var(--nx-border-subtle);
   opacity: 0;
   border-radius: 1px;
-  transition: background 150ms ease, opacity 150ms ease;
+  transition: background 120ms ease, opacity 120ms ease;
 }
 
 .nx-col-resize-handle:hover::after,
@@ -554,7 +585,7 @@ button:focus-visible,
 /* Side menu / drag handle — fade on hover */
 .bn-editor .bn-side-menu {
   opacity: 0;
-  transition: opacity 150ms ease;
+  transition: opacity 120ms ease;
   color: var(--nx-text-tertiary);
 }
 
@@ -658,11 +689,14 @@ button:focus-visible,
 
 .nx-callout {
   display: flex;
-  gap: 10px;
-  padding: 12px 14px;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-3);
   border-radius: var(--nx-radius-md);
-  background: var(--nx-callout-bg, rgba(107, 138, 253, 0.10));
-  border-left: 3px solid var(--nx-callout-border, rgba(107, 138, 253, 0.40));
+  /* Fallbacks are the accent, matching the block's own default colour —
+     they were still the old blue, so a callout rendered before its inline
+     custom properties landed flashed the pre-system palette. */
+  background: var(--nx-callout-bg, rgb(var(--nx-accent-rgb) / 0.10));
+  border-left: 2px solid var(--nx-callout-border, rgb(var(--nx-accent-rgb) / 0.40));
   width: 100%;
   color: var(--nx-text-primary);
 }
@@ -787,10 +821,29 @@ button:focus-visible,
   transition: background var(--nx-transition-fast), color var(--nx-transition-fast);
 }
 
-.nx-menu__item.is-highlighted,
+/* Spec draws a hard line between hover and selected, and this used to
+   collapse them into one rule. Hover is only a background lift; the
+   accent-tinted fill, the 2px accent left border and the accent text are
+   reserved for the actually-selected row (keyboard highlight in a menu). */
 .nx-menu__item:hover {
   background: var(--nx-bg-hover);
   color: var(--nx-text-primary);
+}
+
+.nx-menu__item.is-highlighted {
+  background: var(--nx-bg-active);
+  color: var(--nx-accent);
+}
+
+.nx-menu__item.is-highlighted::before,
+.nx-link-menu__item.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--nx-accent);
 }
 
 .nx-menu__item.is-active {
@@ -803,7 +856,7 @@ button:focus-visible,
 
 .nx-menu__item.is-danger.is-highlighted,
 .nx-menu__item.is-danger:hover {
-  background: rgba(239, 104, 116, 0.08);
+  background: rgb(217 96 79 / 0.10);
   color: var(--nx-danger-hover);
 }
 
@@ -904,10 +957,9 @@ button:focus-visible,
   gap: 2px;
   background: var(--nx-bg-elevated);
   border: 1px solid var(--nx-border-subtle);
-  border-radius: 8px;
-  padding: 4px;
-  box-shadow: var(--nx-shadow-lg);
-  animation: nxFadeIn 100ms ease-out;
+  border-radius: var(--nx-radius-md);
+  padding: var(--nx-space-1);
+  animation: nxFadeIn 120ms ease-out;
   color: var(--nx-text-secondary);
 }
 
@@ -922,7 +974,7 @@ button:focus-visible,
   border-radius: var(--nx-radius-sm);
   color: var(--nx-text-secondary);
   cursor: pointer;
-  transition: background 80ms ease, color 80ms ease, transform 60ms ease;
+  transition: background 80ms ease, color 80ms ease, transform 80ms ease;
 }
 
 .nx-fmt-btn:hover {
@@ -1131,9 +1183,13 @@ button:focus-visible,
    Animations
    ============================================================ */
 
+/* Spec, Motion: "states change, they don't animate in with flourish."
+   Every entrance here used to translate and/or scale into place. That reads
+   as flourish, so all four collapse to opacity alone — the panel is either
+   there or it isn't, it just doesn't blink into existence. */
 @keyframes nxMenuIn {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 @keyframes nxFadeIn {
@@ -1142,13 +1198,13 @@ button:focus-visible,
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.98); }
-  to   { opacity: 1; transform: translateY(0) scale(1); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 @keyframes slideIn {
-  from { opacity: 0; transform: translateX(-8px); }
-  to   { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 @keyframes nxPulse {
@@ -1157,11 +1213,11 @@ button:focus-visible,
 }
 
 .animate-fade-in {
-  animation: fadeIn 0.18s ease-out;
+  animation: fadeIn 80ms ease-out;
 }
 
 .animate-slide-in {
-  animation: slideIn 0.18s ease-out;
+  animation: slideIn 80ms ease-out;
 }
 
 /* ============================================================
@@ -1256,13 +1312,21 @@ button:focus-visible,
   border: none;
   cursor: pointer;
   text-align: left;
-  transition: background 75ms ease, color 75ms ease;
+  transition: background 80ms ease, color 80ms ease;
 }
 
-.nx-link-menu__item:hover,
-.nx-link-menu__item.is-selected {
+.nx-link-menu__item {
+  position: relative;
+}
+
+.nx-link-menu__item:hover {
   background: var(--nx-bg-hover);
   color: var(--nx-text-primary);
+}
+
+.nx-link-menu__item.is-selected {
+  background: var(--nx-bg-active);
+  color: var(--nx-accent);
 }
 
 .nx-link-menu__icon {
@@ -1338,7 +1402,7 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
    every React re-render and PM DOM sync, making class-based highlights invisible. */
 .nx-selection-overlay {
   background-color: rgb(var(--nx-accent-rgb) / 0.18);
-  box-shadow: inset 3px 0 0 var(--nx-accent);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
   border-radius: var(--nx-radius-sm);
   z-index: 1;
 }
@@ -1399,28 +1463,26 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
 .nx-width-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 14px;
+  width: 10px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: var(--nx-radius-sm);
   background: var(--nx-accent);
   cursor: pointer;
-  transition: transform 80ms ease, background 80ms ease;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: background var(--nx-transition-fast);
 }
 
 .nx-width-slider::-webkit-slider-thumb:hover {
   background: var(--nx-accent-hover);
-  transform: scale(1.2);
 }
 
 .nx-width-slider::-webkit-slider-thumb:active {
-  transform: scale(1.1);
+  background: var(--nx-accent-pressed);
 }
 
 .nx-width-slider::-moz-range-thumb {
-  width: 14px;
+  width: 10px;
   height: 14px;
-  border-radius: 50%;
+  border-radius: var(--nx-radius-sm);
   background: var(--nx-accent);
   cursor: pointer;
   border: none;
@@ -1441,7 +1503,7 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
   background: transparent;
   color: var(--nx-text-secondary);
   cursor: pointer;
-  transition: background 80ms ease, color 80ms ease, transform 60ms ease;
+  transition: background 80ms ease, color 80ms ease, transform 80ms ease;
 }
 
 .nx-callout__picker-item:hover {

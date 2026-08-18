@@ -67,7 +67,10 @@ export function getNexusSlashMenuItems(editor: NexusEditor): SlashItem[] {
     onItemClick: () => {
       insertOrUpdateBlock(anyEditor, {
         type: 'callout',
-        props: { icon: 'bulb', color: 'blue' },
+        // Colour omitted so the block's own default (the NEXUS accent) applies.
+        // Hardcoding 'blue' here overrode the propSchema default, which is why
+        // every slash-inserted callout came out blue regardless of the default.
+        props: { icon: 'bulb' },
       } as unknown as AnyPartialBlock)
     },
   })

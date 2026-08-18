@@ -8,7 +8,8 @@ import { PageIcon, CALLOUT_ICON_KEYS, type PageIconKey } from './icons'
 //
 // props.icon — icon key from PageIconKey. Default 'bulb'.
 //              Legacy emoji values fall back to 'bulb' via PageIcon component.
-// props.color — one of the keys in callout-colors.ts. Default 'blue'.
+// props.color — one of the keys in callout-colors.ts. Defaults to the
+// NEXUS accent (amber) so an unstyled callout reads as part of the system.
 
 export const calloutBlock = createReactBlockSpec(
   {
@@ -16,14 +17,14 @@ export const calloutBlock = createReactBlockSpec(
     content: 'inline',
     propSchema: {
       icon: { default: 'bulb' },
-      color: { default: 'blue' },
+      color: { default: 'yellow' },
     },
   },
   {
     render: ({ block, editor, contentRef }) => {
       const colorKey = (COLOR_KEYS.includes(block.props.color as ColorKey)
         ? block.props.color
-        : 'blue') as ColorKey
+        : 'yellow') as ColorKey
       const token = COLORS[colorKey]
       const icon = block.props.icon || 'bulb'
 

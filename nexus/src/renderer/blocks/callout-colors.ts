@@ -34,60 +34,68 @@ export const COLOR_KEYS: ColorKey[] = [
 ]
 
 export const COLORS: Record<ColorKey, ColorToken> = {
+  // Retuned into the design system's muted chroma band. blue/green/red are
+  // pinned to the shared semantic tokens (info/success/critical) and yellow
+  // to the NEXUS accent, so a callout never introduces a hue the system
+  // hasn't already declared. The remaining four sit at matching lightness
+  // and chroma so no swatch shouts louder than its neighbours.
+  // Keep in sync with the [data-text-color] / [data-background-color] rules
+  // in globals.css — BlockNote styles inline marks from those, this file
+  // styles the callout block, and they are the same palette to the user.
   blue: {
     key: 'blue',
     label: 'Blue',
-    text: '#8ba2fd',
-    bg: 'rgba(107, 138, 253, 0.10)',
-    border: 'rgba(107, 138, 253, 0.40)',
+    text: '#7ea3c9',
+    bg: 'rgba(126, 163, 201, 0.10)',
+    border: 'rgba(126, 163, 201, 0.40)',
   },
   green: {
     key: 'green',
     label: 'Green',
-    text: '#7dd3a0',
-    bg: 'rgba(74, 189, 122, 0.10)',
-    border: 'rgba(74, 189, 122, 0.40)',
+    text: '#7fae7a',
+    bg: 'rgba(127, 174, 122, 0.10)',
+    border: 'rgba(127, 174, 122, 0.40)',
   },
   yellow: {
     key: 'yellow',
-    label: 'Yellow',
-    text: '#e8c87a',
-    bg: 'rgba(224, 184, 88, 0.11)',
-    border: 'rgba(224, 184, 88, 0.40)',
+    label: 'Amber',
+    text: '#c9a26b',
+    bg: 'rgba(201, 162, 107, 0.10)',
+    border: 'rgba(201, 162, 107, 0.40)',
   },
   red: {
     key: 'red',
     label: 'Red',
-    text: '#f07e8a',
-    bg: 'rgba(232, 90, 109, 0.10)',
-    border: 'rgba(232, 90, 109, 0.40)',
+    text: '#d9604f',
+    bg: 'rgba(217, 96, 79, 0.10)',
+    border: 'rgba(217, 96, 79, 0.40)',
   },
   purple: {
     key: 'purple',
-    label: 'Purple',
-    text: '#b495ff',
-    bg: 'rgba(165, 123, 255, 0.11)',
-    border: 'rgba(165, 123, 255, 0.42)',
+    label: 'Violet',
+    text: '#9b8ac4',
+    bg: 'rgba(155, 138, 196, 0.10)',
+    border: 'rgba(155, 138, 196, 0.40)',
   },
   gray: {
     key: 'gray',
     label: 'Gray',
-    text: '#a6a2b8',
-    bg: 'rgba(180, 175, 200, 0.08)',
-    border: 'rgba(180, 175, 200, 0.30)',
+    text: '#8c8e99',
+    bg: 'rgba(140, 142, 153, 0.08)',
+    border: 'rgba(140, 142, 153, 0.30)',
   },
   teal: {
     key: 'teal',
     label: 'Teal',
-    text: '#6fd3c8',
-    bg: 'rgba(80, 195, 184, 0.10)',
-    border: 'rgba(80, 195, 184, 0.40)',
+    text: '#6faaa4',
+    bg: 'rgba(111, 170, 164, 0.10)',
+    border: 'rgba(111, 170, 164, 0.40)',
   },
   orange: {
     key: 'orange',
     label: 'Orange',
-    text: '#f0a36a',
-    bg: 'rgba(232, 140, 72, 0.10)',
-    border: 'rgba(232, 140, 72, 0.40)',
+    text: '#c98d5f',
+    bg: 'rgba(201, 141, 95, 0.10)',
+    border: 'rgba(201, 141, 95, 0.40)',
   },
 }

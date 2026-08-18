@@ -691,7 +691,7 @@ export function Editor({ pageId }: Props) {
             <button
               onClick={() => setWidthSliderOpen((v) => !v)}
               title={displayWidthPx === 0 ? 'Page width: Full' : `Page width: ${displayWidthPx}px`}
-              className={`flex items-center justify-center w-7 h-7 rounded-[var(--nx-radius-sm)] transition-all duration-100 active:scale-95 ${widthSliderOpen ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)]'}`}
+              className={`flex items-center justify-center w-7 h-7 rounded-[var(--nx-radius-sm)] transition-colors duration-100 ${widthSliderOpen ? 'text-[var(--nx-accent)] bg-[var(--nx-accent-dim)]' : 'text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)]'}`}
             >
               {WIDTH_ICON}
             </button>

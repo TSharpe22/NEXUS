@@ -438,7 +438,7 @@ export function Sidebar() {
               </svg>
               <span>Trash</span>
               {deletedPages.length > 0 && (
-                <span className="ml-auto text-[10px] bg-[var(--nx-bg-tertiary)] text-[var(--nx-text-tertiary)] px-1.5 py-0.5 rounded-full min-w-[20px] text-center">
+                <span className="ml-auto text-[10px] bg-[var(--nx-bg-tertiary)] text-[var(--nx-text-tertiary)] px-1.5 py-0.5 rounded-[var(--nx-radius-sm)] min-w-[20px] text-center">
                   {deletedPages.length}
                 </span>
               )}

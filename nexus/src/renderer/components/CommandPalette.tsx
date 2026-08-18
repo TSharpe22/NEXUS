@@ -47,10 +47,13 @@ export function CommandPalette() {
   // Early return AFTER all hooks
   if (!commandPaletteOpen) return null
 
+  // Selected row carries the spec's full idiom — accent-tinted fill, accent
+  // text, and a 2px accent left border painted by .nx-cmd-item in globals.css.
   const itemClass =
-    'flex items-center gap-3 px-3 py-2 rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-secondary)] cursor-pointer data-[selected=true]:bg-[var(--nx-bg-hover)] data-[selected=true]:text-[var(--nx-text-primary)] transition-colors duration-75'
+    'nx-cmd-item relative flex items-center gap-3 px-3 py-2 rounded-[var(--nx-radius-sm)] text-[13px] text-[var(--nx-text-secondary)] cursor-pointer data-[selected=true]:bg-[var(--nx-bg-active)] data-[selected=true]:text-[var(--nx-accent)] transition-colors duration-75'
+  // Group headings are section labels: mono, uppercase, +0.04em.
   const headingClass =
-    '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-[10px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-[0.12em] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-[var(--nx-text-tertiary)]'
+    '[&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:font-mono [&_[cmdk-group-heading]]:text-[10.5px] [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:tracking-[0.04em] [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:text-[var(--nx-text-secondary)]'
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[18vh]">

@@ -34,6 +34,26 @@ export default {
       },
       fontSize: {
         '2xs': '0.65rem',
+      },
+      // Bare `rounded` is 4px in Tailwind's defaults — the spec's absolute
+      // ceiling. Chips and inputs want 2px, so point the default at the token
+      // rather than hunting every `rounded` in the tree.
+      borderRadius: {
+        DEFAULT: 'var(--nx-radius-sm)',
+        sm: 'var(--nx-radius-sm)',
+        md: 'var(--nx-radius-md)',
+        lg: 'var(--nx-radius-lg)',
+        xl: 'var(--nx-radius-xl)',
+      },
+      // Motion is near-instant: 80-120ms, nothing slower. 150/500 are gone.
+      transitionDuration: {
+        75: '80ms',
+        100: '80ms',
+        150: '120ms',
+        500: '120ms',
+      },
+      transitionTimingFunction: {
+        DEFAULT: 'ease-out',
       }
     }
   },

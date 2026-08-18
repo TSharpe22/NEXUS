@@ -177,7 +177,7 @@ export function BlockContextMenu({ editor, block, x, y, onClose, selectedBlockId
   ]
 
   if (isCallout) {
-    const currentColor = (block.props as { color?: string }).color ?? 'blue'
+    const currentColor = (block.props as { color?: string }).color ?? 'yellow'
     const colorItems: MenuItem[] = COLOR_KEYS.map((key) => ({
       id: `color-${key}`,
       label: COLORS[key].label,
