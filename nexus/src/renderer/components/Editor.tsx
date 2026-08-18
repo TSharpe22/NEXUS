@@ -22,6 +22,7 @@ import { LinkMenu, getLinkMenuItems, type LinkMenuItem } from './LinkMenu'
 import { LassoSelect } from './LassoSelect'
 import { ColumnResizeHandles } from './ColumnResizeHandles'
 import { SelectionOverlay } from './SelectionOverlay'
+import { BacklinksPanel } from './BacklinksPanel'
 import type { LinkTarget } from '../../shared/types'
 
 const WIDTH_ICON = (
@@ -206,19 +207,36 @@ export function Editor({ pageId }: Props) {
   // ~50-item list isn't rebuilt on every keystroke inside getItems.
   const slashItems = useMemo(() => getNexusSlashMenuItems(editor), [editor])
 
-  // Intercept nexus:// link clicks and navigate within the app
+  // Intercept link clicks inside the editor.
+  //
+  //   nexus://<pageId>  → navigate within the app
+  //   http(s):// | mailto: → hand to the OS browser via the main process
+  //
+  // Both need explicit handling: anchors inside a contenteditable do not
+  // navigate on click in Chromium, so without this an external link is inert,
+  // and if it did navigate it would replace the whole app window.
   useEffect(() => {
     const container = editorContainerRef.current
     if (!container) return
     const onClick = (e: MouseEvent) => {
-      const target = (e.target as HTMLElement).closest('a')
-      if (!target) return
-      const href = target.getAttribute('href') || ''
-      if (!href.startsWith('nexus://')) return
-      e.preventDefault()
-      e.stopPropagation()
-      const targetPageId = href.replace('nexus://', '').split('/')[0]
-      if (targetPageId) selectPage(targetPageId)
+      const anchor = (e.target as HTMLElement).closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href') || ''
+      if (!href) return
+
+      if (href.startsWith('nexus://')) {
+        e.preventDefault()
+        e.stopPropagation()
+        const targetPageId = href.replace('nexus://', '').split('/')[0]
+        if (targetPageId) selectPage(targetPageId)
+        return
+      }
+
+      if (/^https?:\/\//i.test(href) || href.startsWith('mailto:')) {
+        e.preventDefault()
+        e.stopPropagation()
+        void window.api.shell.openExternal(href)
+      }
     }
     container.addEventListener('click', onClick)
     return () => container.removeEventListener('click', onClick)
@@ -723,14 +741,29 @@ export function Editor({ pageId }: Props) {
             theme="dark"
             formattingToolbar={false}
             slashMenu={false}
+            // BlockNote's built-in inline emoji picker claims ":" as a
+            // suggestion trigger. Nexus never renders a menu for it, so typing
+            // a colon left an invisible suggestion active for the rest of the
+            // block — and while one suggestion is live no other trigger fires,
+            // so "[[" after any colon typed as literal text instead of opening
+            // the page-link menu. Not a specified feature (PHASE_02 only calls
+            // for an emoji picker on the callout icon), so turn it off.
+            emojiPicker={false}
             onChange={() => {
               if (initialContentLoaded.current) {
                 debouncedSave.call(editor.document as unknown as unknown[])
               }
             }}
           >
+            {/* Pass the component itself, NOT an inline `() => <X />` wrapper.
+                An arrow function is a new component type on every Editor
+                render, so React unmounted and remounted the toolbar instead
+                of reconciling it. The replacement happened during mouseup,
+                which detached the button the user had just pressed — Chromium
+                then never dispatched the `click`, so every toolbar action was
+                silently dead. */}
             <FormattingToolbarController
-              formattingToolbar={() => <CustomFormattingToolbar />}
+              formattingToolbar={CustomFormattingToolbar}
             />
             <SuggestionMenuController
               triggerCharacter="/"
@@ -754,6 +787,12 @@ export function Editor({ pageId }: Props) {
           <ColumnResizeHandles editor={editor} editorContainerRef={editorContainerRef} />
           <SelectionOverlay editorContainerRef={editorContainerRef} scrollContainerRef={scrollContainerRef} />
         </div>
+
+        {/* Collapsible backlinks section below the editor (PHASE_03 §1.3).
+            The component has existed since Phase 03 but its mount point was
+            dropped in 2014414, so the panel rendered nowhere and every page's
+            backlinks were invisible even though links/getBacklinks worked. */}
+        <BacklinksPanel pageId={pageId} />
 
       </div>
 

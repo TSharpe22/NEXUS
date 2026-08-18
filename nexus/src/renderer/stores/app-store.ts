@@ -202,6 +202,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setLassoActive(active) {
+    // No-op when unchanged. LassoSelect's document-level mouseup handler runs
+    // on every click in the app; an unconditional set() here published a new
+    // store object each time, re-rendering every whole-store subscriber
+    // (Editor included) on every mouseup.
+    if (get().isLassoActive === active) return
     set({ isLassoActive: active })
   },
 

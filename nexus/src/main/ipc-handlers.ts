@@ -1,4 +1,4 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, BrowserWindow, shell } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as db from './database'
@@ -150,6 +150,22 @@ export function registerIpcHandlers(): void {
       properties: ['openDirectory', 'createDirectory'],
     })
     return result.canceled ? null : result.filePaths?.[0] || null
+  })
+
+  // Open an external URL in the user's default browser. The renderer never
+  // navigates to http(s) itself — doing so inside a contenteditable either
+  // does nothing or replaces the whole app window. Protocols are allowlisted
+  // here rather than in the renderer so a malicious pasted href (file://,
+  // javascript:, etc.) can't reach shell.openExternal.
+  ipcMain.handle('shell:openExternal', async (_, url: string) => {
+    try {
+      const parsed = new URL(url)
+      if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) return false
+      await shell.openExternal(parsed.href)
+      return true
+    } catch {
+      return false
+    }
   })
 
   // File reading/writing helpers for the renderer

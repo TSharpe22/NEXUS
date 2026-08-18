@@ -1180,6 +1180,25 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
   text-decoration-color: var(--nx-accent-hover);
 }
 
+/* External links inside the editor. Anchors in a contenteditable don't get
+   the browser's default link affordance, and Editor.tsx routes the click to
+   the OS browser — so the cursor has to advertise that it's clickable. */
+.bn-editor a[href^="http"],
+.bn-editor a[href^="mailto:"] {
+  color: var(--nx-accent);
+  text-decoration: underline;
+  text-decoration-color: rgba(165, 123, 255, 0.35);
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color 80ms ease, text-decoration-color 80ms ease;
+}
+
+.bn-editor a[href^="http"]:hover,
+.bn-editor a[href^="mailto:"]:hover {
+  color: var(--nx-accent-hover);
+  text-decoration-color: var(--nx-accent-hover);
+}
+
 /* ============================================================
    Width slider
    ============================================================ */
