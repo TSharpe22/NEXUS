@@ -1,6 +1,6 @@
 # NEXUS — Project Guide
 
-> This file is the authoritative reference for all Claude Code sessions and Claude conversations working on Nexus. Read it in full before writing any code, making any architectural decision, or proposing any feature implementation.
+> This file is the authoritative reference for all AI coding sessions — Claude Code, Cowork, or otherwise — and Claude conversations working on Nexus. Read it in full before writing any code, making any architectural decision, or proposing any feature implementation.
 
 ---
 
@@ -181,9 +181,11 @@ Do not implement these unless explicitly instructed:
 
 ---
 
-## Session Protocol for Claude Code
+## Session Protocol for AI Coding Sessions
 
-When starting a Claude Code session on Nexus:
+This applies regardless of surface — Claude Code CLI, Claude Code on the web, Cowork, or any other agent session working on this repo.
+
+When starting a session on Nexus:
 
 1. Read this file first.
 2. Identify the current phase from the roadmap.
