@@ -216,7 +216,7 @@ function MenuRow({
       {item.submenu ? (
         <span className="nx-menu__chevron" aria-hidden="true">
           <svg width="10" height="10" viewBox="0 0 12 12" fill="none">
-            <path d="M4 3l4 3-4 3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            <path d="M4 3l4 3-4 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </span>
       ) : null}

@@ -4,6 +4,9 @@ import React from 'react'
 // All icons use stroke="currentColor" so they inherit text color.
 
 export type PageIconKey =
+  | 'diamond'
+  | 'square'
+  | 'circle'
   | 'doc'
   | 'star'
   | 'pin'
@@ -18,6 +21,19 @@ export type PageIconKey =
   | 'lock'
 
 const PATHS: Record<PageIconKey, React.ReactNode> = {
+  // Geometric forms — the design system's own vocabulary ("simple geometric
+  // forms only: square, circle, diamond"). `diamond` is the default page
+  // marker; the illustrative set below stays available for pages where the
+  // user has deliberately picked an icon.
+  diamond: (
+    <polygon points="12 3 21 12 12 21 3 12" />
+  ),
+  square: (
+    <rect x="4" y="4" width="16" height="16" />
+  ),
+  circle: (
+    <circle cx="12" cy="12" r="9" />
+  ),
   doc: (
     <>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -97,7 +113,10 @@ export function PageIcon({
   size?: number
   className?: string
 }) {
-  const key = (iconKey && PATHS[iconKey as PageIconKey] ? iconKey : 'doc') as PageIconKey
+  // Unspecified icons fall back to the geometric default rather than the
+  // illustrative document glyph — plain pages read as system chrome, and
+  // only a deliberately chosen icon is illustrative.
+  const key = (iconKey && PATHS[iconKey as PageIconKey] ? iconKey : 'diamond') as PageIconKey
   return (
     <svg
       width={size}
@@ -105,7 +124,7 @@ export function PageIcon({
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.8"
+      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}

@@ -16,7 +16,7 @@ const basicStyles: { key: StyleKey; label: string; icon: JSX.Element; shortcut?:
     label: 'Bold',
     shortcut: '⌘B',
     icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M7 4h7a4 4 0 014 4 4 4 0 01-4 4H7z" />
         <path d="M7 12h8a4 4 0 014 4 4 4 0 01-4 4H7z" />
       </svg>
@@ -27,7 +27,7 @@ const basicStyles: { key: StyleKey; label: string; icon: JSX.Element; shortcut?:
     label: 'Italic',
     shortcut: '⌘I',
     icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <line x1="19" y1="4" x2="10" y2="4" />
         <line x1="14" y1="20" x2="5" y2="20" />
         <line x1="15" y1="4" x2="9" y2="20" />
@@ -39,7 +39,7 @@ const basicStyles: { key: StyleKey; label: string; icon: JSX.Element; shortcut?:
     label: 'Underline',
     shortcut: '⌘U',
     icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M6 3v7a6 6 0 0012 0V3" />
         <line x1="4" y1="21" x2="20" y2="21" />
       </svg>
@@ -49,7 +49,7 @@ const basicStyles: { key: StyleKey; label: string; icon: JSX.Element; shortcut?:
     key: 'strike',
     label: 'Strikethrough',
     icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M16 4H9a3 3 0 00-2.83 4" />
         <path d="M14 12a4 4 0 010 8H6" />
         <line x1="4" y1="12" x2="20" y2="12" />
@@ -60,7 +60,7 @@ const basicStyles: { key: StyleKey; label: string; icon: JSX.Element; shortcut?:
     key: 'code',
     label: 'Inline code',
     icon: (
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <polyline points="16 18 22 12 16 6" />
         <polyline points="8 6 2 12 8 18" />
       </svg>
@@ -220,7 +220,7 @@ export function CustomFormattingToolbar() {
           title="Highlight (⌘⇧H)"
           onClick={() => setColorPopover((p) => (p === 'bg' ? null : 'bg'))}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 19l4 1 10-10-5-5L3 15z" />
             <path d="M14 5l5 5" />
             <line x1="3" y1="22" x2="21" y2="22" />
@@ -243,7 +243,7 @@ export function CustomFormattingToolbar() {
           title="Text color"
           onClick={() => setColorPopover((p) => (p === 'text' ? null : 'text'))}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M4 20h16" />
             <path d="M6 16L12 4l6 12" />
             <path d="M8 12h8" />
@@ -273,7 +273,7 @@ export function CustomFormattingToolbar() {
             setUrlLinkOpen((v) => !v)
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71" />
             <path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71" />
           </svg>
@@ -320,7 +320,7 @@ export function CustomFormattingToolbar() {
             setPageLinkOpen((v) => !v)
           }}
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
             <polyline points="14 2 14 8 20 8" />
             <line x1="16" y1="13" x2="8" y2="13" />
@@ -357,7 +357,7 @@ export function CustomFormattingToolbar() {
                       createPageLink(page)
                     }}
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--nx-text-tertiary)]">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="shrink-0 text-[var(--nx-text-tertiary)]">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
                       <polyline points="14 2 14 8 20 8" />
                     </svg>

@@ -21,7 +21,7 @@ export function StatusBar() {
     <div className="h-7 flex items-center px-4 border-t border-[var(--nx-border-subtle)] text-[10px] text-[var(--nx-text-tertiary)] shrink-0 bg-[var(--nx-bg-surface)]">
       <div className="flex-1">
         {currentPage && (
-          <span className="uppercase tracking-[0.08em]">
+          <span className="nx-type-label nx-type-label--dim">
             {currentPage.type_id === 'note' ? 'Note' : currentPage.type_id}
           </span>
         )}
@@ -45,7 +45,7 @@ export function StatusBar() {
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2.4"
+              strokeWidth="1.5"
               strokeLinecap="round"
               strokeLinejoin="round"
             >

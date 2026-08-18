@@ -3,69 +3,186 @@
 @tailwind utilities;
 
 /* ============================================================
-   NEXUS — Dark Theme (Phase 02 refresh)
-   Aesthetic: obsidian surfaces, cool neutrals, purple accent.
-   Principle: no #000 / #fff, layered backgrounds, muted chroma,
-   comfortable line-height, softened edges.
+   NEXUS — Kairos Design System
+   Tactical, retro-futurist, terminal-derived. Dark only.
+   Spec: design_handoff_design_system/NEXUS Design System.md
+
+   Values below are taken from the spec's token tables and, where the
+   spec gave a state rather than a number, sampled directly from
+   references/03-interactive-states.png and 01-nexus-dashboard.png.
+   Anything the spec does not define is marked EXTENSION with a reason.
    ============================================================ */
 
 :root {
-  /* Layered background scale — each step slightly lifted */
-  --nx-bg-base:         #110f18;
-  --nx-bg-surface:      #171325;
-  --nx-bg-elevated:     #1f1a30;
-  --nx-bg-hover:        #241d39;
-  --nx-bg-active:       #2e2546;
+  /* --- Surfaces -------------------------------------------------------
+     Note the inversion versus a conventional elevation scale: panels are
+     DARKER than the app background, not lighter. The spec is explicit —
+     "no shadows, no elevation; panels separate by border + fill only" —
+     and the dashboard reference shows cards at #0e0f12 sitting on a
+     #121316 ground. The *-elevated name is kept so components don't
+     churn; it now means "panel", not "raised". */
+  --nx-bg-base:         #121316;   /* app background, editor canvas */
+  --nx-bg-surface:      #121316;   /* sidebar — same fill, separated by its border */
+  --nx-bg-elevated:     #0e0f12;   /* panels: menus, popovers, palette, cards */
+  --nx-bg-hover:        #191a1e;   /* sampled: nav/row hover lift */
+  --nx-bg-active:       #1c1e26;   /* sampled: nav/row selected, accent-tinted */
+  --nx-bg-table-head:   #0a0b0d;   /* table header row */
+  --nx-row-line:        #1c1e24;   /* table row dividers */
 
-  /* Legacy aliases kept for components that still read old vars */
+  /* Legacy aliases kept for components that still read the old names */
   --nx-bg:              var(--nx-bg-base);
   --nx-bg-secondary:    var(--nx-bg-surface);
   --nx-bg-tertiary:     var(--nx-bg-elevated);
 
-  --nx-border-subtle:   #241d39;
-  --nx-border-default:  #322951;
-  --nx-border:          var(--nx-border-default);
+  /* --- Borders — always 1px hairlines --------------------------------- */
+  --nx-border-subtle:   #262832;   /* spec: border */
+  --nx-border-default:  #2c2e38;   /* spec: border-2, subtler/decorative lines */
+  --nx-border:          var(--nx-border-subtle);
 
-  /* Text scale — softened, never pure white */
-  --nx-text-primary:    #ece8f7;
-  --nx-text-secondary:  #b5acce;
-  --nx-text-tertiary:   #7e7396;
-
+  /* --- Text ------------------------------------------------------------
+     The spec defines exactly two tones and the references use only those
+     two. --nx-text-tertiary is an EXTENSION: Nexus has a third tier of
+     chrome (kbd hints, placeholders, timestamps) that would otherwise
+     collapse into secondary and flatten the hierarchy. Kept dimmer than
+     text-dim so the spec's pair still dominates. */
+  --nx-text-primary:    #e3e4ea;
+  --nx-text-secondary:  #6b6d78;
+  --nx-text-tertiary:   #4d4f58;   /* EXTENSION */
   --nx-text:            var(--nx-text-primary);
 
-  /* Accent. --nx-accent-rgb carries the same colour as bare channels so every
-     translucent accent tint can be derived from it. Swapping the accent (e.g.
-     to another design system) means changing these two lines and nothing else
-     — no hunting for rgba() literals scattered through the file. */
-  --nx-accent:          #a57bff;
-  --nx-accent-rgb:      165 123 255;
-  --nx-accent-hover:    #b495ff;
+  /* --- Brand accent — NEXUS amber --------------------------------------
+     --nx-accent-rgb carries the same colour as bare channels so every
+     translucent tint derives from one place. Swapping projects (Kairos
+     signal blue #3f8ce8) means changing these lines only. */
+  --nx-accent:          #c9a26b;
+  --nx-accent-rgb:      201 162 107;
+  --nx-accent-hover:    #d6b47e;   /* sampled: button hover */
+  --nx-accent-pressed:  #b18d5c;   /* sampled: button pressed */
+  --nx-accent-fg:       #1a1610;   /* sampled: text on a solid accent fill */
   --nx-accent-muted:    rgb(var(--nx-accent-rgb) / 0.18);
   --nx-accent-dim:      rgb(var(--nx-accent-rgb) / 0.08);
 
-  --nx-danger:          #ef6874;
-  --nx-danger-hover:    #f58a93;
+  /* --- Semantic status — shared across all projects in the family ------
+     The accent doubles as NEXUS's warning colour, per spec. `critical`
+     is never redefined by a brand accent. */
+  --nx-success:         #7fae7a;
+  --nx-info:            #7ea3c9;
+  --nx-warning:         var(--nx-accent);
+  --nx-critical:        #d9604f;
+  --nx-danger:          var(--nx-critical);
+  --nx-danger-hover:    #e3796a;   /* EXTENSION: lightened critical for hover */
 
-  --nx-success:         #6cc88f;
+  /* --- Disabled -------------------------------------------------------- */
+  --nx-disabled-bg:     #2a2b2e;   /* sampled */
+  --nx-disabled-fg:     #5c5d62;   /* sampled */
 
-  --nx-font-body:       'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
-  --nx-font-mono:       'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', monospace;
+  /* --- Type ------------------------------------------------------------
+     Two families only. Chakra Petch for headings/body/nav, IBM Plex Mono
+     for UI chrome, data and labels. Both self-hosted via @fontsource so
+     the app stays offline-capable. */
+  --nx-font-body:       'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
+  --nx-font-mono:       'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
 
-  --nx-radius-sm:       4px;
-  --nx-radius-md:       8px;
-  --nx-radius-lg:       12px;
-  --nx-radius-xl:       16px;
+  --nx-text-display:    28px;  --nx-weight-display:    600;
+  --nx-text-heading:    20px;  --nx-weight-heading:    600;
+  --nx-text-panel:      15px;  --nx-weight-panel:      600;
+  --nx-text-body:       13px;  --nx-weight-body:       400;
+  --nx-text-label:      10.5px; --nx-weight-label:     600;
+  --nx-text-data:       11px;  --nx-weight-data:       400;
+  --nx-tracking-label:  0.04em;
+
+  /* --- Spacing: 4 / 8 / 12 / 16 / 24 / 32 ------------------------------- */
+  --nx-space-1:         4px;
+  --nx-space-2:         8px;
+  --nx-space-3:         12px;  /* dense panel padding */
+  --nx-space-4:         16px;  /* roomy panel padding */
+  --nx-space-6:         24px;  /* section gap */
+  --nx-space-8:         32px;  /* page margin */
+
+  /* --- Radius: 2px chips/inputs, 3px panels/cards. Never above 4px. ----- */
+  --nx-radius-sm:       2px;
+  --nx-radius-md:       3px;
+  --nx-radius-lg:       3px;
+  --nx-radius-xl:       4px;
+
+  /* --- Elevation: none. Panels separate by border + fill only. ---------- */
+  --nx-shadow-sm:       none;
+  --nx-shadow-md:       none;
+  --nx-shadow-lg:       none;
+  --nx-shadow-xl:       none;
+
+  /* --- Motion: near-instant, linear/ease-out, no bounce ----------------- */
+  --nx-transition-fast: 80ms ease-out;
+  --nx-transition:      120ms ease-out;
+
+  /* See the DELIBERATE DEVIATION note on .nx-editor-root below. */
+  --nx-text-editor-body: 15px;
 
   --nx-sidebar-width:   280px;
   --nx-titlebar-height: 46px;
+}
 
-  --nx-shadow-sm:       0 1px 2px rgba(0, 0, 0, 0.3);
-  --nx-shadow-md:       0 4px 12px rgba(0, 0, 0, 0.4);
-  --nx-shadow-lg:       0 4px 24px rgba(0, 0, 0, 0.3), 0 1px 4px rgba(0, 0, 0, 0.2);
-  --nx-shadow-xl:       0 16px 50px rgba(0, 0, 0, 0.55);
+/* ============================================================
+   Interactive states — spec, "Interactive states"
+   ============================================================ */
 
-  --nx-transition-fast: 120ms ease;
-  --nx-transition:      180ms ease;
+/* App logotype: accent, display face. */
+.nx-logotype {
+  font-family: var(--nx-font-body);
+  font-size: 15px;
+  font-weight: var(--nx-weight-display);
+  letter-spacing: 0.06em;
+  color: var(--nx-accent);
+}
+
+/* Primary button: solid accent fill, dark text. Hover lightens, pressed
+   darkens, disabled drops to flat neutral with no accent at all. All four
+   values sampled from references/03-interactive-states.png. */
+.nx-btn-primary {
+  background: var(--nx-accent);
+  color: var(--nx-accent-fg);
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  font-family: var(--nx-font-body);
+  font-size: var(--nx-text-body);
+  font-weight: var(--nx-weight-panel);
+  padding: var(--nx-space-2) var(--nx-space-3);
+  cursor: pointer;
+  transition: background var(--nx-transition-fast);
+}
+
+.nx-btn-primary:hover        { background: var(--nx-accent-hover); }
+.nx-btn-primary:active       { background: var(--nx-accent-pressed); }
+.nx-btn-primary:disabled,
+.nx-btn-primary[aria-disabled='true'] {
+  background: var(--nx-disabled-bg);
+  color: var(--nx-disabled-fg);
+  cursor: default;
+}
+
+/* Chips and inputs take the 2px radius; panels and cards take 3px. */
+input,
+textarea,
+select,
+kbd {
+  border-radius: var(--nx-radius-sm);
+}
+
+/* Panels separate by border + fill, never by shadow. Anything that used to
+   float on a drop shadow gets a hairline instead. */
+.nx-menu,
+.nx-fmt-toolbar,
+.nx-fmt-popover,
+.nx-url-link-popover,
+.nx-page-link-popover,
+.nx-link-menu,
+.nx-slash-menu,
+.nx-command-palette,
+.bn-suggestion-menu {
+  background: var(--nx-bg-elevated);
+  border: 1px solid var(--nx-border-subtle);
+  border-radius: var(--nx-radius-md);
+  box-shadow: none;
 }
 
 /* ============================================================
@@ -84,18 +201,52 @@ html, body, #root {
   background: var(--nx-bg-base);
   color: var(--nx-text-primary);
   font-family: var(--nx-font-body);
-  font-size: 15px;
+  font-size: var(--nx-text-body);
+  font-weight: var(--nx-weight-body);
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Focus: 1.5px accent outline, inset (spec, Interactive states).
+   Inset rather than offset so a focused row never bleeds into its
+   neighbour in the sidebar's tight vertical rhythm. */
 :focus-visible,
 input:focus-visible,
 textarea:focus-visible,
-button:focus-visible {
+button:focus-visible,
+[role="button"]:focus-visible {
+  outline: 1.5px solid var(--nx-accent);
+  outline-offset: -1.5px;
+  border-radius: var(--nx-radius-sm);
+}
+
+/* The editor surface and the page title own their own focus affordance —
+   a ring around the whole writing area would be noise, not information. */
+.bn-editor:focus-visible,
+.bn-editor [contenteditable]:focus-visible,
+.nx-page-title:focus-visible {
   outline: none;
 }
+
+/* --- Type roles ------------------------------------------------------ */
+.nx-type-display { font-family: var(--nx-font-body); font-size: var(--nx-text-display); font-weight: var(--nx-weight-display); }
+.nx-type-heading { font-family: var(--nx-font-body); font-size: var(--nx-text-heading); font-weight: var(--nx-weight-heading); }
+.nx-type-panel   { font-family: var(--nx-font-body); font-size: var(--nx-text-panel);   font-weight: var(--nx-weight-panel); }
+.nx-type-data    { font-family: var(--nx-font-mono); font-size: var(--nx-text-data);    font-weight: var(--nx-weight-data); }
+
+/* Section label — IBM Plex Mono, uppercase, tracked. Accent-coloured in the
+   references ("KNOWLEDGE GRAPH", "VAULT // STORAGE"). */
+.nx-type-label {
+  font-family: var(--nx-font-mono);
+  font-size: var(--nx-text-label);
+  font-weight: var(--nx-weight-label);
+  text-transform: uppercase;
+  letter-spacing: var(--nx-tracking-label);
+  color: var(--nx-accent);
+}
+
+.nx-type-label--dim { color: var(--nx-text-secondary); }
 
 /* ============================================================
    Electron title bar drag region
@@ -127,17 +278,17 @@ button:focus-visible {
 ::-webkit-scrollbar-thumb {
   background: transparent;
   border-radius: 3px;
-  transition: background 180ms ease;
+  transition: background var(--nx-transition);
 }
 
 *:hover > ::-webkit-scrollbar-thumb,
 .sidebar-scroll:hover::-webkit-scrollbar-thumb,
 .editor-scroll:hover::-webkit-scrollbar-thumb {
-  background: rgba(180, 170, 210, 0.08);
+  background: rgba(227, 228, 234, 0.08);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(180, 170, 210, 0.16) !important;
+  background: rgba(227, 228, 234, 0.16) !important;
 }
 
 /* ============================================================
@@ -174,9 +325,15 @@ button:focus-visible {
   font-family: var(--nx-font-body) !important;
 }
 
+/* DELIBERATE DEVIATION from the spec's 13px body role.
+   The type scale governs UI chrome; this rule governs the document the user
+   is actually writing in, which is a reading surface rather than an interface
+   element. 13px is uncomfortable for long-form prose, so editor content stays
+   at 15px in the body face. One token, easy to overrule if the intent was for
+   the scale to cover document text too. */
 .nx-editor-root,
 .bn-editor .bn-block-content {
-  font-size: 15px;
+  font-size: var(--nx-text-editor-body);
   line-height: 1.7;
   color: var(--nx-text-primary);
 }
@@ -216,11 +373,12 @@ button:focus-visible {
 .bn-editor [data-content-type="codeBlock"] code,
 .bn-editor code {
   font-family: var(--nx-font-mono);
-  font-size: 13px;
+  font-size: var(--nx-text-data);
   background: var(--nx-bg-elevated);
-  padding: 2px 6px;
+  border: 1px solid var(--nx-border-subtle);
+  padding: 1px 5px;
   border-radius: var(--nx-radius-sm);
-  color: #c4b5fd;
+  color: var(--nx-accent);
 }
 
 .bn-editor [data-content-type="codeBlock"] {
@@ -882,7 +1040,7 @@ button:focus-visible {
   padding: 2px 0;
   border-bottom: 1px solid transparent;
   transition: border-color var(--nx-transition-fast);
-  color: #f1edff;
+  color: var(--nx-text-primary);
 }
 
 .nx-page-title:focus {
@@ -895,23 +1053,28 @@ button:focus-visible {
    on inline content spans. Override the default palette with our tokens.
    ============================================================ */
 
-.bn-editor [data-text-color="blue"]            { color: #8ba2fd; }
-.bn-editor [data-text-color="green"]           { color: #7dd3a0; }
-.bn-editor [data-text-color="yellow"]          { color: #e8c87a; }
-.bn-editor [data-text-color="red"]             { color: #f07e8a; }
-.bn-editor [data-text-color="purple"]          { color: #b495ff; }
-.bn-editor [data-text-color="gray"]            { color: #a6a2b8; }
-.bn-editor [data-text-color="teal"]            { color: #6fd3c8; }
-.bn-editor [data-text-color="orange"]          { color: #f0a36a; }
+/* Retuned into the system's muted chroma band. These are user content
+   choices, not chrome, so the named palette stays — but the old values were
+   saturated enough to fight the restrained neutrals. Blue/green/red are
+   pinned to the shared semantic tokens; the rest sit at the same lightness
+   and chroma so no swatch shouts louder than another. */
+.bn-editor [data-text-color="blue"]            { color: #7ea3c9; }
+.bn-editor [data-text-color="green"]           { color: #7fae7a; }
+.bn-editor [data-text-color="yellow"]          { color: #c9a26b; }
+.bn-editor [data-text-color="red"]             { color: #d9604f; }
+.bn-editor [data-text-color="purple"]          { color: #9b8ac4; }
+.bn-editor [data-text-color="gray"]            { color: #8c8e99; }
+.bn-editor [data-text-color="teal"]            { color: #6faaa4; }
+.bn-editor [data-text-color="orange"]          { color: #c98d5f; }
 
-.bn-editor [data-background-color="blue"]      { background-color: rgba(107, 138, 253, 0.18); }
-.bn-editor [data-background-color="green"]     { background-color: rgba(74, 189, 122, 0.18); }
-.bn-editor [data-background-color="yellow"]    { background-color: rgba(224, 184, 88, 0.22); }
-.bn-editor [data-background-color="red"]       { background-color: rgba(232, 90, 109, 0.18); }
-.bn-editor [data-background-color="purple"]    { background-color: rgba(165, 123, 255, 0.22); }
-.bn-editor [data-background-color="gray"]      { background-color: rgba(180, 175, 200, 0.16); }
-.bn-editor [data-background-color="teal"]      { background-color: rgba(80, 195, 184, 0.18); }
-.bn-editor [data-background-color="orange"]    { background-color: rgba(232, 140, 72, 0.18); }
+.bn-editor [data-background-color="blue"]      { background-color: rgba(126, 163, 201, 0.18); }
+.bn-editor [data-background-color="green"]     { background-color: rgba(127, 174, 122, 0.18); }
+.bn-editor [data-background-color="yellow"]    { background-color: rgba(201, 162, 107, 0.20); }
+.bn-editor [data-background-color="red"]       { background-color: rgba(217, 96, 79, 0.18); }
+.bn-editor [data-background-color="purple"]    { background-color: rgba(155, 138, 196, 0.18); }
+.bn-editor [data-background-color="gray"]      { background-color: rgba(140, 142, 153, 0.16); }
+.bn-editor [data-background-color="teal"]      { background-color: rgba(111, 170, 164, 0.18); }
+.bn-editor [data-background-color="orange"]    { background-color: rgba(201, 141, 95, 0.18); }
 
 .bn-editor [data-background-color] {
   padding: 1px 2px;
@@ -922,15 +1085,29 @@ button:focus-visible {
    Sidebar highlight (left accent bar on selected page)
    ============================================================ */
 
+/* Nav item, selected (spec, Interactive states): accent-tinted bg +
+   2px accent left border + accent text. The bar runs the full height of
+   the row rather than inset, matching references/03-interactive-states.png. */
 .nx-sidebar-page--selected::before {
   content: '';
   position: absolute;
   left: 0;
-  top: 6px;
-  bottom: 6px;
+  top: 0;
+  bottom: 0;
   width: 2px;
   background: var(--nx-accent);
-  border-radius: 0 2px 2px 0;
+}
+
+.nx-sidebar-page--selected,
+.nx-sidebar-page--selected .nx-sidebar-page__title {
+  color: var(--nx-accent);
+}
+
+/* Filled marker is reserved for exactly this state (spec, Iconography):
+   "filled reserved for the single selected/active state — never elsewhere". */
+.nx-sidebar-page--selected .nx-page-icon {
+  fill: currentColor;
+  stroke: currentColor;
 }
 
 /* ============================================================

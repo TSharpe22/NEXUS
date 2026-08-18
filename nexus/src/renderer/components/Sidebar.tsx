@@ -185,7 +185,7 @@ export function Sidebar() {
           className="w-9 h-9 flex items-center justify-center rounded-[var(--nx-radius-md)] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150 mt-1"
           title={`New page (${shortcutLabel('N')})`}
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
             <line x1="12" y1="5" x2="12" y2="19" />
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
@@ -204,9 +204,7 @@ export function Sidebar() {
       >
         {/* Titlebar area with app name */}
         <div className="h-[var(--nx-titlebar-height)] titlebar-drag shrink-0 flex items-end px-4 pb-2">
-          <span className="text-[11px] font-semibold tracking-[0.15em] uppercase text-[var(--nx-text-tertiary)] titlebar-no-drag">
-            Nexus
-          </span>
+          <span className="nx-logotype titlebar-no-drag">NEXUS</span>
         </div>
 
         {/* New page + search */}
@@ -215,7 +213,7 @@ export function Sidebar() {
             onClick={createPage}
             className="w-full flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-secondary)] hover:text-[var(--nx-text-primary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150"
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
               <line x1="12" y1="5" x2="12" y2="19" />
               <line x1="5" y1="12" x2="19" y2="12" />
             </svg>
@@ -245,7 +243,7 @@ export function Sidebar() {
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
-              strokeWidth="2"
+              strokeWidth="1.5"
               strokeLinecap="round"
             >
               <circle cx="11" cy="11" r="8" />
@@ -272,7 +270,7 @@ export function Sidebar() {
                 onClick={() => setShowTrash(false)}
                 className="flex items-center gap-2 px-2.5 py-1.5 text-[12px] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] transition-colors mb-2"
               >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
                   <polyline points="15 18 9 12 15 6" />
                 </svg>
                 Back to pages
@@ -378,13 +376,13 @@ export function Sidebar() {
                       relative group flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
                       ${
                         selectedPageId === page.id
-                          ? 'nx-sidebar-page--selected bg-[var(--nx-bg-active)] text-[var(--nx-text-primary)]'
+                          ? 'nx-sidebar-page--selected bg-[var(--nx-bg-active)]'
                           : 'text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] hover:text-[var(--nx-text-primary)]'
                       }
                     `}
                   >
-                    <span className="text-[var(--nx-text-tertiary)] shrink-0">
-                      <PageIcon iconKey={page.icon} size={14} />
+                    <span className="shrink-0">
+                      <PageIcon iconKey={page.icon} size={14} className="nx-page-icon" />
                     </span>
 
                     {renamingId === page.id ? (

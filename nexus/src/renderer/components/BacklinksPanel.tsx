@@ -45,12 +45,14 @@ export function BacklinksPanel({ pageId }: Props) {
           <path
             d="M4 3l4 3-4 3"
             stroke="currentColor"
-            strokeWidth="1.6"
+            strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
           />
         </svg>
-        <span>Backlinks ({loading ? '…' : backlinks.length})</span>
+        <span className="nx-type-label nx-type-label--dim">
+          Backlinks ({loading ? '…' : backlinks.length})
+        </span>
       </button>
 
       {expanded && (

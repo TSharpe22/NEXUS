@@ -45,7 +45,7 @@ export const toggleBlock = createReactBlockSpec(
               <path
                 d="M4 3l4 3-4 3"
                 stroke="currentColor"
-                strokeWidth="1.8"
+                strokeWidth="1.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />

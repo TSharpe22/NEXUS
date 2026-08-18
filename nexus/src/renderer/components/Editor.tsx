@@ -179,7 +179,10 @@ export function Editor({ pageId }: Props) {
           props: {
             pageId: targetPage.id,
             pageTitle: targetPage.title || title,
-            pageIcon: targetPage.icon || 'doc',
+            // Empty, not 'doc' — PageIcon falls back to the geometric
+            // default so a mention reads as chrome unless the page has an
+            // icon the user actually chose.
+            pageIcon: targetPage.icon || '',
           },
         } as never,
         ' ',
@@ -680,7 +683,7 @@ export function Editor({ pageId }: Props) {
             onChange={onTitleChange}
             placeholder="Untitled"
             rows={1}
-            className="nx-page-title flex-1 bg-transparent text-[2rem] font-bold leading-[1.15] tracking-[-0.02em] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] resize-none outline-none border-none mb-3 overflow-hidden"
+            className="nx-page-title nx-type-display flex-1 bg-transparent leading-[1.15] text-[var(--nx-text-primary)] placeholder:text-[var(--nx-text-tertiary)] resize-none outline-none border-none mb-3 overflow-hidden"
           />
 
           {/* Width slider toggle */}
