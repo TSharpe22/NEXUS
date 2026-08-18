@@ -33,11 +33,15 @@
 
   --nx-text:            var(--nx-text-primary);
 
-  /* Accent — keep the purple identity, add muted variants */
+  /* Accent. --nx-accent-rgb carries the same colour as bare channels so every
+     translucent accent tint can be derived from it. Swapping the accent (e.g.
+     to another design system) means changing these two lines and nothing else
+     — no hunting for rgba() literals scattered through the file. */
   --nx-accent:          #a57bff;
+  --nx-accent-rgb:      165 123 255;
   --nx-accent-hover:    #b495ff;
-  --nx-accent-muted:    rgba(165, 123, 255, 0.18);
-  --nx-accent-dim:      rgba(165, 123, 255, 0.08);
+  --nx-accent-muted:    rgb(var(--nx-accent-rgb) / 0.18);
+  --nx-accent-dim:      rgb(var(--nx-accent-rgb) / 0.08);
 
   --nx-danger:          #ef6874;
   --nx-danger-hover:    #f58a93;
@@ -141,7 +145,7 @@ button:focus-visible {
    ============================================================ */
 
 ::selection {
-  background: rgba(165, 123, 255, 0.28);
+  background: rgb(var(--nx-accent-rgb) / 0.28);
   color: var(--nx-text-primary);
 }
 
@@ -1120,8 +1124,8 @@ button:focus-visible {
    ============================================================ */
 
 .nx-lasso-rect {
-  background: rgba(165, 123, 255, 0.10);
-  border: 1px solid rgba(165, 123, 255, 0.45);
+  background: rgb(var(--nx-accent-rgb) / 0.10);
+  border: 1px solid rgb(var(--nx-accent-rgb) / 0.45);
   border-radius: 2px;
 }
 
@@ -1156,7 +1160,7 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
    to BlockNote/ProseMirror-managed elements — they strip foreign classes on
    every React re-render and PM DOM sync, making class-based highlights invisible. */
 .nx-selection-overlay {
-  background-color: rgba(165, 123, 255, 0.18);
+  background-color: rgb(var(--nx-accent-rgb) / 0.18);
   box-shadow: inset 3px 0 0 var(--nx-accent);
   border-radius: var(--nx-radius-sm);
   z-index: 1;
@@ -1169,7 +1173,7 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
 .bn-editor a[href^="nexus://"] {
   color: var(--nx-accent);
   text-decoration: underline;
-  text-decoration-color: rgba(165, 123, 255, 0.45);
+  text-decoration-color: rgb(var(--nx-accent-rgb) / 0.45);
   text-underline-offset: 2px;
   cursor: pointer;
   transition: color 80ms ease, text-decoration-color 80ms ease;
@@ -1187,7 +1191,7 @@ body.nx-lassoing textarea.nx-page-title::-moz-selection {
 .bn-editor a[href^="mailto:"] {
   color: var(--nx-accent);
   text-decoration: underline;
-  text-decoration-color: rgba(165, 123, 255, 0.35);
+  text-decoration-color: rgb(var(--nx-accent-rgb) / 0.35);
   text-underline-offset: 2px;
   cursor: pointer;
   transition: color 80ms ease, text-decoration-color 80ms ease;
