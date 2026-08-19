@@ -36,8 +36,12 @@ let db: Database.Database
  *     starts from. Purely additive. Built as 6 on its own branch, but 6 had
  *     already shipped as the relation repair — a version number that means two
  *     different things to two databases is not recoverable, so it became 7.
+ * 8 — the tracker: `tasks`, one row per checkbox block in a page's document.
+ *     Purely additive, and a derived projection like `page_fts` — it is
+ *     rebuilt from `pages` whenever it is missing or empty, so losing it
+ *     costs nothing and no user data lives here.
  */
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 8
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -158,6 +162,32 @@ const CURRENT_SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON page_tags(tag_id);
+
+
+  -- One row per checkbox block in a page's document. A projection, not a
+  -- store: the block inside pages.content is the source of truth and this is
+  -- only a queryable index of it, rebuilt by repo.projectDocument on every
+  -- write to a page's body. Nothing here may be the only copy of anything
+  -- the user typed.
+  --
+  -- Keyed by (page_id, block_id) because BlockNote block ids are stable
+  -- across saves, which is what lets a row survive an edit to the block
+  -- above it. completed_at is the one field with no counterpart in the
+  -- document — the block records *that* it is checked, never when — so the
+  -- projector carries it forward across a reprojection.
+  CREATE TABLE IF NOT EXISTS tasks (
+    page_id      TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    block_id     TEXT NOT NULL,
+    text         TEXT NOT NULL DEFAULT '',
+    is_done      INTEGER NOT NULL DEFAULT 0,
+    due_date     TEXT,
+    completed_at TEXT,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (page_id, block_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+  CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(is_done);
 `
 
 // ============================================================
@@ -551,6 +581,11 @@ export function applySchema(
       `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
     )
   }
+
+  // v8. `tasks` is created by CURRENT_SCHEMA above, so nothing structural is
+  // left to do here. Like `page_fts` it is derived — `repo.ensureTaskIndex()`
+  // fills it from `pages` at startup when it is missing or empty, which is
+  // also how an existing file picks up every checkbox already written.
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 

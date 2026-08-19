@@ -434,6 +434,52 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('tasks:inRange', (_, from: string, to: string) => {
+    try {
+      return repo.getTasksInRange(String(from), String(to))
+    } catch (e) {
+      rethrow('tasks:inRange', e)
+    }
+  })
+  ipcMain.handle('tasks:overdue', (_, before: string) => {
+    try {
+      return repo.getOverdueTasks(String(before))
+    } catch (e) {
+      rethrow('tasks:overdue', e)
+    }
+  })
+  ipcMain.handle('tasks:undated', (_, limit?: number) => {
+    try {
+      return repo.getUndatedTasks(limit ?? 100)
+    } catch (e) {
+      rethrow('tasks:undated', e)
+    }
+  })
+  ipcMain.handle('tasks:forPage', (_, pageId: string) => {
+    try {
+      return repo.getTasksForPage(pageId)
+    } catch (e) {
+      rethrow('tasks:forPage', e)
+    }
+  })
+  ipcMain.handle('tasks:datedPages', (_, from: string, to: string) => {
+    try {
+      return repo.getDatedPagesInRange(String(from), String(to))
+    } catch (e) {
+      rethrow('tasks:datedPages', e)
+    }
+  })
+  ipcMain.handle('tasks:setDone', (_, pageId: string, blockId: string, done: boolean) => {
+    try {
+      return repo.setTaskDone(pageId, blockId, Boolean(done))
+    } catch (e) {
+      rethrow('tasks:setDone', e)
+    } finally {
+      // Ticking a task rewrites the page's body, so the mirror is stale until
+      // it re-runs — the same reason every other page write schedules one.
+      mirror.scheduleSync()
+    }
+  })
   ipcMain.handle('activity:getRecent', (_, limit?: number) => {
     try {
       return repo.getRecentActivity(limit)

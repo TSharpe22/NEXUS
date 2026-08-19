@@ -183,6 +183,22 @@ check('mirror_files table created', db.prepare(`SELECT count(*) c FROM sqlite_ma
 
 // v7 — per-type templates. Additive column on an existing table.
 check('types.template_page_id added', db.pragma('table_info(types)').map((c) => c.name).includes('template_page_id'), true)
+
+// v8 — the task projection. Additive and derived, like page_fts: the table
+// has to exist after migrating but stays empty until repo.ensureTaskIndex()
+// fills it from the documents at startup, so empty here is correct.
+check('tasks table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='tasks'`).get().c, 1)
+check('tasks columns', db.pragma('table_info(tasks)').map((c) => c.name),
+  ['page_id', 'block_id', 'text', 'is_done', 'due_date', 'completed_at', 'sort_order'])
+check('a task cannot outlive its page', (() => {
+  db.pragma('foreign_keys = ON')
+  db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('tp','note','Tasks','[]')`).run()
+  db.prepare(`INSERT INTO tasks (page_id, block_id, text) VALUES ('tp','b1','buy milk')`).run()
+  db.prepare(`DELETE FROM pages WHERE id = 'tp'`).run()
+  const left = db.prepare(`SELECT count(*) c FROM tasks WHERE page_id = 'tp'`).get().c
+  db.pragma('foreign_keys = OFF')
+  return left
+})(), 0)
 check('page_fts is queryable', (() => {
   try {
     db.prepare(`SELECT count(*) c FROM page_fts WHERE page_fts MATCH 'x'`).get()

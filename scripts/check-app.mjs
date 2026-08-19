@@ -54,7 +54,17 @@ const clickText = (t) =>
   }, t)
 const firstPage = () => page.evaluate(() => window.api.pages.getAll().then((p) => p[0]))
 const firstDoc = () => page.evaluate(() => window.api.pages.getAll().then((p) => JSON.parse(p[0].content)))
-const nav = (i) => page.evaluate((i) => document.querySelectorAll('.nx-nav-item')[i].click(), i)
+// By label, not by index: a sixth nav item would otherwise silently retarget
+// every section below it to the view next door.
+const nav = (label) =>
+  page.evaluate((label) => {
+    const item = [...document.querySelectorAll('.nx-nav-item')].find(
+      (el) => el.textContent.trim() === label
+    )
+    if (!item) return 'NOT_FOUND'
+    item.click()
+    return 'OK'
+  }, label)
 
 // ---------------------------------------------------------------- create
 log('\n— creating and saving a page —')
@@ -690,9 +700,179 @@ check(
 )
 await sleep(400)
 
+// ---------------------------------------------------------------- tasks
+log('\n— tasks projected from checkbox blocks —')
+
+// Dated relative to the machine's clock rather than to fixed dates, so these
+// keep working next year. Local time throughout: the tracker's windows and the
+// `date` property agree on YYYY-MM-DD in the user's own timezone, and a UTC day
+// boundary would file an evening's work under tomorrow.
+const localISO = (d) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const dayFromToday = (days) => {
+  const d = new Date()
+  d.setDate(d.getDate() + days)
+  return localISO(d)
+}
+const TOMORROW = dayFromToday(1)
+
+
+// The capture surface is the checkbox block BlockNote already ships, reached
+// from the slash menu. Writing a todo must never mean leaving the page.
+await page.evaluate(() => document.querySelectorAll('.nx-notes__create .nx-button')[0].click())
+await sleep(1000)
+await page.click('.nx-editor__title')
+await page.keyboard.type('Task capture', { delay: 20 })
+await sleep(700)
+await page.click('.bn-editor .bn-block-content')
+await page.keyboard.type('/check', { delay: 30 })
+await sleep(700)
+const checkItems = await page.evaluate(() =>
+  [...document.querySelectorAll('.bn-ak-menu-item, [role="option"]')].map((e) => e.innerText.split('\n')[0].trim())
+)
+check('a checkbox block is reachable from the slash menu', checkItems.some((t) => /check/i.test(t)),
+  JSON.stringify(checkItems))
+await page.keyboard.press('Enter')
+await sleep(600)
+await page.keyboard.type(`draft the outline @${TOMORROW}`, { delay: 15 })
+await sleep(400)
+await page.keyboard.press('Enter')
+await page.keyboard.type('no date on this one', { delay: 15 })
+await sleep(1300)
+
+const pageIdOf = (title) =>
+  page.evaluate((t) => window.api.pages.getAll().then((p) => p.find((x) => x.title === t)?.id), title)
+const tasksOf = (id) => page.evaluate((id) => window.api.tasks.forPage(id), id)
+const captureId = await pageIdOf('Task capture')
+let captured = await tasksOf(captureId)
+
+check('a checkbox block projects a task row', captured.length === 2,
+  JSON.stringify(captured.map((t) => t.text)))
+check('the due date is parsed out of the block text', captured[0]?.dueDate === TOMORROW,
+  JSON.stringify(captured[0]))
+check('the @token is stripped from the projected text', captured[0]?.text === 'draft the outline',
+  JSON.stringify(captured[0]?.text))
+check('a dated task says where its date came from', captured[0]?.dueDateSource === 'block')
+check('a task with no date anywhere has none', captured[1]?.dueDate === null && captured[1]?.dueDateSource === null,
+  JSON.stringify(captured[1]))
+check('tasks start open', captured.every((t) => t.isDone === false && t.completedAt === null))
+await page.screenshot({ path: SHOT + '/10-tasks.png' })
+
+const inRange = (from, to) => page.evaluate(([f, t]) => window.api.tasks.inRange(f, t), [from, to])
+check('a dated task falls inside its window',
+  (await inRange(dayFromToday(0), dayFromToday(6))).some((t) => t.text === 'draft the outline'))
+check('and outside a window it does not belong to',
+  !(await inRange(dayFromToday(30), dayFromToday(37))).some((t) => t.text === 'draft the outline'))
+check('an undated open task is still reachable',
+  (await page.evaluate(() => window.api.tasks.undated())).some((t) => t.text === 'no date on this one'))
+
+// Ticking the box in the editor is the ordinary path, and it has to reach the
+// projection through the save like any other edit.
+await page.evaluate(() => document.querySelector('.bn-editor input[type="checkbox"]').click())
+await sleep(1300)
+captured = await tasksOf(captureId)
+check('ticking the box in the editor marks the task done', captured[0]?.isDone === true,
+  JSON.stringify(captured[0]))
+check('and stamps when it was completed', !!captured[0]?.completedAt, JSON.stringify(captured[0]?.completedAt))
+const completedFirstAt = captured[0]?.completedAt
+
+// Ticking from the tracker writes back into the block — the projected row is
+// an index, so setting it alone would be reverted by the next reprojection.
+await page.evaluate((id) =>
+  window.api.tasks.forPage(id).then((t) => window.api.tasks.setDone(id, t[1].blockId, true)), captureId)
+await sleep(600)
+const captureDoc = await page.evaluate((id) => window.api.pages.getById(id).then((p) => JSON.parse(p.content)), captureId)
+const boxes = captureDoc.filter((b) => b.type === 'checkListItem')
+check('ticking a task off the page writes back into the block',
+  boxes.every((b) => b.props.checked === true),
+  JSON.stringify(boxes.map((b) => b.props.checked)))
+check('an unchanged completed_at is carried across the reprojection',
+  (await tasksOf(captureId))[0]?.completedAt === completedFirstAt)
+
+// The relation bug looked like it worked until you left the page and came
+// back: assert the reopen, and against the database, not the DOM alone.
+await nav('Home')
+await sleep(600)
+await nav('Notes')
+await sleep(600)
+check('reopened the page', (await openInTree('Task capture')) === 'OK')
+await sleep(1000)
+check('the box is still ticked in the editor after a reopen',
+  await page.evaluate(() => document.querySelector('.bn-editor input[type="checkbox"]')?.checked === true))
+check('and still done in the database',
+  (await tasksOf(captureId)).every((t) => t.isDone === true))
+
+// Unticking clears the completion rather than leaving a stale timestamp.
+await page.evaluate((id) =>
+  window.api.tasks.forPage(id).then((t) => window.api.tasks.setDone(id, t[0].blockId, false)), captureId)
+await sleep(600)
+check('unticking clears completed_at',
+  (await tasksOf(captureId))[0]?.completedAt === null && (await tasksOf(captureId))[0]?.isDone === false)
+
+// A page that never mounts the editor — the projector has to be reached by
+// every write, not just the ones a component happens to make.
+const projected = await page.evaluate(async (PAGE_DATE) => {
+  const created = await window.api.pages.create()
+  const doc = [
+    { id: 'blk-keep', type: 'checkListItem', props: { checked: true }, content: [{ type: 'text', text: 'kept', styles: {} }] },
+    { id: 'blk-drop', type: 'checkListItem', props: { checked: false }, content: [{ type: 'text', text: 'dropped', styles: {} }] },
+    {
+      id: 'blk-nested',
+      type: 'bulletListItem',
+      content: [{ type: 'text', text: 'group', styles: {} }],
+      children: [
+        { id: 'blk-child', type: 'checkListItem', props: { checked: false }, content: [{ type: 'text', text: 'nested task', styles: {} }] }
+      ]
+    }
+  ]
+  await window.api.pages.update(created.id, { title: 'Projection scratch', content: JSON.stringify(doc) })
+  await window.api.properties.set(created.id, 'date', 'date', PAGE_DATE)
+  return created.id
+}, dayFromToday(0))
+let scratch = await tasksOf(projected)
+check('a page written without the editor still projects', scratch.length === 3,
+  JSON.stringify(scratch.map((t) => t.text)))
+check('a checkbox nested under another block is found too',
+  scratch.some((t) => t.text === 'nested task'))
+check("a task with no date of its own inherits its page's",
+  scratch.every((t) => t.dueDate === dayFromToday(0) && t.dueDateSource === 'page'),
+  JSON.stringify(scratch.map((t) => [t.text, t.dueDate, t.dueDateSource])))
+check('an inherited date puts the task in that window',
+  (await inRange(dayFromToday(0), dayFromToday(0))).filter((t) => t.pageTitle === 'Projection scratch').length === 3)
+check('the page shows up as a dated page as well',
+  (await page.evaluate((d) => window.api.tasks.datedPages(d, d), dayFromToday(0))).some(
+    (d) => d.pageTitle === 'Projection scratch'))
+
+// Editing the page's date property must move its tasks, which is why the
+// fallback is resolved at query time instead of copied into the row.
+await page.evaluate(([id, next]) => window.api.properties.set(id, 'date', 'date', next), [projected, dayFromToday(7)])
+check('changing the page date moves the tasks that inherited it',
+  (await tasksOf(projected)).every((t) => t.dueDate === dayFromToday(7)))
+
+// A block that has gone from the document has no row afterwards.
+await page.evaluate((id) =>
+  window.api.pages.update(id, {
+    content: JSON.stringify([
+      { id: 'blk-keep', type: 'checkListItem', props: { checked: true }, content: [{ type: 'text', text: 'kept', styles: {} }] }
+    ])
+  }), projected)
+scratch = await tasksOf(projected)
+check('a deleted checkbox drops its row', scratch.length === 1 && scratch[0].text === 'kept',
+  JSON.stringify(scratch.map((t) => t.text)))
+
+await page.evaluate((id) => window.api.pages.hardDelete(id), projected)
+check('deleting a page for good takes its tasks with it',
+  (await inRange(dayFromToday(-90), dayFromToday(90))).every((t) => t.pageTitle !== 'Projection scratch'))
+
+// The fixture goes too. It is a page of type Note, and the Tables section
+// below asserts on how many rows that type has — a test that leaves its
+// fixtures lying around fails the section after it, not itself.
+await page.evaluate((id) => window.api.pages.hardDelete(id), captureId)
+await sleep(400)
+
 // ---------------------------------------------------------------- graph
 log('\n— graph —')
-await nav(0)
+await nav('Home')
 await sleep(1800)
 check('graph renders nodes', (await page.evaluate(() => document.querySelectorAll('.nx-graph__node').length)) > 0)
 const box = await page.evaluate(() => {
@@ -756,7 +936,7 @@ await page.evaluate(() => {
 await sleep(400)
 
 log('\n— other views —')
-await nav(2)
+await nav('Tables')
 await sleep(900)
 check(
   'Tables shows a column for the new property',
@@ -850,7 +1030,7 @@ check('clearing the filter restores every row', (await tableTitles()).length ===
 await page.screenshot({ path: SHOT + '/07b-tables-sorted.png' })
 
 
-await nav(3)
+await nav('Activity')
 await sleep(900)
 check('Activity has rows', (await page.evaluate(() => document.querySelectorAll('.nx-table tbody tr').length)) > 0)
 const editRows = await page.evaluate(
@@ -860,7 +1040,7 @@ const editRows = await page.evaluate(
 check('edit events are coalesced', editRows <= 3, `${editRows} "Edited" rows`)
 await page.screenshot({ path: SHOT + '/08-activity.png' })
 
-await nav(4)
+await nav('Settings')
 await sleep(600)
 await page.screenshot({ path: SHOT + '/09-settings.png' })
 
@@ -873,7 +1053,7 @@ await page.keyboard.press('Escape')
 // ---------------------------------------------------------------- journal
 log('\n— journal —')
 // The previous section left the app on Settings.
-await nav(1)
+await nav('Notes')
 await sleep(700)
 check("Today's entry button present", await page.evaluate(() => !!document.querySelector('.nx-notes__today')))
 
@@ -1012,7 +1192,7 @@ log('\n— persistence across an editor remount —')
 // `page.content`. A content save that reached the database but not the store
 // left the next remount showing an empty document — and the following
 // keystroke then saved that empty document over the real one.
-await nav(1)
+await nav('Notes')
 await sleep(700)
 const reopen = await page.evaluate(() => {
   const row = [...document.querySelectorAll('.nx-tree-row--page')].find(

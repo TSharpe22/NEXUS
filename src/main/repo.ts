@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
 import { journalEntryTitle, localDateISO } from '@shared/journal-date'
-import { extractLinkTargets, parseDocument } from '@shared/document'
+import { extractLinkTargets, extractTasks, parseDocument, setCheckedInDocument } from '@shared/document'
 import { statSync } from 'fs'
 import type {
   Page,
@@ -21,7 +21,9 @@ import type {
   Folder,
   Tag,
   TagWithCount,
-  SearchResult
+  SearchResult,
+  TrackerTask,
+  DatedPage
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -481,6 +483,7 @@ export function projectDocument(pageId: string): void {
   if (!row) return
   const blocks = parseDocument(row.content)
   syncLinks(pageId, extractLinkTargets(blocks))
+  projectTasks(pageId, blocks)
 }
 
 /** Drop and rebuild the whole index. Returns the number of pages indexed. */
@@ -585,6 +588,264 @@ export function searchPages(query: string, limit = 50): SearchResult[] {
       bodySnippet: snippet.includes(SEARCH_MARK_OPEN) ? snippet : null
     }
   })
+}
+
+// ============================================================
+// Tasks — the checkbox blocks of every page, as a queryable index.
+//
+// The block inside `pages.content` stays the source of truth: writing a todo
+// is typing a checkbox on the page you are already on, never filling in a
+// form somewhere else. This table only makes those blocks answerable to a
+// query, and is rebuilt from the document on every write.
+// ============================================================
+
+/**
+ * The date a task counts against.
+ *
+ * A checkbox block can carry its own `@YYYY-MM-DD`; when it does not, it
+ * inherits the date of the page holding it — which is what makes a journal
+ * entry's todo list work without any syntax at all, since every entry already
+ * has a `date` property.
+ *
+ * Resolved here, at query time, rather than written into `tasks.due_date` by
+ * the projector: a page's date property can change long after its body was
+ * last touched, and a stored copy would then be wrong with nothing to
+ * reproject it. A property keyed exactly `date` wins over any other date
+ * property on the page, so a Book's `finished` date cannot outrank it.
+ */
+const EFFECTIVE_DUE = `
+  COALESCE(t.due_date, (
+    SELECT pr.value_date FROM properties pr
+     WHERE pr.page_id = t.page_id AND pr.type = 'date'
+       AND pr.value_date IS NOT NULL AND pr.value_date <> ''
+     ORDER BY (pr.key <> 'date'), pr.key
+     LIMIT 1
+  ))`
+
+const TASK_SELECT = `
+  SELECT t.page_id, t.block_id, t.text, t.is_done, t.due_date, t.completed_at,
+         ${EFFECTIVE_DUE} AS effective_due,
+         p.title, p.icon
+    FROM tasks t
+    JOIN pages p ON p.id = t.page_id AND p.is_deleted = 0`
+
+interface TaskRow {
+  page_id: string
+  block_id: string
+  text: string
+  is_done: number
+  due_date: string | null
+  completed_at: string | null
+  effective_due: string | null
+  title: string
+  icon: string | null
+}
+
+function toTask(row: TaskRow): TrackerTask {
+  return {
+    pageId: row.page_id,
+    blockId: row.block_id,
+    text: row.text,
+    isDone: row.is_done === 1,
+    dueDate: row.effective_due,
+    // Which of the two answers supplied the date, so the tracker can show a
+    // task dated by its page differently from one dated by hand.
+    dueDateSource: row.due_date ? 'block' : row.effective_due ? 'page' : null,
+    completedAt: row.completed_at,
+    pageTitle: row.title,
+    pageIcon: row.icon
+  }
+}
+
+/**
+ * Rewrite the task rows for one page from its document.
+ *
+ * `completed_at` is the only field the document cannot answer — a checkbox
+ * records that it is ticked, never when — so it is carried across from the
+ * existing row, stamped when a task turns done and cleared when it is
+ * unticked. Everything else is replaced outright: a block that has gone from
+ * the document has no row afterwards.
+ */
+export function projectTasks(pageId: string, blocks?: unknown[]): void {
+  const db = getDb()
+  let document = blocks
+  if (!document) {
+    const row = db.prepare('SELECT content FROM pages WHERE id = ?').get(pageId) as
+      | { content: string | null }
+      | undefined
+    if (!row) return
+    document = parseDocument(row.content)
+  }
+
+  const found = extractTasks(document)
+  const trx = db.transaction(() => {
+    const existing = new Map(
+      (
+        db.prepare('SELECT block_id, is_done, completed_at FROM tasks WHERE page_id = ?').all(pageId) as {
+          block_id: string
+          is_done: number
+          completed_at: string | null
+        }[]
+      ).map((r) => [r.block_id, r])
+    )
+
+    const keep = new Set(found.map((t) => t.blockId))
+    for (const blockId of existing.keys()) {
+      if (!keep.has(blockId)) {
+        db.prepare('DELETE FROM tasks WHERE page_id = ? AND block_id = ?').run(pageId, blockId)
+      }
+    }
+
+    const upsert = db.prepare(
+      `INSERT INTO tasks (page_id, block_id, text, is_done, due_date, completed_at, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(page_id, block_id) DO UPDATE SET
+         text = excluded.text, is_done = excluded.is_done,
+         due_date = excluded.due_date, completed_at = excluded.completed_at,
+         sort_order = excluded.sort_order`
+    )
+
+    const ts = now()
+    for (const task of found) {
+      const prior = existing.get(task.blockId)
+      const completedAt = task.isDone ? (prior?.is_done === 1 ? prior.completed_at : ts) : null
+      upsert.run(pageId, task.blockId, task.text, task.isDone ? 1 : 0, task.dueDate, completedAt, task.sortOrder)
+    }
+  })
+  trx()
+}
+
+/** Drop and rebuild every page's tasks. Returns the number of rows written. */
+export function rebuildTaskIndex(): number {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM tasks').run()
+    for (const row of db.prepare('SELECT id FROM pages').all() as { id: string }[]) {
+      projectTasks(row.id)
+    }
+    return (db.prepare('SELECT count(*) AS n FROM tasks').get() as { n: number }).n
+  })
+  return trx()
+}
+
+/**
+ * Fill the index if it is empty but there are pages to fill it from.
+ *
+ * The same shape as `ensureSearchIndex`, and for the same reason: v8 creates
+ * the table empty, so every checkbox written before this milestone existed
+ * has to be picked up once at startup.
+ */
+export function ensureTaskIndex(): void {
+  const db = getDb()
+  const indexed = (db.prepare('SELECT count(*) AS n FROM tasks').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (indexed === 0 && total > 0) rebuildTaskIndex()
+}
+
+/** Every task in a page's document, in reading order. */
+export function getTasksForPage(pageId: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(`${TASK_SELECT} WHERE t.page_id = ? ORDER BY t.sort_order`)
+    .all(pageId) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/**
+ * Tasks falling inside a date window, both bounds inclusive, as `YYYY-MM-DD`.
+ * Dates are compared as strings, which is exactly right for that format and
+ * needs no date parsing in SQL.
+ */
+export function getTasksInRange(from: string, to: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE ${EFFECTIVE_DUE} BETWEEN ? AND ?
+        ORDER BY effective_due, p.title, t.sort_order`
+    )
+    .all(from, to) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/** Open tasks whose date has already passed. `before` is exclusive. */
+export function getOverdueTasks(before: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NOT NULL AND ${EFFECTIVE_DUE} < ?
+        ORDER BY effective_due, p.title, t.sort_order`
+    )
+    .all(before) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/**
+ * Open tasks with no date anywhere — neither their own nor their page's.
+ *
+ * A date-scoped view would otherwise swallow them silently: a todo typed into
+ * an ordinary untyped note has no date to sort under and would appear in no
+ * window at all.
+ */
+export function getUndatedTasks(limit = 100): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NULL
+        ORDER BY p.updated_at DESC, t.sort_order
+        LIMIT ?`
+    )
+    .all(limit) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/** Pages carrying a date property that falls inside the window. */
+export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id, p.title, p.icon, pr.key, pr.value_date, t.name AS type_name
+         FROM properties pr
+         JOIN pages p ON p.id = pr.page_id AND p.is_deleted = 0
+         LEFT JOIN types t ON t.id = p.type_id
+        WHERE pr.type = 'date' AND pr.value_date BETWEEN ? AND ?
+        ORDER BY pr.value_date, p.title`
+    )
+    .all(from, to) as {
+    id: string
+    title: string
+    icon: string | null
+    key: string
+    value_date: string
+    type_name: string | null
+  }[]
+
+  return rows.map((r) => ({
+    pageId: r.id,
+    pageTitle: r.title,
+    pageIcon: r.icon,
+    typeName: r.type_name,
+    propertyKey: r.key,
+    date: r.value_date
+  }))
+}
+
+/**
+ * Tick a task off without opening its page.
+ *
+ * The write goes back into the document — the block is the source of truth,
+ * so setting `tasks.is_done` on its own would produce a row that the next
+ * reprojection silently reverts. `updatePage` then reprojects, which is what
+ * keeps this honest. Returns the page as stored so the caller can refresh the
+ * copy the editor would remount from; a stale copy there is what once let an
+ * old document be saved over a newer one.
+ */
+export function setTaskDone(pageId: string, blockId: string, done: boolean): Page {
+  const page = getPageById(pageId)
+  if (!page) throw new Error(`Page not found: ${pageId}`)
+
+  const { blocks, found } = setCheckedInDocument(parseDocument(page.content), blockId, done)
+  if (!found) throw new Error(`No checkbox block ${blockId} on page ${pageId}`)
+
+  updatePage(pageId, { content: JSON.stringify(blocks) })
+  return getPageById(pageId)!
 }
 
 // ============================================================

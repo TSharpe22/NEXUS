@@ -71,6 +71,14 @@ const api: NexusAPI = {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
     searchPages: (query, excludePageId) => ipcRenderer.invoke('links:searchPages', query, excludePageId)
   },
+  tasks: {
+    inRange: (from, to) => ipcRenderer.invoke('tasks:inRange', from, to),
+    overdue: (before) => ipcRenderer.invoke('tasks:overdue', before),
+    undated: (limit) => ipcRenderer.invoke('tasks:undated', limit),
+    forPage: (pageId) => ipcRenderer.invoke('tasks:forPage', pageId),
+    datedPages: (from, to) => ipcRenderer.invoke('tasks:datedPages', from, to),
+    setDone: (pageId, blockId, done) => ipcRenderer.invoke('tasks:setDone', pageId, blockId, done)
+  },
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
   },

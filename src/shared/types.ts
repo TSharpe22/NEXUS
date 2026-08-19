@@ -68,6 +68,38 @@ export interface Property {
   value_relation: string | null
 }
 
+/**
+ * One checkbox block, as the tracker sees it.
+ *
+ * A projection of a block inside `pages.content` — never the only copy of
+ * anything, and never edited directly: ticking one writes back into the
+ * document it came from.
+ */
+export interface TrackerTask {
+  pageId: string
+  blockId: string
+  text: string
+  isDone: boolean
+  /** The date this counts against: the block's own `@date`, else its page's. */
+  dueDate: string | null
+  /** Which of the two supplied `dueDate`, or null when it has neither. */
+  dueDateSource: 'block' | 'page' | null
+  completedAt: string | null
+  pageTitle: string
+  pageIcon: string | null
+}
+
+/** A page placed on the calendar by a `date` property of its own. */
+export interface DatedPage {
+  pageId: string
+  pageTitle: string
+  pageIcon: string | null
+  typeName: string | null
+  /** Which date property put it here — a type can define more than one. */
+  propertyKey: string
+  date: string
+}
+
 export interface Link {
   id: string
   source_page_id: string
@@ -260,6 +292,22 @@ export interface NexusAPI {
      * write a version of it that disagrees with the document.
      */
     searchPages(query: string, excludePageId?: string): Promise<Page[]>
+  }
+  tasks: {
+    /** Tasks dated inside [from, to], both bounds inclusive, as YYYY-MM-DD. */
+    inRange(from: string, to: string): Promise<TrackerTask[]>
+    /** Open tasks dated before `before`, which is exclusive. */
+    overdue(before: string): Promise<TrackerTask[]>
+    /** Open tasks with no date on the block or its page. */
+    undated(limit?: number): Promise<TrackerTask[]>
+    forPage(pageId: string): Promise<TrackerTask[]>
+    /** Pages placed in the window by a date property of their own. */
+    datedPages(from: string, to: string): Promise<DatedPage[]>
+    /**
+     * Tick a task off. Writes back into the block, and returns the page as
+     * stored so the caller can refresh the copy the editor remounts from.
+     */
+    setDone(pageId: string, blockId: string, done: boolean): Promise<Page>
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>

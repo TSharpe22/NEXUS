@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
-import { ensureSearchIndex } from './repo'
+import { ensureSearchIndex, ensureTaskIndex } from './repo'
 import { flushPending as flushMirror } from './mirror'
 
 let mainWindow: BrowserWindow | null = null
@@ -43,6 +43,9 @@ app.whenReady().then(() => {
   initDatabase()
   // The v4 migration creates page_fts empty; fill it before the first query.
   ensureSearchIndex()
+  // Same for v8's `tasks` — every checkbox written before the tracker existed
+  // is picked up here, once.
+  ensureTaskIndex()
   registerIpcHandlers()
   createWindow()
 
