@@ -11,7 +11,7 @@
  * Runs against a scratch userData directory so it never touches real notes.
  */
 import { _electron as electron } from 'playwright-core'
-import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -411,6 +411,73 @@ await sleep(500)
 check('command palette opens', await page.evaluate(() => !!document.querySelector('.nx-palette')))
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
+
+// ---------------------------------------------------------------- vault mirror
+log('\n— vault mirror —')
+const mirrorDir = join(tmpdir(), `nexus-mirror-${Date.now()}`)
+
+// A file the user put there themselves. The mirror must never remove it.
+mkdirSync(mirrorDir, { recursive: true })
+writeFileSync(join(mirrorDir, 'MY OWN FILE.md'), 'do not delete me')
+
+const synced = await page.evaluate(async (dir) => {
+  await window.api.mirror.setFolder(dir)
+  return window.api.mirror.syncNow()
+}, mirrorDir)
+check('mirror wrote files', synced.written >= 2, JSON.stringify(synced))
+
+const tree = () => {
+  const walk = (d, pre = '') =>
+    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(d, e.name), pre + e.name + '/') : [pre + e.name]
+    )
+  return walk(mirrorDir).sort()
+}
+const files = tree()
+check('index file written', files.includes('_nexus-index.md'), JSON.stringify(files))
+check('folder tree mirrored as directories', files.some((f) => f.includes('/')), JSON.stringify(files))
+
+const kinetics = files.find((f) => f.includes('Reaction kinetics'))
+check('page written under a readable name', !!kinetics, JSON.stringify(files))
+const md = readFileSync(join(mirrorDir, kinetics), 'utf-8')
+check('frontmatter present', md.startsWith('---\n'), md.slice(0, 40))
+check('body carried over', md.includes('Rate depends on temperature'))
+check('tags in frontmatter', md.includes('tags: ["kinetics"]'), md.split('---')[1]?.trim().slice(0, 160))
+check('properties in frontmatter', md.includes('difficulty:'), md.split('---')[1]?.trim().slice(0, 160))
+// The [[ link was made on the second page, so that is the file to look in.
+const linker = readFileSync(join(mirrorDir, files.find((f) => f.includes('Catalysis'))), 'utf-8')
+check('wiki-link preserved as [[Title]]', linker.includes('[[Reaction kinetics]]'),
+  JSON.stringify(linker.slice(-160)))
+
+// An unchanged vault must be a true no-op, or the folder churns mtimes every
+// couple of seconds while typing.
+const again = await page.evaluate(() => window.api.mirror.syncNow())
+check('re-syncing an unchanged vault writes nothing', again.written === 0, JSON.stringify(again))
+
+// Renaming moves the file and leaves nothing behind.
+await page.evaluate(async () => {
+  const pages = await window.api.pages.getAll()
+  const p = pages.find((x) => x.title === 'Reaction kinetics')
+  await window.api.pages.update(p.id, { title: 'Renamed kinetics' })
+  return window.api.mirror.syncNow()
+})
+const after = tree()
+check('rename moved the file', after.some((f) => f.includes('Renamed kinetics')), JSON.stringify(after))
+check('no leftover under the old name', !after.some((f) => f.includes('Reaction kinetics')), JSON.stringify(after))
+check('a file the user added is untouched',
+  readFileSync(join(mirrorDir, 'MY OWN FILE.md'), 'utf-8') === 'do not delete me')
+
+// A page title cannot escape the mirror root.
+await page.evaluate(async () => {
+  const p = await window.api.pages.create('note')
+  await window.api.pages.update(p.id, { title: '../../escaped' })
+  return window.api.mirror.syncNow()
+})
+check('path traversal refused', !existsSync(join(mirrorDir, '..', '..', 'escaped.md')))
+check('sanitised inside the root', tree().some((f) => f.includes('escaped')), JSON.stringify(tree()))
+
+await page.evaluate(() => window.api.mirror.setFolder(null))
+rmSync(mirrorDir, { recursive: true, force: true })
 
 // ---------------------------------------------------------------- persistence
 // Last, because it types into a page and would otherwise skew the activity

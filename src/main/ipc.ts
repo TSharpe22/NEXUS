@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
+import * as mirror from './mirror'
 import { getDataDir } from './database'
 import type { PropertyType, LinkTarget } from '../shared/types'
 
@@ -18,6 +19,36 @@ export function registerIpcHandlers(): void {
       return repo.createPage(typeId)
     } catch (e) {
       rethrow('pages:create', e)
+    } finally {
+      mirror.scheduleSync()
+    }
+  })
+  ipcMain.handle('mirror:getConfig', () => {
+    try {
+      return mirror.getConfig()
+    } catch (e) {
+      rethrow('mirror:getConfig', e)
+    }
+  })
+  ipcMain.handle('mirror:setFolder', (_, folder: string | null) => {
+    try {
+      return mirror.setFolder(folder || null)
+    } catch (e) {
+      rethrow('mirror:setFolder', e)
+    }
+  })
+  ipcMain.handle('mirror:setEnabled', (_, enabled: boolean) => {
+    try {
+      return mirror.setEnabled(Boolean(enabled))
+    } catch (e) {
+      rethrow('mirror:setEnabled', e)
+    }
+  })
+  ipcMain.handle('mirror:syncNow', () => {
+    try {
+      return mirror.syncNow()
+    } catch (e) {
+      rethrow('mirror:syncNow', e)
     }
   })
   ipcMain.handle('search:pages', (_, query: string, limit?: number) => {
@@ -60,6 +91,8 @@ export function registerIpcHandlers(): void {
       return repo.updatePage(id, data)
     } catch (e) {
       rethrow('pages:update', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:softDelete', (_, id: string) => {
@@ -67,6 +100,8 @@ export function registerIpcHandlers(): void {
       return repo.softDeletePage(id)
     } catch (e) {
       rethrow('pages:softDelete', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:restore', (_, id: string) => {
@@ -74,6 +109,8 @@ export function registerIpcHandlers(): void {
       return repo.restorePage(id)
     } catch (e) {
       rethrow('pages:restore', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:hardDelete', (_, id: string) => {
@@ -81,6 +118,8 @@ export function registerIpcHandlers(): void {
       return repo.hardDeletePage(id)
     } catch (e) {
       rethrow('pages:hardDelete', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:getDeleted', () => {
@@ -95,6 +134,8 @@ export function registerIpcHandlers(): void {
       return repo.duplicatePage(id)
     } catch (e) {
       rethrow('pages:duplicate', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
@@ -102,6 +143,8 @@ export function registerIpcHandlers(): void {
       return repo.setPageType(pageId, typeId)
     } catch (e) {
       rethrow('pages:setType', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:emptyTrash', () => {
@@ -109,6 +152,8 @@ export function registerIpcHandlers(): void {
       return repo.emptyTrash()
     } catch (e) {
       rethrow('pages:emptyTrash', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 
@@ -117,6 +162,8 @@ export function registerIpcHandlers(): void {
       return repo.movePageToFolder(id, folderId)
     } catch (e) {
       rethrow('pages:move', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 
@@ -133,6 +180,8 @@ export function registerIpcHandlers(): void {
       return repo.createFolder(name, parentFolderId)
     } catch (e) {
       rethrow('folders:create', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:rename', (_, id: string, name: string) => {
@@ -140,6 +189,8 @@ export function registerIpcHandlers(): void {
       return repo.renameFolder(id, name)
     } catch (e) {
       rethrow('folders:rename', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:move', (_, id: string, parentFolderId: string | null) => {
@@ -147,6 +198,8 @@ export function registerIpcHandlers(): void {
       return repo.moveFolder(id, parentFolderId)
     } catch (e) {
       rethrow('folders:move', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:remove', (_, id: string) => {
@@ -154,6 +207,8 @@ export function registerIpcHandlers(): void {
       return repo.deleteFolder(id)
     } catch (e) {
       rethrow('folders:remove', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 
@@ -177,6 +232,8 @@ export function registerIpcHandlers(): void {
       return repo.addTagToPage(pageId, name)
     } catch (e) {
       rethrow('tags:addToPage', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:removeFromPage', (_, pageId: string, tagId: string) => {
@@ -184,6 +241,8 @@ export function registerIpcHandlers(): void {
       return repo.removeTagFromPage(pageId, tagId)
     } catch (e) {
       rethrow('tags:removeFromPage', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:rename', (_, id: string, name: string) => {
@@ -191,6 +250,8 @@ export function registerIpcHandlers(): void {
       return repo.renameTag(id, name)
     } catch (e) {
       rethrow('tags:rename', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:remove', (_, id: string) => {
@@ -198,6 +259,8 @@ export function registerIpcHandlers(): void {
       return repo.deleteTag(id)
     } catch (e) {
       rethrow('tags:remove', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:setColor', (_, id: string, color: string) => {
@@ -205,6 +268,8 @@ export function registerIpcHandlers(): void {
       return repo.setTagColor(id, color)
     } catch (e) {
       rethrow('tags:setColor', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:pageIdsFor', (_, tagIds: unknown) => {
@@ -230,6 +295,8 @@ export function registerIpcHandlers(): void {
         return repo.setProperty(pageId, key, type, value)
       } catch (e) {
         rethrow('properties:set', e)
+      } finally {
+        mirror.scheduleSync()
       }
     }
   )
@@ -245,6 +312,8 @@ export function registerIpcHandlers(): void {
       return repo.removeProperty(pageId, key)
     } catch (e) {
       rethrow('properties:remove', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 
@@ -260,6 +329,8 @@ export function registerIpcHandlers(): void {
       return repo.createType(name, icon ?? null)
     } catch (e) {
       rethrow('types:create', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:getPropertyDefinitions', (_, typeId: string) => {
@@ -274,6 +345,8 @@ export function registerIpcHandlers(): void {
       return repo.defineProperty(typeId, name, propertyType)
     } catch (e) {
       rethrow('types:defineProperty', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:rename', (_, id: string, name: string) => {
@@ -281,6 +354,8 @@ export function registerIpcHandlers(): void {
       return repo.renameType(id, name)
     } catch (e) {
       rethrow('types:rename', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:remove', (_, id: string) => {
@@ -288,6 +363,8 @@ export function registerIpcHandlers(): void {
       return repo.deleteType(id)
     } catch (e) {
       rethrow('types:remove', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:renameProperty', (_, definitionId: string, name: string) => {
@@ -295,6 +372,8 @@ export function registerIpcHandlers(): void {
       return repo.renamePropertyDefinition(definitionId, name)
     } catch (e) {
       rethrow('types:renameProperty', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:removeProperty', (_, definitionId: string) => {
@@ -302,6 +381,8 @@ export function registerIpcHandlers(): void {
       return repo.removePropertyDefinition(definitionId)
     } catch (e) {
       rethrow('types:removeProperty', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 
@@ -390,6 +471,8 @@ export function registerIpcHandlers(): void {
       return io.importMarkdown(content, filename)
     } catch (e) {
       rethrow('io:importMarkdown', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
   ipcMain.handle('io:importJSON', (_, content: string) => {
@@ -397,6 +480,8 @@ export function registerIpcHandlers(): void {
       return io.importJSON(content)
     } catch (e) {
       rethrow('io:importJSON', e)
+    } finally {
+      mirror.scheduleSync()
     }
   })
 

@@ -170,6 +170,45 @@ export function duplicatePage(id: string): Page {
 }
 
 // ============================================================
+// Settings (key/value) and the vault-mirror manifest
+// ============================================================
+
+export function getSetting(key: string): string | null {
+  const row = getDb().prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string | null }
+    | undefined
+  return row?.value ?? null
+}
+
+export function setSetting(key: string, value: string | null): void {
+  getDb()
+    .prepare(
+      `INSERT INTO settings (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+    )
+    .run(key, value)
+}
+
+/** Page id to the relative path the mirror last wrote for it. */
+export function getMirrorManifest(): Map<string, string> {
+  const rows = getDb().prepare('SELECT page_id, rel_path FROM mirror_files').all() as {
+    page_id: string
+    rel_path: string
+  }[]
+  return new Map(rows.map((r) => [r.page_id, r.rel_path]))
+}
+
+export function replaceMirrorManifest(entries: Map<string, string>): void {
+  const db = getDb()
+  const insert = db.prepare('INSERT INTO mirror_files (page_id, rel_path) VALUES (?, ?)')
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM mirror_files').run()
+    for (const [pageId, relPath] of entries) insert.run(pageId, relPath)
+  })
+  trx()
+}
+
+// ============================================================
 // Full-text search
 // ============================================================
 

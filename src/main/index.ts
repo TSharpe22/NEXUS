@@ -3,6 +3,7 @@ import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
 import { ensureSearchIndex } from './repo'
+import { flushPending as flushMirror } from './mirror'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -51,8 +52,13 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // Flush before the database closes — the mirror reads from it.
+  flushMirror()
   closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('before-quit', () => closeDatabase())
+app.on('before-quit', () => {
+  flushMirror()
+  closeDatabase()
+})

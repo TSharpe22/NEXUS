@@ -149,7 +149,31 @@ export interface GraphData {
 // IPC API contract
 // ============================================================
 
+export interface MirrorConfig {
+  enabled: boolean
+  folder: string | null
+  lastSyncAt: string | null
+}
+
+export interface MirrorResult {
+  written: number
+  deleted: number
+  unchanged: number
+  total: number
+}
+
 export interface NexusAPI {
+  /**
+   * One-way export of the vault to a Markdown tree on disk, so any assistant,
+   * editor or backup tool can read it as ordinary files.
+   */
+  mirror: {
+    getConfig(): Promise<MirrorConfig>
+    /** Passing a folder also enables the mirror; passing null disables it. */
+    setFolder(folder: string | null): Promise<MirrorConfig>
+    setEnabled(enabled: boolean): Promise<MirrorConfig>
+    syncNow(): Promise<MirrorResult>
+  }
   search: {
     /** Full-text search over page titles and body content. */
     pages(query: string, limit?: number): Promise<SearchResult[]>

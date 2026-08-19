@@ -151,7 +151,7 @@ db.pragma('foreign_keys = ON')
 // ------------------------------------------------------------------
 console.log('\nmigration from first-build schema:')
 check('backup taken before migrating', backupCalls, 1)
-check('user_version stamped', db.pragma('user_version', { simple: true }), 4)
+check('user_version stamped', db.pragma('user_version', { simple: true }), 5)
 check('legacy blocks table dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='blocks'`).get().c, 0)
 check('legacy property_values dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='property_values'`).get().c, 0)
 check('activity_log created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='activity_log'`).get().c, 1)
@@ -176,6 +176,10 @@ check('migrated pages start at the folder root', db.prepare('SELECT count(*) c F
 // after migrating, but stays empty until repo.ensureSearchIndex() fills it at
 // startup, so an empty index here is the expected state and not a failure.
 check('page_fts table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='page_fts'`).get().c, 1)
+
+// v5 — settings and the vault mirror manifest. Additive as well.
+check('settings table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='settings'`).get().c, 1)
+check('mirror_files table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='mirror_files'`).get().c, 1)
 check('page_fts is queryable', (() => {
   try {
     db.prepare(`SELECT count(*) c FROM page_fts WHERE page_fts MATCH 'x'`).get()

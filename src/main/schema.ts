@@ -25,8 +25,10 @@ let db: Database.Database
  *     reaches note content and not just titles. Purely additive, and the
  *     index is a derived projection — it is rebuilt from `pages` whenever
  *     it is missing or empty, so losing it costs nothing.
+ * 5 — vault mirror: a `settings` key/value table, and `mirror_files`, the
+ *     manifest of files the mirror has written. Purely additive.
  */
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -496,6 +498,25 @@ export function applySchema(
       title,
       body,
       tokenize = "unicode61 remove_diacritics 2"
+    );
+  `)
+
+  // v5. General key/value settings, and the vault mirror's manifest.
+  //
+  // `mirror_files` deliberately has no foreign key to `pages`: the row must
+  // outlive the page it describes, otherwise deleting a page would drop the
+  // manifest row before the mirror could clean up the orphaned file on disk.
+  // The mirror only ever deletes paths recorded here, so a file the user put
+  // in the folder themselves is never touched.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS mirror_files (
+      page_id  TEXT PRIMARY KEY,
+      rel_path TEXT NOT NULL
     );
   `)
 

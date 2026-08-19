@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { NexusAPI } from '../shared/types'
 
 const api: NexusAPI = {
+  mirror: {
+    getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
+    setFolder: (folder) => ipcRenderer.invoke('mirror:setFolder', folder),
+    setEnabled: (enabled) => ipcRenderer.invoke('mirror:setEnabled', enabled),
+    syncNow: () => ipcRenderer.invoke('mirror:syncNow'),
+  },
   search: {
     pages: (query, limit) => ipcRenderer.invoke('search:pages', query, limit),
     rebuildIndex: () => ipcRenderer.invoke('search:rebuildIndex'),
