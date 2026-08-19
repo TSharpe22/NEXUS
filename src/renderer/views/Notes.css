@@ -490,6 +490,20 @@
   background: var(--nx-row-hover);
 }
 
+.nx-backlinks__title {
+  align-items: baseline;
+  display: flex;
+  gap: var(--nx-space-2);
+  min-width: 0;
+}
+
+/* Which property produced a relation backlink. Muted and mono, like every
+   other piece of metadata — the page title is what is being read here. */
+.nx-backlinks__via {
+  color: var(--nx-text-dim);
+  flex-shrink: 0;
+}
+
 .nx-backlinks__context {
   color: var(--nx-text-dim);
   font-family: var(--nx-font-mono);

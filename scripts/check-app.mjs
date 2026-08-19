@@ -700,6 +700,94 @@ check(
 )
 await sleep(400)
 
+// ---------------------------------------------------------------- relation backlinks
+log('\n— relations as backlinks —')
+
+// Milestone C left this unresolved: syncLinks deleted every link a page owned
+// and rebuilt them from the document's mentions, so a relation's row was gone
+// on the next content save. Schema 9's `source` column is what separates them.
+const backlinksOfTitle = (title) =>
+  page.evaluate(async (t) => {
+    const target = (await window.api.pages.getAll()).find((p) => p.title === t)
+    return window.api.links.getBacklinks(target.id)
+  }, title)
+
+// "Catalysis" already holds a `related` relation pointing at Reaction kinetics.
+let kineticsLinks = await backlinksOfTitle('Reaction kinetics')
+const relationLink = kineticsLinks.find((b) => b.source === 'relation')
+check('a relation property produces a backlink',
+  !!relationLink && relationLink.sourcePageTitle === 'Catalysis',
+  JSON.stringify(kineticsLinks.map((b) => [b.sourcePageTitle, b.source, b.propertyKey])))
+check('and it names the property it came through', relationLink?.propertyKey === 'related',
+  JSON.stringify(relationLink))
+check('a relation carries no mention context', relationLink?.context === null)
+
+// The regression this whole change exists for: saving the body must not touch
+// the relation's row.
+await page.evaluate(async (id) => {
+  const doc = JSON.parse((await window.api.pages.getById(id)).content)
+  doc.push({ type: 'paragraph', content: [{ type: 'text', text: 'An unrelated new sentence.', styles: {} }] })
+  await window.api.pages.update(id, { content: JSON.stringify(doc) })
+}, catalysisId)
+await sleep(500)
+kineticsLinks = await backlinksOfTitle('Reaction kinetics')
+check('saving the body leaves the relation backlink alone',
+  kineticsLinks.some((b) => b.source === 'relation' && b.sourcePageTitle === 'Catalysis'),
+  JSON.stringify(kineticsLinks.map((b) => [b.sourcePageTitle, b.source])))
+check('and the mention from the same page is still there too',
+  kineticsLinks.some((b) => b.source === 'mention' && b.sourcePageTitle === 'Catalysis'),
+  JSON.stringify(kineticsLinks.map((b) => [b.sourcePageTitle, b.source])))
+check('one page pointing both ways is two backlinks, not one',
+  kineticsLinks.filter((b) => b.sourcePageId === catalysisId).length === 2)
+
+// Two relation properties to the same target are two distinct backlinks —
+// which is why property_key is part of the unique constraint.
+await page.evaluate(async ([source, target]) => {
+  await window.api.types.defineProperty('note', 'Follows', 'relation')
+  await window.api.properties.set(source, 'follows', 'relation', target)
+}, [catalysisId, kineticsId])
+await sleep(400)
+kineticsLinks = await backlinksOfTitle('Reaction kinetics')
+check('a second relation property adds its own backlink',
+  kineticsLinks.filter((b) => b.source === 'relation' && b.sourcePageId === catalysisId).length === 2,
+  JSON.stringify(kineticsLinks.filter((b) => b.source === 'relation').map((b) => b.propertyKey)))
+
+// Clearing the value takes the backlink with it.
+await page.evaluate(async (id) => window.api.properties.set(id, 'follows', 'relation', null), catalysisId)
+await sleep(400)
+kineticsLinks = await backlinksOfTitle('Reaction kinetics')
+check('clearing a relation drops its backlink',
+  !kineticsLinks.some((b) => b.propertyKey === 'follows'),
+  JSON.stringify(kineticsLinks.map((b) => b.propertyKey)))
+
+// Removing the property from the type clears it on every page of that type.
+await page.evaluate(async ([source, target]) => {
+  await window.api.properties.set(source, 'follows', 'relation', target)
+}, [catalysisId, kineticsId])
+await sleep(300)
+await page.evaluate(async () => {
+  const defs = await window.api.types.getPropertyDefinitions('note')
+  const follows = defs.find((d) => d.key === 'follows')
+  await window.api.types.removeProperty(follows.id)
+})
+await sleep(400)
+kineticsLinks = await backlinksOfTitle('Reaction kinetics')
+check('removing the property from the type drops the backlinks it made',
+  !kineticsLinks.some((b) => b.propertyKey === 'follows'),
+  JSON.stringify(kineticsLinks.map((b) => b.propertyKey)))
+
+// The panel has to distinguish them: a mention is a sentence to read, a
+// relation is a field to edit.
+check('opened the target page', (await openInTree('Reaction kinetics')) === 'OK')
+await sleep(900)
+await page.evaluate(() => document.querySelector('.nx-backlinks__toggle').click())
+await sleep(500)
+check('the panel labels a relation backlink with its property',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-backlinks__via')].some((e) => e.textContent.includes('related'))),
+  await page.evaluate(() => document.querySelector('.nx-backlinks__list')?.innerText))
+await page.screenshot({ path: SHOT + '/14-relation-backlinks.png' })
+
 // ---------------------------------------------------------------- tasks
 log('\n— tasks projected from checkbox blocks —')
 

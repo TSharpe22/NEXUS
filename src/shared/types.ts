@@ -132,7 +132,12 @@ export interface BacklinkResult {
   sourcePageId: string
   sourcePageTitle: string
   sourcePageIcon: string | null
+  /** The text around a mention. Always null for a relation. */
   context: string | null
+  /** Which of the two ways one page can point at another produced this. */
+  source: 'mention' | 'relation'
+  /** The property a relation came from. Always null for a mention. */
+  propertyKey: string | null
 }
 
 export interface LinkTarget {

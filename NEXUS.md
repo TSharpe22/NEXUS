@@ -120,8 +120,16 @@ substitutes for the other.
   tag_id)`. Renaming a tag onto an existing name merges the two rather than
   failing the index. Colour is one of the four semantic names from
   `tokens.css`, assigned round-robin on creation.
-- `links` — `source_page_id, target_page_id, context`. Backs `[[wiki-links]]`
-  and the backlinks panel.
+- `links` — `source_page_id, target_page_id, source, property_key, context`.
+  Backs `[[wiki-links]]`, relation properties and the backlinks panel. `source`
+  is `'mention'` or `'relation'`, and it is what lets the two be projected
+  independently: a content save rewrites only that page's mentions, setting a
+  property rewrites only its relations. Without it a relation could not have a
+  backlink at all — `syncLinks` deletes whatever is not in the document, and a
+  relation's row never is. `property_key` names the property a relation came
+  through and is `''` for a mention, not null, so the unique constraint over
+  (source, target, source, property_key) actually holds for mentions; a page
+  relating to the same target through two properties is deliberately two rows.
 - `tasks` — `page_id, block_id, text, is_done, due_date, completed_at,
   sort_order`. One row per `checkListItem` block in a page's document, keyed by
   (page_id, block_id) since BlockNote block ids are stable across saves. A
@@ -204,7 +212,10 @@ number, check what is already on `main`.**
 **Every projection is written in the main process.** `repo.updatePage` is the
 single place a page's body changes, and it rebuilds all three things derived
 from that body: the search index (`reindexPage`), the link graph and the task
-table (both via `projectDocument`). Link extraction used to run in the
+table (both via `projectDocument`). Relation links are the one projection with
+a second trigger, since they come from properties rather than from the
+document: `syncRelationLinks` runs from `setProperty`, `removeProperty` and
+`removePropertyDefinition`. Link extraction used to run in the
 renderer, from `Editor.tsx`, after the save round-tripped — which made a React
 component the only writer of the link graph, so pages created by import, by a
 template, or by the journal button contributed no backlinks and nothing else

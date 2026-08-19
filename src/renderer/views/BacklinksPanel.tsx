@@ -44,8 +44,20 @@ export function BacklinksPanel({ pageId }: Props) {
         ) : (
           <div className="nx-backlinks__list">
             {backlinks.map((bl) => (
-              <button key={bl.sourcePageId} className="nx-backlinks__item" onClick={() => openPage(bl.sourcePageId)}>
-                <div>{bl.sourcePageTitle || 'Untitled'}</div>
+              <button
+                key={`${bl.sourcePageId}:${bl.source}:${bl.propertyKey ?? ''}`}
+                className="nx-backlinks__item"
+                onClick={() => openPage(bl.sourcePageId)}
+              >
+                <div className="nx-backlinks__title">
+                  {bl.sourcePageTitle || 'Untitled'}
+                  {/* A page can point here two ways, and which one it is
+                      changes what you would do about it: a mention is a
+                      sentence to go read, a relation is a field to go edit. */}
+                  {bl.source === 'relation' && (
+                    <span className="nx-backlinks__via nx-type-data">via {bl.propertyKey}</span>
+                  )}
+                </div>
                 {bl.context && <div className="nx-backlinks__context">{bl.context}</div>}
               </button>
             ))}

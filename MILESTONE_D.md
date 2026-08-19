@@ -225,10 +225,14 @@ Built feature by feature, each pushed for review:
 
 Two decisions from §5 were deliberately left where they were:
 
-- **Relations still do not feed backlinks.** D never needed it: a task is
-  found through its date, not through a relation. Giving relations backlinks
-  still needs the `source` discriminator on `links`, and `syncLinks` will
-  still erase a relation-created row until it has one.
+- ~~**Relations still do not feed backlinks.**~~ **Done, schema 9.** `links`
+  gained `source` ('mention' | 'relation') and `property_key`, so the two are
+  projected independently and a content save no longer erases a relation's
+  row. The migration copies existing rows across as mentions rather than
+  re-deriving them — a first-build file's links were extracted by the old app
+  and nothing guarantees the migrated document still produces them — and
+  backfills a link for every relation already stored, so an existing vault has
+  relation backlinks on first launch. The panel labels them "via <property>".
 - **`io.exportPageJSON` still drops properties.** D does not lean on export,
   so the portable-reference question (resolve by title, drop on import, or
   export `[[Title]]` the way the mirror does) is still open and still has to

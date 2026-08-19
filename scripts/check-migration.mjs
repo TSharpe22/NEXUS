@@ -190,6 +190,36 @@ check('types.template_page_id added', db.pragma('table_info(types)').map((c) => 
 check('tasks table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='tasks'`).get().c, 1)
 check('tasks columns', db.pragma('table_info(tasks)').map((c) => c.name),
   ['page_id', 'block_id', 'text', 'is_done', 'due_date', 'completed_at', 'sort_order'])
+// v9 — links gains a source discriminator. The table is dropped and rebuilt
+// rather than altered, because every row in it is derived from a document or
+// a relation property; repo.ensureLinkIndex() refills it at startup, so empty
+// here is the expected state.
+check('links.source added', db.pragma('table_info(links)').map((c) => c.name).includes('source'), true)
+check('links.property_key added', db.pragma('table_info(links)').map((c) => c.name).includes('property_key'), true)
+check('a mention and a relation to the same target can coexist', (() => {
+  db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('ls','note','Src','[]')`).run()
+  db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('lt','note','Tgt','[]')`).run()
+  db.prepare(`INSERT INTO links (id, source_page_id, target_page_id, source, property_key)
+              VALUES ('xl1','ls','lt','mention','')`).run()
+  db.prepare(`INSERT INTO links (id, source_page_id, target_page_id, source, property_key)
+              VALUES ('xl2','ls','lt','relation','project')`).run()
+  // Two relations through different properties are two distinct rows.
+  db.prepare(`INSERT INTO links (id, source_page_id, target_page_id, source, property_key)
+              VALUES ('xl3','ls','lt','relation','owner')`).run()
+  return db.prepare(`SELECT count(*) c FROM links WHERE source_page_id = 'ls'`).get().c
+})(), 3)
+check('the same mention cannot be recorded twice', (() => {
+  try {
+    db.prepare(`INSERT INTO links (id, source_page_id, target_page_id, source, property_key)
+                VALUES ('xl4','ls','lt','mention','')`).run()
+    return 'inserted'
+  } catch {
+    return 'refused'
+  }
+})(), 'refused')
+db.prepare(`DELETE FROM links WHERE source_page_id = 'ls'`).run()
+db.prepare(`DELETE FROM pages WHERE id IN ('ls','lt')`).run()
+
 check('a task cannot outlive its page', (() => {
   db.pragma('foreign_keys = ON')
   db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('tp','note','Tasks','[]')`).run()
@@ -321,6 +351,62 @@ check('the seeded type survived', six.prepare('SELECT count(*) c FROM types').ge
 six.pragma('foreign_keys = ON')
 check('foreign keys satisfied', six.pragma('foreign_key_check'), [])
 six.close()
+
+// ------------------------------------------------------------------
+// v8 file: links exists in the old shape, with rows in it. The step drops the
+// table, so what has to survive is the *sources* those rows were derived from
+// — the document and the relation property — not the rows themselves.
+// ------------------------------------------------------------------
+console.log('\nv8 file with links in the old shape:')
+const v8Path = join(dir, 'v8-links.db')
+const v8 = new Database(v8Path)
+v8.pragma('foreign_keys = OFF')
+applySchema(v8, () => null)
+// Rebuild `links` as v8 had it, then stamp the file back to 8.
+v8.exec(`
+  DROP TABLE links;
+  CREATE TABLE links (
+    id              TEXT PRIMARY KEY,
+    source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    context         TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_page_id, target_page_id)
+  );
+  INSERT INTO pages (id, type_id, title, content) VALUES ('a','note','A','[]');
+  INSERT INTO pages (id, type_id, title, content) VALUES ('b','note','B','[]');
+  INSERT INTO links (id, source_page_id, target_page_id, context) VALUES ('old','a','b','saw it');
+  INSERT INTO properties (id, page_id, key, type, value_relation)
+    VALUES ('rp','a','project','relation','b');
+`)
+v8.pragma('user_version = 8')
+
+applySchema(v8, () => null)
+check('the old links table is replaced', v8.pragma('table_info(links)').map((c) => c.name),
+  ['id', 'source_page_id', 'target_page_id', 'source', 'property_key', 'context', 'created_at'])
+check('the mention it held is carried across, not re-derived',
+  v8.prepare(`SELECT source, property_key, context FROM links WHERE id = 'old'`).get(),
+  { source: 'mention', property_key: '', context: 'saw it' })
+check('and the relation property gets a link of its own',
+  v8.prepare(`SELECT source_page_id, target_page_id, property_key FROM links WHERE source = 'relation'`).all(),
+  [{ source_page_id: 'a', target_page_id: 'b', property_key: 'project' }])
+check('the relation property they came from is untouched',
+  v8.prepare(`SELECT value_relation FROM properties WHERE id = 'rp'`).get().value_relation, 'b')
+check('the pages are untouched', v8.prepare('SELECT count(*) c FROM pages').get().c, 2)
+check('and the file moves to the current version', v8.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+applySchema(v8, () => null)
+applySchemaTwiceCheck: {
+  // Re-running must not duplicate the relation backfill or lose the mention.
+  check('re-running keeps the table in the new shape',
+    v8.pragma('table_info(links)').map((c) => c.name).includes('source'), true)
+  check('re-running does not duplicate the backfilled relation',
+    v8.prepare(`SELECT count(*) c FROM links WHERE source = 'relation'`).get().c, 1)
+  check('and does not lose the carried-over mention',
+    v8.prepare(`SELECT count(*) c FROM links WHERE id = 'old'`).get().c, 1)
+}
+v8.pragma('foreign_keys = ON')
+check('foreign keys satisfied', v8.pragma('foreign_key_check'), [])
+v8.close()
 
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)

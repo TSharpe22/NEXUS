@@ -1039,6 +1039,18 @@ export function removePropertyDefinition(id: string): void {
     | undefined
   if (!def) return
 
+  // Removing a property from a type clears its value on every page of that
+  // type, so every one of them may have just lost a relation link. Collected
+  // before the delete, because afterwards there is nothing left to find them
+  // by.
+  const affected = db
+    .prepare(
+      `SELECT page_id FROM properties
+        WHERE key = ? AND type = 'relation'
+          AND page_id IN (SELECT id FROM pages WHERE type_id = ?)`
+    )
+    .all(def.key, def.type_id) as { page_id: string }[]
+
   const trx = db.transaction(() => {
     db.prepare(
       `DELETE FROM properties
@@ -1047,6 +1059,8 @@ export function removePropertyDefinition(id: string): void {
     db.prepare('DELETE FROM property_definitions WHERE id = ?').run(id)
   })
   trx()
+
+  for (const row of affected) syncRelationLinks(row.page_id)
 }
 
 export function reorderPropertyDefinitions(typeId: string, orderedIds: string[]): void {
@@ -1118,6 +1132,10 @@ export function setProperty(
 
   logActivity(pageId, 'property', `set "${key}"`)
 
+  // Both branches matter: a relation written now needs its link, and a
+  // property retyped *away* from relation needs its old link dropped.
+  if (type === 'relation' || existing?.type === 'relation') syncRelationLinks(pageId)
+
   return read.get(pageId, key) as Property
 }
 
@@ -1166,6 +1184,7 @@ export function getKnownPropertyValues(key: string): string[] {
 
 export function removeProperty(pageId: string, key: string): void {
   getDb().prepare('DELETE FROM properties WHERE page_id = ? AND key = ?').run(pageId, key)
+  syncRelationLinks(pageId)
 }
 
 // ============================================================
@@ -1175,33 +1194,49 @@ export function removeProperty(pageId: string, key: string): void {
 export function getBacklinks(pageId: string): BacklinkResult[] {
   const rows = getDb()
     .prepare(
-      `SELECT l.context, p.id AS source_page_id, p.title, p.icon
+      `SELECT l.context, l.source, l.property_key, p.id AS source_page_id, p.title, p.icon
        FROM links l JOIN pages p ON p.id = l.source_page_id
        WHERE l.target_page_id = ? AND p.is_deleted = 0
        ORDER BY l.created_at DESC`
     )
-    .all(pageId) as { source_page_id: string; title: string; icon: string | null; context: string | null }[]
+    .all(pageId) as {
+    source_page_id: string
+    title: string
+    icon: string | null
+    context: string | null
+    source: string
+    property_key: string
+  }[]
 
   return rows.map((r) => ({
     sourcePageId: r.source_page_id,
     sourcePageTitle: r.title,
     sourcePageIcon: r.icon,
-    context: r.context
+    context: r.context,
+    source: r.source === 'relation' ? 'relation' : 'mention',
+    // Empty for a mention, which is why the column is not nullable.
+    propertyKey: r.property_key || null
   }))
 }
 
 /**
- * Replace a page's outgoing links with exactly the set given.
+ * Replace a page's outgoing *mention* links with exactly the set given.
  *
  * Deliberately not exported: `projectDocument` is the only caller, so the
  * link graph cannot be written from anywhere that is not looking at the
  * document itself.
+ *
+ * Scoped to `source = 'mention'`. It used to delete every row this page owned,
+ * which is why a relation could not contribute a backlink: the relation's row
+ * was never in the document's mention set, so the next content save removed
+ * it. Relations are projected by `syncRelationLinks` and the two no longer
+ * touch each other's rows.
  */
 function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
   const db = getDb()
   const trx = db.transaction(() => {
     const existing = db
-      .prepare('SELECT id, target_page_id FROM links WHERE source_page_id = ?')
+      .prepare("SELECT id, target_page_id FROM links WHERE source_page_id = ? AND source = 'mention'")
       .all(pageId) as { id: string; target_page_id: string }[]
 
     const existingTargets = new Set(existing.map((e) => e.target_page_id))
@@ -1225,10 +1260,11 @@ function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
     }
 
     const insert = db.prepare(
-      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, context, created_at) VALUES (?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+       VALUES (?, ?, ?, 'mention', '', ?, ?)`
     )
     const updateCtx = db.prepare(
-      'UPDATE links SET context = ? WHERE source_page_id = ? AND target_page_id = ?'
+      "UPDATE links SET context = ? WHERE source_page_id = ? AND target_page_id = ? AND source = 'mention'"
     )
     const ts = now()
     for (const [targetId, context] of newTargets) {
@@ -1240,6 +1276,85 @@ function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
     }
   })
   trx()
+}
+
+/**
+ * Rebuild the links a page contributes through its *relation properties*.
+ *
+ * Called from every path that writes a relation value, so "tasks linked to a
+ * project, visible from that project" holds without anyone having to also
+ * mention the project in the body. Milestone C left this unresolved because
+ * `syncLinks` would erase the row on the next save; the `source` column in
+ * schema 9 is what makes the two projections independent.
+ *
+ * A relation whose target has been permanently deleted is skipped for the
+ * same reason a dangling mention is: the foreign key would reject the row and
+ * take the whole write with it. The property keeps its value, and every
+ * reader already shows that as a missing page.
+ */
+function syncRelationLinks(pageId: string): void {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    const wanted = db
+      .prepare(
+        `SELECT pr.key, pr.value_relation AS target
+           FROM properties pr
+           JOIN pages p ON p.id = pr.value_relation
+          WHERE pr.page_id = ? AND pr.type = 'relation'
+            AND pr.value_relation IS NOT NULL AND pr.value_relation <> ''`
+      )
+      .all(pageId) as { key: string; target: string }[]
+
+    const keep = new Set(wanted.map((w) => `${w.key}\u0000${w.target}`))
+    const existing = db
+      .prepare("SELECT id, target_page_id, property_key FROM links WHERE source_page_id = ? AND source = 'relation'")
+      .all(pageId) as { id: string; target_page_id: string; property_key: string }[]
+
+    for (const row of existing) {
+      if (!keep.has(`${row.property_key}\u0000${row.target_page_id}`)) {
+        db.prepare('DELETE FROM links WHERE id = ?').run(row.id)
+      }
+    }
+
+    const insert = db.prepare(
+      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+       VALUES (?, ?, ?, 'relation', ?, NULL, ?)`
+    )
+    const ts = now()
+    for (const w of wanted) insert.run(uuidv4(), pageId, w.target, w.key, ts)
+  })
+  trx()
+}
+
+/**
+ * Drop and rebuild every link in the vault, from both sources. Returns the
+ * number of rows written.
+ *
+ * `links` is as derived as `page_fts` and `tasks`, which is what let schema 9
+ * drop the table outright rather than migrate its rows.
+ */
+export function rebuildLinkIndex(): number {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM links').run()
+    for (const row of db.prepare('SELECT id, content FROM pages').all() as {
+      id: string
+      content: string | null
+    }[]) {
+      syncLinks(row.id, extractLinkTargets(parseDocument(row.content)))
+      syncRelationLinks(row.id)
+    }
+    return (db.prepare('SELECT count(*) AS n FROM links').get() as { n: number }).n
+  })
+  return trx()
+}
+
+/** Fill the link graph if it is empty but there are pages to fill it from. */
+export function ensureLinkIndex(): void {
+  const db = getDb()
+  const linked = (db.prepare('SELECT count(*) AS n FROM links').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (linked === 0 && total > 0) rebuildLinkIndex()
 }
 
 export function searchPagesForLink(query: string, excludePageId?: string): Page[] {
