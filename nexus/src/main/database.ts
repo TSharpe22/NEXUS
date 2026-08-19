@@ -128,6 +128,33 @@ function runMigrations(): void {
     db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT '720'`)
   }
 
+  // Sidebar hierarchy. ON DELETE SET NULL rather than CASCADE: permanently
+  // deleting one page must never silently destroy the subtree beneath it —
+  // orphaned children are promoted to the root instead.
+  if (!columnExists('pages', 'parent_page_id')) {
+    db.exec(
+      `ALTER TABLE pages ADD COLUMN parent_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
+    )
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id)')
+
+  // Manual ordering within a parent. Existing vaults are seeded from their
+  // current recency order so the sidebar looks unchanged after upgrading.
+  if (!columnExists('pages', 'sort_order')) {
+    db.exec('ALTER TABLE pages ADD COLUMN sort_order REAL NOT NULL DEFAULT 0')
+    const rows = db.prepare('SELECT id FROM pages ORDER BY updated_at DESC').all() as
+      { id: string }[]
+    const seed = db.prepare('UPDATE pages SET sort_order = ? WHERE id = ?')
+    const trx = db.transaction(() => {
+      rows.forEach((r, i) => seed.run(i + 1, r.id))
+    })
+    trx()
+  }
+
+  if (!columnExists('pages', 'is_favorite')) {
+    db.exec('ALTER TABLE pages ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0')
+  }
+
   initSearchIndex()
 }
 
@@ -375,20 +402,27 @@ function mapPage(row: unknown): Page {
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 
-export function createPage(): Page {
+export function createPage(parentPageId: string | null = null): Page {
   const id = uuidv4()
   const timestamp = now()
+  // Sort ahead of every current sibling so a new page appears at the top of
+  // its list rather than buried at the bottom.
+  const minOrder = (db.prepare(
+    'SELECT min(sort_order) AS m FROM pages WHERE is_deleted = 0 AND parent_page_id IS ?'
+  ).get(parentPageId) as { m: number | null }).m
+  const sortOrder = minOrder === null ? 1 : minOrder - 1
+
   db.prepare(`
-    INSERT INTO pages (id, type_id, title, created_at, updated_at)
-    VALUES (?, 'note', '', ?, ?)
-  `).run(id, timestamp, timestamp)
+    INSERT INTO pages (id, type_id, title, parent_page_id, sort_order, created_at, updated_at)
+    VALUES (?, 'note', '', ?, ?, ?, ?)
+  `).run(id, parentPageId, sortOrder, timestamp, timestamp)
   reindexPage(id)
   return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(id))
 }
 
 export function getAllPages(): Page[] {
   return (db.prepare(
-    'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC'
+    'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY sort_order ASC, updated_at DESC'
   ).all() as unknown[]).map(mapPage)
 }
 
@@ -398,7 +432,7 @@ export function getPageById(id: string): Page | null {
 }
 
 export function updatePage(id: string, data: Partial<Page>): void {
-  const allowed = ['title', 'icon', 'cover', 'is_archived', 'page_width'] as const
+  const allowed = ['title', 'icon', 'cover', 'is_archived', 'page_width', 'is_favorite'] as const
   const sets: string[] = []
   const values: unknown[] = []
 
@@ -422,12 +456,49 @@ export function updatePage(id: string, data: Partial<Page>): void {
   if ('title' in data) reindexPage(id)
 }
 
+/**
+ * Every page in the subtree rooted at `id`, including `id` itself.
+ * The `seen` set makes this safe even if the table somehow holds a cycle.
+ */
+function collectSubtree(id: string): string[] {
+  const childrenOf = db.prepare('SELECT id FROM pages WHERE parent_page_id = ?')
+  const out: string[] = []
+  const seen = new Set<string>()
+  const stack = [id]
+
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (seen.has(current)) continue
+    seen.add(current)
+    out.push(current)
+    for (const row of childrenOf.all(current) as { id: string }[]) {
+      stack.push(row.id)
+    }
+  }
+  return out
+}
+
+/**
+ * Soft-deleting a page takes its whole subtree with it — leaving children
+ * behind would scatter them to the sidebar root with no way to tell where
+ * they came from. Restoring reverses the same set.
+ */
 export function softDeletePage(id: string): void {
-  db.prepare('UPDATE pages SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), id)
+  setDeletedFlag(id, 1)
 }
 
 export function restorePage(id: string): void {
-  db.prepare('UPDATE pages SET is_deleted = 0, updated_at = ? WHERE id = ?').run(now(), id)
+  setDeletedFlag(id, 0)
+}
+
+function setDeletedFlag(id: string, flag: 0 | 1): void {
+  const ids = collectSubtree(id)
+  const timestamp = now()
+  const update = db.prepare('UPDATE pages SET is_deleted = ?, updated_at = ? WHERE id = ?')
+  const trx = db.transaction(() => {
+    for (const pageId of ids) update.run(flag, timestamp, pageId)
+  })
+  trx()
 }
 
 export function hardDeletePage(id: string): void {
@@ -449,9 +520,13 @@ export function duplicatePage(id: string): Page {
   const timestamp = now()
 
   db.prepare(`
-    INSERT INTO pages (id, type_id, title, icon, cover, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(newId, source.type_id, `${source.title} (copy)`, source.icon, source.cover, timestamp, timestamp)
+    INSERT INTO pages (id, type_id, title, icon, cover, parent_page_id, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    newId, source.type_id, `${source.title} (copy)`, source.icon, source.cover,
+    // Sits directly after the original; is_favorite is deliberately not copied.
+    source.parent_page_id, source.sort_order + 0.5, timestamp, timestamp
+  )
 
   // Duplicate blocks while preserving parent-child relationships.
   const blocks = db.prepare(
@@ -479,6 +554,88 @@ export function duplicatePage(id: string): Page {
 
   reindexPage(newId)
   return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(newId))
+}
+
+// ============================================================
+// Hierarchy
+// ============================================================
+
+/** True when `candidateId` sits at or below `ancestorId` in the tree. */
+function isSelfOrDescendant(candidateId: string, ancestorId: string): boolean {
+  const parentOf = db.prepare('SELECT parent_page_id FROM pages WHERE id = ?')
+  const seen = new Set<string>()
+  let current: string | null = candidateId
+
+  while (current) {
+    if (current === ancestorId) return true
+    if (seen.has(current)) return false // defensive: never loop on a bad row
+    seen.add(current)
+    const row = parentOf.get(current) as { parent_page_id: string | null } | undefined
+    current = row?.parent_page_id ?? null
+  }
+  return false
+}
+
+/** Renumber one parent's children to whole values, collapsing fractional drift. */
+function reindexSiblings(parentPageId: string | null): void {
+  const rows = db.prepare(`
+    SELECT id FROM pages
+    WHERE is_deleted = 0 AND parent_page_id IS ?
+    ORDER BY sort_order ASC, updated_at DESC
+  `).all(parentPageId) as { id: string }[]
+  const update = db.prepare('UPDATE pages SET sort_order = ? WHERE id = ?')
+  rows.forEach((row, i) => update.run(i + 1, row.id))
+}
+
+/**
+ * Reparent and/or reposition a page.
+ *
+ * `targetIndex` is the slot the page should occupy among its new siblings,
+ * counted with the moved page already removed from the list.
+ *
+ * Ordering uses fractional indexing — the midpoint between the neighbours on
+ * either side — so a move rewrites exactly one row. When the gap gets too
+ * small to halve reliably, that parent's children are renumbered.
+ */
+export function movePage(
+  pageId: string,
+  newParentId: string | null,
+  targetIndex: number
+): void {
+  if (newParentId === pageId) {
+    throw new Error('A page cannot be its own parent')
+  }
+  if (newParentId && isSelfOrDescendant(newParentId, pageId)) {
+    throw new Error('Cannot move a page inside one of its own descendants')
+  }
+
+  const trx = db.transaction(() => {
+    const siblings = db.prepare(`
+      SELECT id, sort_order FROM pages
+      WHERE is_deleted = 0 AND parent_page_id IS ? AND id != ?
+      ORDER BY sort_order ASC, updated_at DESC
+    `).all(newParentId, pageId) as { id: string; sort_order: number }[]
+
+    const index = Math.max(0, Math.min(Math.trunc(targetIndex), siblings.length))
+    const before = index > 0 ? siblings[index - 1].sort_order : null
+    const after = index < siblings.length ? siblings[index].sort_order : null
+
+    let sortOrder: number
+    if (before === null && after === null) sortOrder = 1
+    else if (before === null) sortOrder = after! - 1
+    else if (after === null) sortOrder = before + 1
+    else sortOrder = (before + after) / 2
+
+    db.prepare(
+      'UPDATE pages SET parent_page_id = ?, sort_order = ?, updated_at = ? WHERE id = ?'
+    ).run(newParentId, sortOrder, now(), pageId)
+
+    if (before !== null && after !== null && Math.abs(after - before) < 0.001) {
+      reindexSiblings(newParentId)
+    }
+  })
+
+  trx()
 }
 
 // ============================================================

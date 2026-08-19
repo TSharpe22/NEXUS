@@ -3,7 +3,7 @@ import type { NexusAPI } from '../shared/types'
 
 const api: NexusAPI = {
   pages: {
-    create: () => ipcRenderer.invoke('pages:create'),
+    create: (parentPageId) => ipcRenderer.invoke('pages:create', parentPageId ?? null),
     getAll: () => ipcRenderer.invoke('pages:getAll'),
     getById: (id) => ipcRenderer.invoke('pages:getById', id),
     update: (id, data) => ipcRenderer.invoke('pages:update', id, data),
@@ -12,6 +12,8 @@ const api: NexusAPI = {
     hardDelete: (id) => ipcRenderer.invoke('pages:hardDelete', id),
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
     duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id),
+    move: (pageId, newParentId, targetIndex) =>
+      ipcRenderer.invoke('pages:move', pageId, newParentId, targetIndex),
   },
   blocks: {
     getByPageId: (pageId) => ipcRenderer.invoke('blocks:getByPageId', pageId),

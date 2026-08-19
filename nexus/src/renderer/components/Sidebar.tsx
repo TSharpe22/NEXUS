@@ -7,6 +7,7 @@ import { shortcutLabel } from '../utils/shortcuts'
 import { PageIcon } from '../blocks/icons'
 import { SearchHighlight } from './SearchHighlight'
 import { useSearch } from '../hooks/use-search'
+import { PageTree } from './PageTree'
 
 export function Sidebar() {
   const {
@@ -15,22 +16,15 @@ export function Sidebar() {
     loadPages, selectPage, createPage,
     updatePage, deletePage, restorePage, hardDeletePage, duplicatePage,
     setSidebarWidth, setSearchQuery, setShowTrash,
+    toggleFavorite, movePage,
   } = useAppStore()
 
   const isResizing = useRef(false)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number; pageId: string } | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
-  const renameInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { loadPages() }, [loadPages])
-
-  useEffect(() => {
-    if (renamingId && renameInputRef.current) {
-      renameInputRef.current.focus()
-      renameInputRef.current.select()
-    }
-  }, [renamingId])
 
   const startRename = (pageId: string) => {
     const page = pages.find((p) => p.id === pageId)
@@ -175,17 +169,12 @@ export function Sidebar() {
   // With no query we fall back to the plain recency list.
   const { results: searchResults, loading: searchLoading } = useSearch(searchQuery)
 
-  const listItems: {
-    page: (typeof pages)[number]
-    titleMarked: string | null
-    bodySnippet: string | null
-  }[] = searchQuery.trim()
-    ? searchResults.map((r) => ({
-        page: r.page,
-        titleMarked: r.titleMarked,
-        bodySnippet: r.bodySnippet,
-      }))
-    : pages.map((page) => ({ page, titleMarked: null, bodySnippet: null }))
+  const listItems = searchResults
+
+  const favoritePages = pages.filter((p) => p.is_favorite)
+
+  const sectionLabelClass =
+    'px-2.5 pt-1 pb-1 text-[10px] font-semibold tracking-[0.12em] uppercase text-[var(--nx-text-tertiary)]'
 
   // Collapsed state
   if (sidebarCollapsed) {
@@ -193,7 +182,7 @@ export function Sidebar() {
       <div className="flex flex-col items-center shrink-0 w-[52px] h-full border-r border-[var(--nx-border-subtle)] bg-[var(--nx-bg-secondary)]">
         <div className="h-[var(--nx-titlebar-height)] titlebar-drag w-full" />
         <button
-          onClick={createPage}
+          onClick={() => createPage()}
           className="w-9 h-9 flex items-center justify-center rounded-[var(--nx-radius-md)] text-[var(--nx-text-tertiary)] hover:text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150 mt-1"
           title={`New page (${shortcutLabel('N')})`}
         >
@@ -224,7 +213,7 @@ export function Sidebar() {
         {/* New page + search */}
         <div className="px-3 pt-1 pb-2 flex flex-col gap-1.5 shrink-0">
           <button
-            onClick={createPage}
+            onClick={() => createPage()}
             className="w-full flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] text-[var(--nx-text-secondary)] hover:text-[var(--nx-text-primary)] hover:bg-[var(--nx-bg-hover)] transition-all duration-150"
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -342,7 +331,8 @@ export function Sidebar() {
                 ))
               )}
             </div>
-          ) : (
+          ) : searchQuery.trim() ? (
+            /* Search results — a flat, ranked list rather than the tree. */
             <>
               {searchLoading && listItems.length === 0 ? (
                 <div className="px-2.5 py-12 text-center">
@@ -350,46 +340,19 @@ export function Sidebar() {
                 </div>
               ) : listItems.length === 0 ? (
                 <div className="px-2.5 py-12 text-center">
-                  <svg
-                    className="mx-auto mb-3 text-[var(--nx-text-tertiary)] opacity-30"
-                    width="36"
-                    height="36"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                  </svg>
                   <p className="text-[13px] text-[var(--nx-text-tertiary)]">
-                    {searchQuery ? 'No pages match your search' : 'No pages yet'}
+                    No pages match your search
                   </p>
-                  {!searchQuery && (
-                    <button
-                      onClick={createPage}
-                      className="mt-3 text-[12px] text-[var(--nx-accent)] hover:text-[var(--nx-accent-hover)] transition-colors"
-                    >
-                      Create your first page
-                    </button>
-                  )}
                 </div>
               ) : (
                 listItems.map(({ page, titleMarked, bodySnippet }) => (
                   <div
                     key={page.id}
-                    onClick={() => {
-                      if (renamingId !== page.id) selectPage(page.id)
-                    }}
+                    onClick={() => selectPage(page.id)}
                     onContextMenu={(e) => {
                       e.preventDefault()
                       setCtxMenu({ x: e.clientX, y: e.clientY, pageId: page.id })
                     }}
-                    onDoubleClick={() => startRename(page.id)}
                     className={`
                       relative group flex gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
                       ${bodySnippet ? 'items-start' : 'items-center'}
@@ -408,47 +371,103 @@ export function Sidebar() {
                       <PageIcon iconKey={page.icon} size={14} />
                     </span>
 
-                    {renamingId === page.id ? (
-                      <input
-                        ref={renameInputRef}
-                        value={renameValue}
-                        onChange={(e) => setRenameValue(e.target.value)}
-                        onBlur={commitRename}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            commitRename()
-                          }
-                          if (e.key === 'Escape') cancelRename()
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="flex-1 bg-[var(--nx-bg-tertiary)] border border-[var(--nx-accent)]/30 rounded-[var(--nx-radius-sm)] px-2 py-0.5 text-[13px] text-[var(--nx-text)] outline-none min-w-0"
-                      />
-                    ) : (
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="flex-1 truncate">
-                            {titleMarked ? (
-                              <SearchHighlight text={titleMarked} />
-                            ) : (
-                              page.title || 'Untitled'
-                            )}
-                          </span>
-                          <span className="text-[10px] text-[var(--nx-text-tertiary)] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            {relativeTime(page.updated_at)}
-                          </span>
-                        </div>
-
-                        {bodySnippet && (
-                          <div className="mt-[3px] text-[11px] leading-[1.45] text-[var(--nx-text-tertiary)] line-clamp-2">
-                            <SearchHighlight text={bodySnippet} />
-                          </div>
-                        )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="flex-1 truncate">
+                          <SearchHighlight text={titleMarked ?? page.title ?? 'Untitled'} />
+                        </span>
+                        <span className="text-[10px] text-[var(--nx-text-tertiary)] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {relativeTime(page.updated_at)}
+                        </span>
                       </div>
-                    )}
+
+                      {bodySnippet && (
+                        <div className="mt-[3px] text-[11px] leading-[1.45] text-[var(--nx-text-tertiary)] line-clamp-2">
+                          <SearchHighlight text={bodySnippet} />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))
               )}
+            </>
+          ) : pages.length === 0 ? (
+            <div className="px-2.5 py-12 text-center">
+              <svg
+                className="mx-auto mb-3 text-[var(--nx-text-tertiary)] opacity-30"
+                width="36" height="36" viewBox="0 0 24 24" fill="none"
+                stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+              >
+                <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
+              <p className="text-[13px] text-[var(--nx-text-tertiary)]">No pages yet</p>
+              <button
+                onClick={() => createPage()}
+                className="mt-3 text-[12px] text-[var(--nx-accent)] hover:text-[var(--nx-accent-hover)] transition-colors"
+              >
+                Create your first page
+              </button>
+            </div>
+          ) : (
+            <>
+              {favoritePages.length > 0 && (
+                <div className="mb-2">
+                  <div className={sectionLabelClass}>Favorites</div>
+                  {favoritePages.map((page) => (
+                    <div
+                      key={page.id}
+                      onClick={() => selectPage(page.id)}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        setCtxMenu({ x: e.clientX, y: e.clientY, pageId: page.id })
+                      }}
+                      className={`
+                        group flex items-center gap-1.5 pl-2.5 pr-2 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
+                        ${
+                          selectedPageId === page.id
+                            ? 'nx-sidebar-page--selected bg-[var(--nx-bg-active)] text-[var(--nx-text-primary)]'
+                            : 'text-[var(--nx-text-secondary)] hover:bg-[var(--nx-bg-hover)] hover:text-[var(--nx-text-primary)]'
+                        }
+                      `}
+                    >
+                      <span className="text-[var(--nx-text-tertiary)] shrink-0">
+                        <PageIcon iconKey={page.icon} size={14} />
+                      </span>
+                      <span className="flex-1 truncate">{page.title || 'Untitled'}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFavorite(page.id)
+                        }}
+                        title="Remove from favorites"
+                        className="w-5 h-5 shrink-0 flex items-center justify-center rounded-[3px] text-[var(--nx-accent)] opacity-0 group-hover:opacity-100 hover:bg-[var(--nx-bg-active)] transition-opacity"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                        </svg>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className={sectionLabelClass}>Pages</div>
+              <PageTree
+                pages={pages}
+                renamingId={renamingId}
+                renameValue={renameValue}
+                onRenameChange={setRenameValue}
+                onRenameCommit={commitRename}
+                onRenameCancel={cancelRename}
+                onStartRename={startRename}
+                onContextMenu={(e, pageId) => {
+                  e.preventDefault()
+                  setCtxMenu({ x: e.clientX, y: e.clientY, pageId })
+                }}
+              />
             </>
           )}
         </div>
@@ -502,6 +521,29 @@ export function Sidebar() {
               label: 'Rename',
               action: () => {
                 startRename(ctxMenu.pageId)
+                setCtxMenu(null)
+              },
+            },
+            {
+              label: pages.find((p) => p.id === ctxMenu.pageId)?.is_favorite
+                ? 'Remove from favorites'
+                : 'Add to favorites',
+              action: () => {
+                toggleFavorite(ctxMenu.pageId)
+                setCtxMenu(null)
+              },
+            },
+            {
+              label: 'Add page inside',
+              action: () => {
+                createPage(ctxMenu.pageId)
+                setCtxMenu(null)
+              },
+            },
+            {
+              label: 'Move to top level',
+              action: () => {
+                movePage(ctxMenu.pageId, null, 0)
                 setCtxMenu(null)
               },
             },

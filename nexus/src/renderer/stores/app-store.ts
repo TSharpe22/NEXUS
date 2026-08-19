@@ -3,6 +3,14 @@ import type { Page } from '../../shared/types'
 
 const nowSql = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 
+/** Mirrors the ORDER BY in `getAllPages` so local edits keep the DB's order. */
+const byTreeOrder = (a: Page, b: Page) =>
+  a.sort_order - b.sort_order || b.updated_at.localeCompare(a.updated_at)
+
+function persistExpanded(ids: Set<string>): void {
+  localStorage.setItem('nx-expanded-pages', JSON.stringify([...ids]))
+}
+
 interface AppState {
   // Sidebar
   pages: Page[]
@@ -31,16 +39,23 @@ interface AppState {
   // Backlinks panel — persist expanded state across page navigation
   backlinksExpanded: boolean
 
+  // Sidebar tree — which parents are expanded (UI-only, persisted locally)
+  expandedPageIds: Set<string>
+
   // Actions
   loadPages(): Promise<void>
   loadDeletedPages(): Promise<void>
   selectPage(id: string | null): Promise<void>
-  createPage(): Promise<void>
+  createPage(parentPageId?: string | null): Promise<void>
   updatePage(id: string, data: Partial<Page>): Promise<void>
   deletePage(id: string): Promise<void>
   restorePage(id: string): Promise<void>
   hardDeletePage(id: string): Promise<void>
   duplicatePage(id: string): Promise<void>
+  movePage(pageId: string, newParentId: string | null, targetIndex: number): Promise<void>
+  toggleFavorite(id: string): Promise<void>
+  toggleExpanded(id: string): void
+  setExpanded(id: string, expanded: boolean): void
   setSidebarWidth(w: number): void
   setSidebarCollapsed(c: boolean): void
   setSearchQuery(q: string): void
@@ -73,6 +88,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   isLassoActive: false,
   lassoRect: null,
   backlinksExpanded: false,
+  expandedPageIds: new Set<string>(
+    JSON.parse(localStorage.getItem('nx-expanded-pages') || '[]') as string[]
+  ),
 
   async loadPages() {
     const pages = await window.api.pages.getAll()
@@ -93,9 +111,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ selectedPageId: id, currentPage: page, showTrash: false })
   },
 
-  async createPage() {
-    const page = await window.api.pages.create()
+  async createPage(parentPageId = null) {
+    const page = await window.api.pages.create(parentPageId)
     await get().loadPages()
+    // A page created inside a collapsed parent would otherwise be invisible.
+    if (parentPageId) get().setExpanded(parentPageId, true)
     await get().selectPage(page.id)
   },
 
@@ -109,7 +129,7 @@ export const useAppStore = create<AppState>((set, get) => ({
             ? { ...page, ...data, updated_at: updatedAt }
             : page
         ))
-        .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+        .sort(byTreeOrder)
 
       const currentPage = state.currentPage?.id === id
         ? { ...state.currentPage, ...data, updated_at: updatedAt }
@@ -131,7 +151,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.api.pages.softDelete(id)
     await get().loadPages()
     await get().loadDeletedPages()
-    if (get().selectedPageId === id) {
+    // Deleting a page takes its subtree with it, so the open page may have
+    // disappeared even when it was not the one deleted.
+    const { selectedPageId, pages } = get()
+    if (selectedPageId && !pages.some((p) => p.id === selectedPageId)) {
       set({ selectedPageId: null, currentPage: null })
     }
   },
@@ -154,6 +177,36 @@ export const useAppStore = create<AppState>((set, get) => ({
     const newPage = await window.api.pages.duplicate(id)
     await get().loadPages()
     await get().selectPage(newPage.id)
+  },
+
+  async movePage(pageId, newParentId, targetIndex) {
+    await window.api.pages.move(pageId, newParentId, targetIndex)
+    await get().loadPages()
+    if (newParentId) get().setExpanded(newParentId, true)
+  },
+
+  async toggleFavorite(id) {
+    const page = get().pages.find((p) => p.id === id)
+    if (!page) return
+    await get().updatePage(id, { is_favorite: page.is_favorite ? 0 : 1 })
+  },
+
+  toggleExpanded(id) {
+    const next = new Set(get().expandedPageIds)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    persistExpanded(next)
+    set({ expandedPageIds: next })
+  },
+
+  setExpanded(id, expanded) {
+    const current = get().expandedPageIds
+    if (current.has(id) === expanded) return
+    const next = new Set(current)
+    if (expanded) next.add(id)
+    else next.delete(id)
+    persistExpanded(next)
+    set({ expandedPageIds: next })
   },
 
   setSidebarWidth(w) {

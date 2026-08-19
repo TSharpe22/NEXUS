@@ -14,8 +14,8 @@ function rethrowIpcError(channel: string, error: unknown): never {
 
 export function registerIpcHandlers(): void {
   // Pages
-  ipcMain.handle('pages:create', () => {
-    try { return db.createPage() }
+  ipcMain.handle('pages:create', (_, parentPageId?: string | null) => {
+    try { return db.createPage(parentPageId ?? null) }
     catch (e) { rethrowIpcError('pages:create', e) }
   })
 
@@ -58,6 +58,14 @@ export function registerIpcHandlers(): void {
     try { return db.duplicatePage(id) }
     catch (e) { rethrowIpcError('pages:duplicate', e) }
   })
+
+  ipcMain.handle(
+    'pages:move',
+    (_, pageId: string, newParentId: string | null, targetIndex: number) => {
+      try { return db.movePage(pageId, newParentId ?? null, Number(targetIndex) || 0) }
+      catch (e) { rethrowIpcError('pages:move', e) }
+    }
+  )
 
   // Blocks
   ipcMain.handle('blocks:getByPageId', (_, pageId: string) => {

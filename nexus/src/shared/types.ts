@@ -13,6 +13,11 @@ export interface Page {
   icon: string | null
   cover: string | null
   page_width: PageWidth
+  /** Parent in the sidebar tree; null for a root-level page. */
+  parent_page_id: string | null
+  /** Manual position among siblings. Fractional — see `movePage`. */
+  sort_order: number
+  is_favorite: number
   is_archived: number
   is_deleted: number
   created_at: string
@@ -146,15 +151,17 @@ export interface SearchResult {
 
 export interface NexusAPI {
   pages: {
-    create(): Promise<Page>
+    create(parentPageId?: string | null): Promise<Page>
     getAll(): Promise<Page[]>
     getById(id: string): Promise<Page | null>
-    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived' | 'page_width'>>): Promise<void>
+    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived' | 'page_width' | 'is_favorite'>>): Promise<void>
     softDelete(id: string): Promise<void>
     restore(id: string): Promise<void>
     hardDelete(id: string): Promise<void>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
+    /** Reparent and/or reposition a page. `targetIndex` counts siblings with the moved page excluded. */
+    move(pageId: string, newParentId: string | null, targetIndex: number): Promise<void>
   }
   blocks: {
     getByPageId(pageId: string): Promise<Block[]>
