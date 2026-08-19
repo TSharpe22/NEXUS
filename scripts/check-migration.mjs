@@ -151,7 +151,7 @@ db.pragma('foreign_keys = ON')
 // ------------------------------------------------------------------
 console.log('\nmigration from first-build schema:')
 check('backup taken before migrating', backupCalls, 1)
-check('user_version stamped', db.pragma('user_version', { simple: true }), 5)
+check('user_version stamped', db.pragma('user_version', { simple: true }), 6)
 check('legacy blocks table dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='blocks'`).get().c, 0)
 check('legacy property_values dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='property_values'`).get().c, 0)
 check('activity_log created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='activity_log'`).get().c, 1)
@@ -180,6 +180,9 @@ check('page_fts table created', db.prepare(`SELECT count(*) c FROM sqlite_master
 // v5 — settings and the vault mirror manifest. Additive as well.
 check('settings table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='settings'`).get().c, 1)
 check('mirror_files table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='mirror_files'`).get().c, 1)
+
+// v6 — per-type templates. Additive column on an existing table.
+check('types.template_page_id added', db.pragma('table_info(types)').map((c) => c.name).includes('template_page_id'), true)
 check('page_fts is queryable', (() => {
   try {
     db.prepare(`SELECT count(*) c FROM page_fts WHERE page_fts MATCH 'x'`).get()

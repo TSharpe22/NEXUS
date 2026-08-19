@@ -23,6 +23,29 @@ export function registerIpcHandlers(): void {
       mirror.scheduleSync()
     }
   })
+  ipcMain.handle('journal:today', () => {
+    try {
+      return repo.getOrCreateTodayEntry()
+    } catch (e) {
+      rethrow('journal:today', e)
+    } finally {
+      mirror.scheduleSync()
+    }
+  })
+  ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
+    try {
+      return repo.setTypeTemplate(typeId, pageId ?? null)
+    } catch (e) {
+      rethrow('types:setTemplate', e)
+    }
+  })
+  ipcMain.handle('types:getTemplate', (_, typeId: string) => {
+    try {
+      return repo.getTypeTemplate(typeId)
+    } catch (e) {
+      rethrow('types:getTemplate', e)
+    }
+  })
   ipcMain.handle('mirror:getConfig', () => {
     try {
       return mirror.getConfig()

@@ -27,8 +27,10 @@ let db: Database.Database
  *     it is missing or empty, so losing it costs nothing.
  * 5 — vault mirror: a `settings` key/value table, and `mirror_files`, the
  *     manifest of files the mirror has written. Purely additive.
+ * 6 — templates: `types.template_page_id`, the page a new page of that type
+ *     starts from. Purely additive.
  */
-const SCHEMA_VERSION = 5
+const SCHEMA_VERSION = 6
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -488,6 +490,15 @@ export function applySchema(
     db.exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_pages_folder ON pages(folder_id)')
+
+  // v6. A type's default template. ON DELETE SET NULL so deleting the template
+  // page leaves the type intact and simply un-templated, rather than cascading
+  // into the type and taking every page of it along.
+  if (!columnExists('types', 'template_page_id')) {
+    db.exec(
+      `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
+    )
+  }
 
   // v4. Contentless-by-choice: the index stores its own copy of the text so
   // a query needs no join back to `pages` to rank. Additive, and derived —

@@ -412,6 +412,65 @@ check('command palette opens', await page.evaluate(() => !!document.querySelecto
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
 
+// ---------------------------------------------------------------- journal
+log('\n— journal —')
+// The previous section left the app on Settings.
+await nav(1)
+await sleep(700)
+check("Today's entry button present", await page.evaluate(() => !!document.querySelector('.nx-notes__today')))
+
+await page.evaluate(() => document.querySelector('.nx-notes__today').click())
+await sleep(1400)
+
+const entry = await page.evaluate(() => {
+  const id = window.__lastEntryId
+  return window.api.pages.getAll().then((ps) => ps.find((p) => p.title.startsWith('Entry —')) ?? null)
+})
+check('entry created with a worded title', !!entry && /^Entry — \w{3} \d{1,2} \w{3} \d{4}$/.test(entry.title),
+  JSON.stringify(entry?.title))
+
+const journalType = (await page.evaluate(() => window.api.types.list())).find((t) => t.name === 'Journal')
+check('Journal type created', !!journalType)
+check('entry is of the Journal type', entry?.type_id === journalType?.id)
+
+const folders = await page.evaluate(() => window.api.folders.list())
+check('entry filed in the Journal folder',
+  folders.find((f) => f.id === entry?.folder_id)?.name === 'Journal',
+  JSON.stringify(folders.map((f) => f.name)))
+
+const entryProps = await page.evaluate((id) => window.api.properties.getForPage(id), entry?.id)
+const dateProp = entryProps.find((p) => p.key === 'date')
+const today = await page.evaluate(() => {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+})
+check('date property set to today, in local time', dateProp?.value_date === today,
+  `${dateProp?.value_date} vs ${today}`)
+
+check('template applied to the new entry', JSON.stringify(JSON.parse(entry.content)).includes('Today'),
+  JSON.stringify(entry.content).slice(0, 120))
+check('template body renders in the editor',
+  (await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? '')).includes('Today'))
+
+// Pressing it again must reopen the same entry, never make a second one.
+await page.evaluate(() => document.querySelector('.nx-notes__today').click())
+await sleep(1200)
+const entries = (await page.evaluate(() => window.api.pages.getAll())).filter((p) =>
+  p.title.startsWith('Entry —')
+)
+check('pressing it again reopens rather than duplicating', entries.length === 1, `${entries.length} entries`)
+
+// Renaming an entry must not produce a duplicate — matching is on the date
+// property, not the title.
+await page.evaluate((id) => window.api.pages.update(id, { title: 'Renamed by hand' }), entry.id)
+await page.evaluate(() => document.querySelector('.nx-notes__today').click())
+await sleep(1200)
+const afterRename = await page.evaluate(() => window.api.pages.getAll())
+check('a renamed entry is still found for today',
+  afterRename.filter((p) => p.type_id === journalType.id && p.title !== 'Journal template').length === 1,
+  JSON.stringify(afterRename.filter((p) => p.type_id === journalType.id).map((p) => p.title)))
+
 // ---------------------------------------------------------------- vault mirror
 log('\n— vault mirror —')
 const mirrorDir = join(tmpdir(), `nexus-mirror-${Date.now()}`)

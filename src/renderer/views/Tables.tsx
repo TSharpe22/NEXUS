@@ -32,19 +32,34 @@ export function Tables() {
   const [entries, setEntries] = useState<PageSummary[]>([])
   const [renaming, setRenaming] = useState(false)
   const [draftName, setDraftName] = useState('')
+  const [templatePageId, setTemplatePageId] = useState<string | null>(null)
 
   const activeTypeId = tableTypeId ?? types[0]?.id ?? null
   const activeType = types.find((t) => t.id === activeTypeId) ?? null
 
   const load = useCallback(async () => {
     if (!activeTypeId) return
-    const [defs, rows] = await Promise.all([
+    const [defs, rows, template] = await Promise.all([
       window.api.types.getPropertyDefinitions(activeTypeId),
-      window.api.pages.getAllSummary(activeTypeId)
+      window.api.pages.getAllSummary(activeTypeId),
+      window.api.types.getTemplate(activeTypeId)
     ])
     setDefinitions(defs)
     setEntries(rows)
+    setTemplatePageId(template?.id ?? null)
   }, [activeTypeId])
+
+  const applyTemplate = async (pageId: string | null) => {
+    if (!activeTypeId) return
+    try {
+      await window.api.types.setTemplate(activeTypeId, pageId)
+      setTemplatePageId(pageId)
+      toast.success(pageId ? 'Template set for this type' : 'Template cleared')
+    } catch (e) {
+      console.error('[nexus] could not set the template', e)
+      toast.error('Could not set the template')
+    }
+  }
 
   // `pages` in the deps so a page created, retyped or trashed anywhere else
   // updates this table too.
@@ -103,6 +118,21 @@ export function Tables() {
         </div>
 
         <div className="nx-tables__actions">
+          {activeType && (
+            <select
+              className="nx-select"
+              value={templatePageId ?? ''}
+              onChange={(e) => applyTemplate(e.target.value || null)}
+              title="New pages of this type start from a copy of the template"
+            >
+              <option value="">No template</option>
+              {entries.map((r) => (
+                <option key={r.id} value={r.id}>
+                  Template: {r.title || 'Untitled'}
+                </option>
+              ))}
+            </select>
+          )}
           {activeType && activeType.id !== 'note' && (
             <>
               {renaming ? (

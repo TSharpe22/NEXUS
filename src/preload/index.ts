@@ -2,6 +2,9 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { NexusAPI } from '../shared/types'
 
 const api: NexusAPI = {
+  journal: {
+    today: () => ipcRenderer.invoke('journal:today'),
+  },
   mirror: {
     getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
     setFolder: (folder) => ipcRenderer.invoke('mirror:setFolder', folder),
@@ -51,6 +54,8 @@ const api: NexusAPI = {
     remove: (pageId, key) => ipcRenderer.invoke('properties:remove', pageId, key)
   },
   types: {
+    setTemplate: (typeId, pageId) => ipcRenderer.invoke('types:setTemplate', typeId, pageId),
+    getTemplate: (typeId) => ipcRenderer.invoke('types:getTemplate', typeId),
     list: () => ipcRenderer.invoke('types:list'),
     create: (name, icon) => ipcRenderer.invoke('types:create', name, icon),
     rename: (id, name) => ipcRenderer.invoke('types:rename', id, name),
