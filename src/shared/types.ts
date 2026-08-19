@@ -254,7 +254,11 @@ export interface NexusAPI {
   }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
-    syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
+    /**
+     * No `syncLinks` here on purpose: the link graph is projected in the main
+     * process from `repo.updatePage`, so there is no way for a renderer to
+     * write a version of it that disagrees with the document.
+     */
     searchPages(query: string, excludePageId?: string): Promise<Page[]>
   }
   activity: {

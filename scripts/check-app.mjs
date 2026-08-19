@@ -511,6 +511,54 @@ await sleep(1200)
 const graph = await page.evaluate(() => window.api.stats.getGraph())
 check('link recorded as a graph edge', graph.edges.length > 0, `${graph.nodes.length} nodes, ${graph.edges.length} edges`)
 
+// The link graph is projected in the main process, from repo.updatePage — the
+// same place the search index is rebuilt. It used to be projected in the
+// renderer, after the save round-tripped, which meant a React component was
+// its only writer.
+const backlinksOf = (title) =>
+  page.evaluate(async (t) => {
+    const target = (await window.api.pages.getAll()).find((p) => p.title === t)
+    return window.api.links.getBacklinks(target.id)
+  }, title)
+const kineticsBacklinks = await backlinksOf('Reaction kinetics')
+check('typing a mention records a backlink', kineticsBacklinks.some((b) => b.sourcePageTitle === 'Catalysis'),
+  JSON.stringify(kineticsBacklinks.map((b) => b.sourcePageTitle)))
+check('the backlink carries the surrounding text', /See/.test(kineticsBacklinks[0]?.context ?? ''),
+  JSON.stringify(kineticsBacklinks[0]?.context))
+check('the renderer cannot write the link graph itself',
+  await page.evaluate(() => typeof window.api.links.syncLinks === 'undefined'))
+
+// A page created by import never mounts the editor. While link extraction ran
+// in that component, such a page contributed no backlinks at all and nothing
+// else in the app could fix it.
+const imported = await page.evaluate(async () => {
+  const mentioned = (await window.api.pages.getAll()).find((p) => p.title === 'Reaction kinetics')
+  const doc = [
+    {
+      type: 'paragraph',
+      content: [
+        { type: 'text', text: 'Imported note about ', styles: {} },
+        { type: 'pageMention', props: { pageId: mentioned.id, pageTitle: mentioned.title } }
+      ]
+    }
+  ]
+  return window.api.io.importJSON(JSON.stringify({ title: 'Imported reference', content: doc }))
+})
+check('an imported page exists', imported.title === 'Imported reference')
+const afterImport = await backlinksOf('Reaction kinetics')
+check('an imported page contributes backlinks too',
+  afterImport.some((b) => b.sourcePageTitle === 'Imported reference'),
+  JSON.stringify(afterImport.map((b) => b.sourcePageTitle)))
+
+// Removing the mention has to remove the backlink — the projection is a
+// replace, not an append.
+await page.evaluate(async (id) => window.api.pages.update(id, { content: '[]' }), imported.id)
+const afterClearing = await backlinksOf('Reaction kinetics')
+check('clearing the body drops its backlink',
+  !afterClearing.some((b) => b.sourcePageTitle === 'Imported reference'),
+  JSON.stringify(afterClearing.map((b) => b.sourcePageTitle)))
+await page.evaluate((id) => window.api.pages.hardDelete(id), imported.id)
+
 // ---------------------------------------------------------------- relations
 // The active page here is the second one, Catalysis, and the first page now
 // exists to point at.

@@ -1,39 +1,5 @@
-import type { Page, LinkTarget } from '@shared/types'
+import type { Page } from '@shared/types'
 import { Icon } from '../design/Icon'
-
-/** Walk a BlockNote document tree and collect every pageMention target. */
-export function extractLinkTargets(blocks: unknown[]): LinkTarget[] {
-  const targets = new Map<string, string | null>()
-
-  function walkInlineContent(content: unknown, blockText: string) {
-    if (!Array.isArray(content)) return
-    for (const node of content) {
-      if (!node || typeof node !== 'object') continue
-      const n = node as { type?: string; props?: { pageId?: string } }
-      if (n.type === 'pageMention' && n.props?.pageId && !targets.has(n.props.pageId)) {
-        targets.set(n.props.pageId, blockText.slice(0, 200) || null)
-      }
-    }
-  }
-
-  function walkBlocks(items: unknown[]) {
-    for (const item of items) {
-      if (!item || typeof item !== 'object') continue
-      const block = item as { content?: unknown; children?: unknown[] }
-      let blockText = ''
-      if (Array.isArray(block.content)) {
-        for (const c of block.content) {
-          if (c && typeof c === 'object' && 'text' in c) blockText += String((c as { text: unknown }).text)
-        }
-      }
-      walkInlineContent(block.content, blockText)
-      if (Array.isArray(block.children)) walkBlocks(block.children)
-    }
-  }
-
-  walkBlocks(blocks)
-  return Array.from(targets, ([targetPageId, context]) => ({ targetPageId, context }))
-}
 
 export interface LinkMenuItem {
   id: string

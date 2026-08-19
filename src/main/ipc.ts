@@ -5,7 +5,7 @@ import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
 import { getDataDir } from './database'
-import type { PropertyType, LinkTarget } from '../shared/types'
+import type { PropertyType } from '../shared/types'
 
 function rethrow(channel: string, error: unknown): never {
   console.error(channel, error)
@@ -424,13 +424,6 @@ export function registerIpcHandlers(): void {
       return repo.getBacklinks(pageId)
     } catch (e) {
       rethrow('links:getBacklinks', e)
-    }
-  })
-  ipcMain.handle('links:syncLinks', (_, pageId: string, linkTargets: LinkTarget[]) => {
-    try {
-      return repo.syncLinks(pageId, linkTargets)
-    } catch (e) {
-      rethrow('links:syncLinks', e)
     }
   })
   ipcMain.handle('links:searchPages', (_, query: string, excludePageId?: string) => {

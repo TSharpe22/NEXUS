@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
 import { journalEntryTitle, localDateISO } from '@shared/journal-date'
+import { extractLinkTargets, parseDocument } from '@shared/document'
 import { statSync } from 'fs'
 import type {
   Page,
@@ -72,6 +73,9 @@ export function createPage(typeId: string = 'note', folderId: string | null = nu
   }
 
   reindexPage(id)
+  // A template's body can carry mentions and checkboxes of its own, and a page
+  // created from one never passes through the editor before it is looked at.
+  projectDocument(id)
   logActivity(id, 'created', template ? 'page created from template' : 'page created')
   return getPageById(id)!
 }
@@ -166,6 +170,7 @@ export function updatePage(
 
   // Only the two indexed fields need the index rewritten.
   if ('title' in data || 'content' in data) reindexPage(id)
+  if ('content' in data) projectDocument(id)
 
   if ('title' in data) logActivity(id, 'renamed', `renamed to "${data.title}"`)
   else if ('type_id' in data) logActivity(id, 'retyped', 'type changed')
@@ -233,6 +238,7 @@ export function duplicatePage(id: string): Page {
   ).run(newId, ts, id)
 
   reindexPage(newId)
+  projectDocument(newId)
   return getPageById(newId)!
 }
 
@@ -452,6 +458,29 @@ export function reindexPage(pageId: string): void {
     page.title || '',
     documentToPlainText(page.content)
   )
+}
+
+/**
+ * Rebuild every projection derived from a page's body.
+ *
+ * Called from each path that writes `pages.content` — `updatePage`,
+ * `createPage` (a template's body comes across whole) and `duplicatePage` —
+ * so a projection can never be more current than the document it came from.
+ *
+ * Link extraction used to run in the renderer, from `Editor.tsx`, after the
+ * save round-tripped. That made a React component the only writer of the link
+ * graph, and pages that never mount it — anything created by `io.importJSON`,
+ * by a template, by the journal button — contributed no backlinks at all.
+ * `reindexPage` was always called from here and never had that problem; this
+ * is the same rule applied to the rest.
+ */
+export function projectDocument(pageId: string): void {
+  const row = getDb().prepare('SELECT content FROM pages WHERE id = ?').get(pageId) as
+    | { content: string | null }
+    | undefined
+  if (!row) return
+  const blocks = parseDocument(row.content)
+  syncLinks(pageId, extractLinkTargets(blocks))
 }
 
 /** Drop and rebuild the whole index. Returns the number of pages indexed. */
@@ -816,7 +845,14 @@ export function getBacklinks(pageId: string): BacklinkResult[] {
   }))
 }
 
-export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
+/**
+ * Replace a page's outgoing links with exactly the set given.
+ *
+ * Deliberately not exported: `projectDocument` is the only caller, so the
+ * link graph cannot be written from anywhere that is not looking at the
+ * document itself.
+ */
+function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
   const db = getDb()
   const trx = db.transaction(() => {
     const existing = db
