@@ -412,6 +412,40 @@ check('command palette opens', await page.evaluate(() => !!document.querySelecto
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
 
+// ---------------------------------------------------------------- persistence
+// Last, because it types into a page and would otherwise skew the activity
+// counts above.
+log('\n— persistence across an editor remount —')
+
+// The editor is keyed by page id and seeded from the store's copy of
+// `page.content`. A content save that reached the database but not the store
+// left the next remount showing an empty document — and the following
+// keystroke then saved that empty document over the real one.
+await nav(1)
+await sleep(700)
+const reopen = await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-tree-row--page')].find(
+    (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === 'Reaction kinetics'
+  )
+  if (!row) return 'ROW_NOT_FOUND'
+  row.click()
+  return 'OK'
+})
+await sleep(1200)
+check('reopened the first page', reopen === 'OK', reopen)
+
+const shown = await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? 'NO_EDITOR')
+check('body survives the remount', shown.includes('Rate depends on temperature'), JSON.stringify(shown.slice(0, 60)))
+
+// The destructive half: if the remount started empty, this save wipes the page.
+await page.click('.bn-editor .bn-block-content')
+await page.keyboard.press('End')
+await page.keyboard.type(' Checked.', { delay: 20 })
+await sleep(1400)
+const persisted = JSON.stringify(await firstDoc())
+check('earlier text is not overwritten by the next edit', persisted.includes('Rate depends on temperature'))
+check('the new edit saved as well', persisted.includes('Checked.'))
+
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 
 await app.close()
