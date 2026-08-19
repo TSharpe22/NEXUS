@@ -88,7 +88,11 @@ substitutes for the other.
   save was the direct cause of a `created_at`-reset bug in the first build.
 - `properties` — `page_id, key, type, value_text, value_number, value_date,
   value_relation`. Sparse columns, not a JSON blob — keeps typed queries
-  cheap.
+  cheap. `setProperty` owns which column a value lands in and writes all of
+  them on conflict, so retyping a property can't leave the old column
+  populated. A relation holds the target page's id in `value_relation`; there
+  is no foreign key, so a target deleted for good leaves an id that every
+  reader shows as a missing page rather than as an empty value.
 - `folders` — `id, name, parent_folder_id, sort_order`. The Notes list tree.
   Both this and `pages.folder_id` are `ON DELETE SET NULL`, so removing a
   folder can never cascade into losing pages; `deleteFolder()` reparents its
@@ -117,6 +121,11 @@ substitutes for the other.
   Tables is a generic browser over this: pick a type, see a table whose
   columns are exactly that type's property_definitions — it is not a
   separate task subsystem with hardcoded status values.
+  `key` is a slug of the name and is what values are stored against, so
+  renaming a property is display-only and never strands what pages hold; a
+  second name that slugifies onto an existing key is refused rather than
+  silently retyping the first. `sort_order` is the panel order, and drives
+  the Tables column order and the mirror's frontmatter order.
 
 ### Migrations
 
@@ -132,6 +141,14 @@ runs once.
 `user_version` 3 adds folders and tags. That step is purely additive — new
 tables plus one `ALTER TABLE pages ADD COLUMN folder_id` — so a v2 file needs
 no rebuild and no backup, and existing pages simply start at the folder root.
+
+Not every step is structural: `user_version` 6 changes no tables at all and
+only moves relation values out of `value_text`, where the old `setProperty`
+put them, into `value_relation`, where every reader looks. A data repair like
+that is gated on the stored version rather than written as an idempotent step
+run on each startup — there is nothing to re-repair once a file has been
+through it. The header comment on `SCHEMA_VERSION` is the log of what each
+version did; keep it current when bumping.
 
 ### Data access
 
@@ -158,13 +175,24 @@ Five sections, each a thin view over the same page/property model:
   names, and forces open any folder holding a match so nothing hides behind
   a collapsed ancestor. Trash stays a flat list. Opening a page shows the
   BlockNote editor in a centred reading column with its tag chips under the
-  title, a properties panel driven entirely by that page's type schema (with
-  an inline "+ Add property" to grow the schema, and a type picker to re-type
-  the page), and the backlinks panel.
+  title, a properties panel driven entirely by that page's type schema, and
+  the backlinks panel. The panel sits between the tags and the document body —
+  a typed page's data is the first thing under the title, not something you
+  scroll a whole note to reach — and `Editor` takes it as a slot for that
+  reason. It carries an inline "+ Add property" to grow the schema, a type
+  picker to re-type the page, a drag handle per row to reorder, and a click on
+  a property name to rename it. The two altitudes are kept apart: the × on a
+  row clears that page's value, while removing the property from the type
+  lives in the rename state, since it clears the value from every page.
 - **Tables** — pick any user-created type, see a table of its pages with
-  columns generated from that type's property_definitions. Types can be
-  renamed and deleted here; deleting a type re-homes its pages onto Note
-  rather than deleting them.
+  columns generated from that type's property_definitions. Any column sorts,
+  typed by the property's own type, cycling ascending → descending → back to
+  the default newest-first; empty cells sink to the bottom in both directions,
+  since a property added today is empty on every page that predates it. The
+  filter box matches what the cells show rather than only the title, so a
+  relation's target or one of a page's tags finds its row. Both reset when the
+  type changes. Types can be renamed and deleted here; deleting a type
+  re-homes its pages onto Note rather than deleting them.
 - **Activity** — chronological feed from `activity_log`. Consecutive content
   saves on one page coalesce into a single "edited" entry (see
   `EDIT_COALESCE_MINUTES` in `repo.ts`) so typing doesn't bury every other
