@@ -146,6 +146,23 @@ export interface SearchResult {
 }
 
 // ============================================================
+// Vault mirror
+// ============================================================
+
+export interface MirrorConfig {
+  enabled: boolean
+  folder: string | null
+  lastSyncAt: string | null
+}
+
+export interface MirrorResult {
+  written: number
+  deleted: number
+  unchanged: number
+  total: number
+}
+
+// ============================================================
 // IPC API contract
 // ============================================================
 
@@ -174,6 +191,13 @@ export interface NexusAPI {
   search: {
     pages(query: string, limit?: number): Promise<SearchResult[]>
     rebuildIndex(): Promise<number>
+  }
+  mirror: {
+    getConfig(): Promise<MirrorConfig>
+    /** Passing a folder also enables the mirror; passing null disables it. */
+    setFolder(folder: string | null): Promise<MirrorConfig>
+    setEnabled(enabled: boolean): Promise<MirrorConfig>
+    syncNow(): Promise<MirrorResult>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>

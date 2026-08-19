@@ -27,6 +27,12 @@ const api: NexusAPI = {
     pages: (query, limit) => ipcRenderer.invoke('search:pages', query, limit),
     rebuildIndex: () => ipcRenderer.invoke('search:rebuildIndex'),
   },
+  mirror: {
+    getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
+    setFolder: (folder) => ipcRenderer.invoke('mirror:setFolder', folder),
+    setEnabled: (enabled) => ipcRenderer.invoke('mirror:setEnabled', enabled),
+    syncNow: () => ipcRenderer.invoke('mirror:syncNow'),
+  },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),
     exportPageJSON: (pageId) => ipcRenderer.invoke('io:exportPageJSON', pageId),

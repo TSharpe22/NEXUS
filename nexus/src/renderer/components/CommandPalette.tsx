@@ -14,6 +14,7 @@ export function CommandPalette() {
     selectedPageId,
     sidebarCollapsed, setSidebarCollapsed,
     setShowTrash,
+    mirrorConfig, setMirrorFolder, setMirrorEnabled, syncMirrorNow,
   } = useAppStore()
   const [query, setQuery] = useState('')
 
@@ -125,6 +126,75 @@ export function CommandPalette() {
                 {shortcutLabel('\\')}
               </kbd>
             </Command.Item>
+
+            <Command.Item
+              onSelect={async () => {
+                setCommandPaletteOpen(false)
+                const folder = await window.api.dialog.showSelectFolder()
+                if (!folder) return
+                try {
+                  await setMirrorFolder(folder)
+                  toast.success(`Vault mirror writing to ${folder}`)
+                } catch {
+                  toast.error('Could not set the vault mirror folder')
+                }
+              }}
+              className={itemClass}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" />
+              </svg>
+              <span>
+                {mirrorConfig?.folder ? 'Change Vault Mirror Folder…' : 'Set Up Vault Mirror…'}
+              </span>
+            </Command.Item>
+
+            {mirrorConfig?.folder && (
+              <Command.Item
+                onSelect={async () => {
+                  setCommandPaletteOpen(false)
+                  try {
+                    const r = await syncMirrorNow()
+                    toast.success(
+                      `Vault mirrored — ${r.written} written, ${r.deleted} removed, ${r.unchanged} unchanged`,
+                    )
+                  } catch {
+                    toast.error('Vault mirror sync failed')
+                  }
+                }}
+                className={itemClass}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 2v6h-6" />
+                  <path d="M3 12a9 9 0 0115-6.7L21 8" />
+                  <path d="M3 22v-6h6" />
+                  <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+                </svg>
+                <span>Sync Vault Mirror Now</span>
+              </Command.Item>
+            )}
+
+            {mirrorConfig?.folder && (
+              <Command.Item
+                onSelect={async () => {
+                  setCommandPaletteOpen(false)
+                  const next = !mirrorConfig.enabled
+                  try {
+                    await setMirrorEnabled(next)
+                    toast.success(next ? 'Vault mirror on' : 'Vault mirror off')
+                  } catch {
+                    toast.error('Could not change the vault mirror')
+                  }
+                }}
+                className={itemClass}
+              >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18.36 6.64a9 9 0 11-12.73 0" />
+                  <line x1="12" y1="2" x2="12" y2="12" />
+                </svg>
+                <span>{mirrorConfig.enabled ? 'Turn Off Vault Mirror' : 'Turn On Vault Mirror'}</span>
+              </Command.Item>
+            )}
 
             <Command.Item
               onSelect={async () => {

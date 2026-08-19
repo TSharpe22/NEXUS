@@ -155,7 +155,61 @@ function runMigrations(): void {
     db.exec('ALTER TABLE pages ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0')
   }
 
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    -- Manifest of files the vault mirror has written. The mirror deletes only
+    -- paths recorded here, so it can never remove a file it did not create,
+    -- however the user rearranges the target folder.
+    -- Deliberately no foreign key: the row must outlive its page so the
+    -- orphaned file can still be cleaned up on the next sync.
+    CREATE TABLE IF NOT EXISTS mirror_files (
+      page_id  TEXT PRIMARY KEY,
+      rel_path TEXT NOT NULL
+    );
+  `)
+
   initSearchIndex()
+}
+
+// ============================================================
+// Settings (key/value)
+// ============================================================
+
+export function getSetting(key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string | null }
+    | undefined
+  return row?.value ?? null
+}
+
+export function setSetting(key: string, value: string | null): void {
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value)
+}
+
+// ============================================================
+// Vault mirror manifest
+// ============================================================
+
+export function getMirrorManifest(): Map<string, string> {
+  const rows = db.prepare('SELECT page_id, rel_path FROM mirror_files').all() as
+    { page_id: string; rel_path: string }[]
+  return new Map(rows.map((r) => [r.page_id, r.rel_path]))
+}
+
+export function replaceMirrorManifest(entries: Map<string, string>): void {
+  const insert = db.prepare('INSERT INTO mirror_files (page_id, rel_path) VALUES (?, ?)')
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM mirror_files').run()
+    for (const [pageId, relPath] of entries) insert.run(pageId, relPath)
+  })
+  trx()
 }
 
 // ============================================================

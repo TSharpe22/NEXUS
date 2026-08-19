@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Page } from '../../shared/types'
+import type { Page, MirrorConfig, MirrorResult } from '../../shared/types'
 
 const nowSql = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 
@@ -42,6 +42,9 @@ interface AppState {
   // Sidebar tree — which parents are expanded (UI-only, persisted locally)
   expandedPageIds: Set<string>
 
+  // Vault mirror
+  mirrorConfig: MirrorConfig | null
+
   // Actions
   loadPages(): Promise<void>
   loadDeletedPages(): Promise<void>
@@ -56,6 +59,11 @@ interface AppState {
   toggleFavorite(id: string): Promise<void>
   toggleExpanded(id: string): void
   setExpanded(id: string, expanded: boolean): void
+
+  loadMirrorConfig(): Promise<void>
+  setMirrorFolder(folder: string | null): Promise<void>
+  setMirrorEnabled(enabled: boolean): Promise<void>
+  syncMirrorNow(): Promise<MirrorResult>
   setSidebarWidth(w: number): void
   setSidebarCollapsed(c: boolean): void
   setSearchQuery(q: string): void
@@ -91,6 +99,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   expandedPageIds: new Set<string>(
     JSON.parse(localStorage.getItem('nx-expanded-pages') || '[]') as string[]
   ),
+  mirrorConfig: null,
 
   async loadPages() {
     const pages = await window.api.pages.getAll()
@@ -207,6 +216,28 @@ export const useAppStore = create<AppState>((set, get) => ({
     else next.delete(id)
     persistExpanded(next)
     set({ expandedPageIds: next })
+  },
+
+  async loadMirrorConfig() {
+    set({ mirrorConfig: await window.api.mirror.getConfig() })
+  },
+
+  async setMirrorFolder(folder) {
+    const mirrorConfig = await window.api.mirror.setFolder(folder)
+    set({ mirrorConfig })
+    // Selecting a folder should populate it immediately rather than waiting
+    // for the next edit to trigger a debounced sync.
+    if (mirrorConfig.enabled) await get().syncMirrorNow()
+  },
+
+  async setMirrorEnabled(enabled) {
+    set({ mirrorConfig: await window.api.mirror.setEnabled(enabled) })
+  },
+
+  async syncMirrorNow() {
+    const result = await window.api.mirror.syncNow()
+    await get().loadMirrorConfig()
+    return result
   },
 
   setSidebarWidth(w) {

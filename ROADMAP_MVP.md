@@ -139,9 +139,9 @@ only if the tree alone proves insufficient in daily use.
 10. **Habits.** Resist building a bespoke habit engine. A Habit type with a date and a
     boolean, rendered as a year grid, covers it and reuses Milestone C entirely.
 
-### Milestone E — AI surface, and the substrate for phone
+### Milestone E — AI surface, and the substrate for phone — **11 shipped**
 
-11. **Vault mirror.** Continuously mirror every page to plain `.md` files on disk —
+11. ~~**Vault mirror.**~~ **Done.** Continuously mirror every page to plain `.md` files on disk —
     YAML frontmatter for properties, wikilinks preserved, one file per page, mirroring
     the page tree as directories. Debounced on save, full re-sync on demand.
 
@@ -149,6 +149,12 @@ only if the tree alone proves insufficient in daily use.
     at all. It delivers, in one feature: a readable reference for Claude/Hermes today
     (point any assistant at a folder), continuous plaintext backup, real portability,
     and the file substrate that makes phone sync tractable later.
+
+    Shipped as `src/main/mirror.ts`. Off until a folder is chosen. Debounced full
+    reconcile, skipping files whose contents are unchanged. Deletes only paths recorded
+    in the `mirror_files` manifest, so a file the user placed in the folder is never
+    touched. A generated `_nexus-index.md` at the root lists every page and its path,
+    so an assistant does not have to crawl the tree first.
 12. **Local capture endpoint.** *Deferred — do not build yet.* When the phone
     integration comes, it should be a small localhost HTTP server in the Electron main
     process calling the existing `database.ts` functions, writing into an inbox. Nothing

@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react'
+import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
+import { relativeTime } from '../hooks/use-relative-time'
 
 export function StatusBar() {
-  const { saveStatus, currentPage } = useAppStore()
+  const { saveStatus, currentPage, mirrorConfig, syncMirrorNow } = useAppStore()
   const [showSaved, setShowSaved] = useState(false)
+  const [syncing, setSyncing] = useState(false)
 
   // Keep the "Saved" badge visible briefly, then fade.
   useEffect(() => {
@@ -26,7 +29,37 @@ export function StatusBar() {
           </span>
         )}
       </div>
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-3">
+        {mirrorConfig?.enabled && (
+          <button
+            onClick={async () => {
+              setSyncing(true)
+              try {
+                const r = await syncMirrorNow()
+                toast.success(
+                  `Vault mirrored — ${r.written} written, ${r.deleted} removed, ${r.unchanged} unchanged`,
+                )
+              } catch {
+                toast.error('Vault mirror sync failed')
+              } finally {
+                setSyncing(false)
+              }
+            }}
+            title={`Vault mirror: ${mirrorConfig.folder ?? 'not set'}\nClick to sync now`}
+            className="flex items-center gap-1.5 hover:text-[var(--nx-text-secondary)] transition-colors"
+          >
+            <span
+              className={`w-1.5 h-1.5 rounded-full ${
+                syncing ? 'bg-[var(--nx-accent)] animate-pulse' : 'bg-[var(--nx-accent)]/60'
+              }`}
+            />
+            <span>
+              Mirrored
+              {mirrorConfig.lastSyncAt ? ` ${relativeTime(mirrorConfig.lastSyncAt)}` : ''}
+            </span>
+          </button>
+        )}
+
         {saveStatus === 'saving' && (
           <span className="flex items-center gap-1.5 text-[var(--nx-text-tertiary)]">
             <span className="nx-save-dot" />
