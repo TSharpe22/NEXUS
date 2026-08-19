@@ -179,7 +179,7 @@ export function Tracker() {
         ‹
       </button>
       <button
-        className="nx-tracker__step nx-tracker__step--now"
+        className="nx-tracker__step"
         onClick={() => setOffset(0)}
         disabled={isCurrent}
         title={kind === 'week' ? 'This week' : 'This quarter'}

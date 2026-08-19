@@ -3,6 +3,29 @@ import type { Folder, Page, Tag, TagWithCount, TypeDef } from '@shared/types'
 
 export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
+/**
+ * The nav sections, in the order they appear.
+ *
+ * One list, because there were two: the sidebar's and the command palette's.
+ * Adding the Tracker updated the sidebar and left ⌘K unable to reach it —
+ * `App.tsx`'s `Record<View, …>` maps made every other omission a compile
+ * error, and the palette's hand-written array was the one place that could go
+ * stale in silence.
+ *
+ * A `Record` so a new member of `View` cannot be left out, and the nav order
+ * is the key order — insertion order, which JS guarantees for string keys.
+ */
+export const VIEW_META: Record<View, { label: string; hint: string }> = {
+  home: { label: 'Home', hint: 'Overview and graph' },
+  notes: { label: 'Notes', hint: 'Write and edit pages' },
+  tables: { label: 'Tables', hint: 'Browse pages by type' },
+  tracker: { label: 'Tracker', hint: "What's due, week by week" },
+  activity: { label: 'Activity', hint: 'What changed, when' },
+  settings: { label: 'Settings', hint: 'Data, import and export' }
+}
+
+export const VIEW_ORDER = Object.keys(VIEW_META) as View[]
+
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 interface AppState {

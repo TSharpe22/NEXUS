@@ -1284,6 +1284,23 @@ await page.screenshot({ path: SHOT + '/09-settings.png' })
 await page.keyboard.press('Control+k')
 await sleep(500)
 check('command palette opens', await page.evaluate(() => !!document.querySelector('.nx-palette')))
+
+// The palette and the sidebar read one list. They did not: adding the Tracker
+// updated the sidebar and left ⌘K unable to reach the new view at all.
+const navLabels = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-nav-item')].map((el) => el.textContent.trim()))
+const paletteViews = await page.evaluate(() => {
+  // Scoped to the "Go to" group: page titles are items too, and one called
+  // "Notes" would make this pass without the group listing anything.
+  const group = [...document.querySelectorAll('[cmdk-group]')].find((g) =>
+    g.querySelector('[cmdk-group-heading]')?.textContent.trim() === 'Go to'
+  )
+  return [...(group?.querySelectorAll('[cmdk-item]') ?? [])].map((el) => el.textContent.trim())
+})
+check('every nav section is reachable from the palette',
+  navLabels.every((label) => paletteViews.some((item) => item.includes(label))),
+  `nav ${JSON.stringify(navLabels)} vs palette ${JSON.stringify(paletteViews)}`)
+
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
 

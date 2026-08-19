@@ -1,16 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
 import Fuse from 'fuse.js'
-import { useAppStore, type View } from '../store/app-store'
+import { useAppStore, VIEW_META, VIEW_ORDER, type View } from '../store/app-store'
 import './CommandPalette.css'
 
-const VIEWS: { view: View; label: string }[] = [
-  { view: 'home', label: 'Home' },
-  { view: 'notes', label: 'Notes' },
-  { view: 'tables', label: 'Tables' },
-  { view: 'activity', label: 'Activity' },
-  { view: 'settings', label: 'Settings' }
-]
+const VIEWS: { view: View; label: string }[] = VIEW_ORDER.map((view) => ({
+  view,
+  label: VIEW_META[view].label
+}))
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false)

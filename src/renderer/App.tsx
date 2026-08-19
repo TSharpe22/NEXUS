@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
-import { useAppStore, View } from './store/app-store'
+import { useAppStore, VIEW_META, VIEW_ORDER, View } from './store/app-store'
 import { NavItem } from './design/NavItem'
 import { CommandPalette } from './design/CommandPalette'
 import { ConfirmHost } from './design/Confirm'
@@ -12,15 +12,6 @@ import { Activity } from './views/Activity'
 import { Settings } from './views/Settings'
 import './App.css'
 
-const NAV: { view: View; label: string; hint: string }[] = [
-  { view: 'home', label: 'Home', hint: 'Overview and graph' },
-  { view: 'notes', label: 'Notes', hint: 'Write and edit pages' },
-  { view: 'tables', label: 'Tables', hint: 'Browse pages by type' },
-  { view: 'tracker', label: 'Tracker', hint: "What's due, week by week" },
-  { view: 'activity', label: 'Activity', hint: 'What changed, when' },
-  { view: 'settings', label: 'Settings', hint: 'Data, import and export' }
-]
-
 const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   home: Home,
   notes: Notes,
@@ -28,15 +19,6 @@ const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   tracker: Tracker,
   activity: Activity,
   settings: Settings
-}
-
-const VIEW_TITLE: Record<View, string> = {
-  home: 'Home',
-  notes: 'Notes',
-  tables: 'Tables',
-  tracker: 'Tracker',
-  activity: 'Activity',
-  settings: 'Settings'
 }
 
 function SaveIndicator() {
@@ -67,13 +49,13 @@ export function App() {
       <aside className="nx-sidebar">
         <div className="nx-sidebar__logo">NEXUS</div>
         <nav className="nx-sidebar__nav">
-          {NAV.map((item) => (
+          {VIEW_ORDER.map((view) => (
             <NavItem
-              key={item.view}
-              label={item.label}
-              title={item.hint}
-              selected={activeView === item.view}
-              onClick={() => setActiveView(item.view)}
+              key={view}
+              label={VIEW_META[view].label}
+              title={VIEW_META[view].hint}
+              selected={activeView === view}
+              onClick={() => setActiveView(view)}
             />
           ))}
         </nav>
@@ -82,7 +64,7 @@ export function App() {
 
       <div className="nx-main">
         <header className="nx-topbar">
-          <div className="nx-topbar__title">{VIEW_TITLE[activeView]}</div>
+          <div className="nx-topbar__title">{VIEW_META[activeView].label}</div>
           <SaveIndicator />
         </header>
         <main className="nx-content">
