@@ -87,19 +87,24 @@ or will build it half-heartedly.
 Ordered by "unblocks the most daily use per unit of work". Each is independently
 shippable — Nexus stays usable after every one.
 
-### Milestone A — Findability
+### Milestone A — Findability — **shipped**
 
 *Without this, the vault becomes unusable at roughly 100 pages regardless of what else
 gets built.*
 
-1. **Full-text search.** Add an FTS5 virtual table over block content, kept in sync by
+1. ~~**Full-text search.**~~ **Done.** Add an FTS5 virtual table over block content, kept in sync by
    triggers or on block save. Wire it into both sidebar search and the command palette.
-   Today `Sidebar.tsx:172` filters on `title` alone — body text is unsearchable.
-2. **Sidebar hierarchy.** Add `parent_page_id TEXT REFERENCES pages(id)` to `pages`.
-   Drag-to-nest in the sidebar, collapsible tree, manual `sort_order`. Keep the current
-   recency list available as a separate "Recent" section.
-3. **Favorites / pinned pages.** A boolean on `pages` and a pinned section at the top of
-   the sidebar. Trivial to build, disproportionately useful daily.
+   FTS5 index over titles and block content, bm25-ranked with titles weighted 10x,
+   wired into both the sidebar and the command palette with highlighted excerpts.
+2. ~~**Sidebar hierarchy.**~~ **Done.** `parent_page_id` + `sort_order` on `pages`,
+   collapsible tree, HTML5 drag-to-nest, fractional indexing, cycle protection, and
+   subtree-aware soft delete.
+3. ~~**Favorites / pinned pages.**~~ **Done.** `is_favorite` on `pages` with a
+   Favorites section above the tree.
+
+**Deferred from A:** the separate "Recent" section. Search plus favorites cover
+findability for now, and a third sidebar section is UI weight that should be added
+only if the tree alone proves insufficient in daily use.
 
 ### Milestone B — Journal spine
 
