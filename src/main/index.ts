@@ -57,14 +57,16 @@ app.whenReady().then(() => {
   })
 })
 
+// Closing the last window is not the same as quitting. Tearing the database
+// down here left `activate` re-creating a window against a closed handle, so
+// every query threw; on platforms that do quit, `before-quit` runs anyway and
+// is the one place that has to shut things down.
 app.on('window-all-closed', () => {
-  // Flush before the database closes — the mirror reads from it.
-  flushMirror()
-  closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
+  // Flush before the database closes — the mirror reads from it.
   flushMirror()
   closeDatabase()
 })

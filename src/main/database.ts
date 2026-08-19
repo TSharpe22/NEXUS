@@ -31,7 +31,10 @@ export function initDatabase(): void {
 }
 
 export function closeDatabase(): void {
-  if (db) db.close()
+  // `before-quit` can fire more than once (a cancelled quit, then a real one),
+  // and a handle that has already been closed must not be closed again.
+  if (!db || !db.open) return
+  db.close()
 }
 
 export function getDb(): Database.Database {
