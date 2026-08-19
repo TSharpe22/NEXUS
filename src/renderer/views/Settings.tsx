@@ -3,6 +3,8 @@ import toast from 'react-hot-toast'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
+import { relativeTime } from '../hooks/use-relative-time'
+import type { MirrorConfig } from '@shared/types'
 import './Settings.css'
 
 const SHORTCUTS: [string, string][] = [
@@ -17,10 +19,52 @@ export function Settings() {
   const refresh = useAppStore((s) => s.refresh)
   const pages = useAppStore((s) => s.pages)
   const [dataDir, setDataDir] = useState('')
+  const [mirror, setMirror] = useState<MirrorConfig | null>(null)
+  const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     window.api.stats.getDataDir().then(setDataDir)
+    window.api.mirror.getConfig().then(setMirror)
   }, [])
+
+  const chooseMirrorFolder = async () => {
+    const folder = await window.api.dialog.showSelectFolder()
+    if (!folder) return
+    try {
+      setMirror(await window.api.mirror.setFolder(folder))
+      setSyncing(true)
+      const result = await window.api.mirror.syncNow()
+      setMirror(await window.api.mirror.getConfig())
+      toast.success(`Mirroring to ${folder} — ${result.written} file(s) written`)
+    } catch (e) {
+      console.error('[nexus] could not set the mirror folder', e)
+      toast.error('Could not set the mirror folder')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const toggleMirror = async () => {
+    if (!mirror) return
+    try {
+      setMirror(await window.api.mirror.setEnabled(!mirror.enabled))
+    } catch {
+      toast.error('Could not change the vault mirror')
+    }
+  }
+
+  const syncMirrorNow = async () => {
+    setSyncing(true)
+    try {
+      const r = await window.api.mirror.syncNow()
+      setMirror(await window.api.mirror.getConfig())
+      toast.success(`Mirrored — ${r.written} written, ${r.deleted} removed, ${r.unchanged} unchanged`)
+    } catch {
+      toast.error('Vault mirror sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const exportAll = async () => {
     if (pages.length === 0) {
@@ -90,6 +134,54 @@ export function Settings() {
             Import
           </Button>
         </div>
+      </Panel>
+
+      <Panel title="Vault mirror">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Mirror folder</div>
+            <div className="nx-type-data nx-settings__path">
+              {mirror?.folder ?? 'Not set — the mirror is off'}
+            </div>
+            <div className="nx-type-data">
+              Writes every page as a Markdown file, mirroring your folder tree, so other
+              tools and assistants can read the vault directly. One-way: edits made to
+              those files are not read back.
+            </div>
+          </div>
+          <Button variant="ghost" onClick={chooseMirrorFolder} disabled={syncing}>
+            {mirror?.folder ? 'Change…' : 'Choose…'}
+          </Button>
+        </div>
+
+        {mirror?.folder && (
+          <>
+            <div className="nx-settings__row">
+              <div>
+                <div className="nx-type-body">{mirror.enabled ? 'On' : 'Off'}</div>
+                <div className="nx-type-data">
+                  {mirror.lastSyncAt
+                    ? `Last synced ${relativeTime(mirror.lastSyncAt)}`
+                    : 'Not synced yet'}
+                </div>
+              </div>
+              <Button variant="ghost" onClick={toggleMirror}>
+                {mirror.enabled ? 'Turn off' : 'Turn on'}
+              </Button>
+            </div>
+            <div className="nx-settings__row">
+              <div>
+                <div className="nx-type-body">Sync now</div>
+                <div className="nx-type-data">
+                  Normally automatic a moment after each change.
+                </div>
+              </div>
+              <Button variant="ghost" onClick={syncMirrorNow} disabled={syncing || !mirror.enabled}>
+                {syncing ? 'Syncing…' : 'Sync'}
+              </Button>
+            </div>
+          </>
+        )}
       </Panel>
 
       <Panel title="Shortcuts">

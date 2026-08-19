@@ -11,7 +11,7 @@
  * Runs against a scratch userData directory so it never touches real notes.
  */
 import { _electron as electron } from 'playwright-core'
-import { mkdtempSync, mkdirSync, rmSync } from 'fs'
+import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 
@@ -335,6 +335,51 @@ if (box) {
 }
 
 // ---------------------------------------------------------------- other views
+// ---------------------------------------------------------------- search
+log('\n— full-text search —')
+
+// "Arrhenius" and "temperature" were typed into the body of the first page and
+// appear in no title, so a title-only filter could never surface them.
+const bodyHits = await page.evaluate(() => window.api.search.pages('arrhenius'))
+check('body text is searchable', bodyHits.length === 1 && bodyHits[0].page.title === 'Reaction kinetics',
+  JSON.stringify(bodyHits.map((h) => h.page.title)))
+check('body match carries an excerpt', !!bodyHits[0]?.bodySnippet, JSON.stringify(bodyHits[0]?.bodySnippet))
+
+const titleHits = await page.evaluate(() => window.api.search.pages('reaction'))
+check('title match ranks first', titleHits[0]?.page.title === 'Reaction kinetics',
+  JSON.stringify(titleHits.map((h) => h.page.title)))
+
+check('prefix match works', (await page.evaluate(() => window.api.search.pages('arrhen'))).length === 1)
+check('no false positives', (await page.evaluate(() => window.api.search.pages('zzzznotpresent'))).length === 0)
+
+// FTS5 operators and quotes in user input must be literal terms, never syntax.
+for (const nasty of ['"; DROP TABLE pages --', 'NEAR(a b)', '*', 'a OR b']) {
+  check(`malformed query is safe: ${nasty}`,
+    Array.isArray(await page.evaluate((q) => window.api.search.pages(q), nasty)))
+}
+
+// The Notes list must actually show a body-only match, not just the IPC.
+await page.evaluate(() => {
+  const box = document.querySelector('.nx-notes__search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, 'arrhenius')
+  box.dispatchEvent(new Event('input', { bubbles: true }))
+})
+await sleep(500)
+check('body-only match appears in the notes list',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-tree-row__title')].some((t) => t.textContent.includes('Reaction kinetics'))))
+check('the excerpt renders under the row',
+  await page.evaluate(() => !!document.querySelector('.nx-tree-row__snippet .nx-search-hit')))
+
+await page.evaluate(() => {
+  const box = document.querySelector('.nx-notes__search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, '')
+  box.dispatchEvent(new Event('input', { bubbles: true }))
+})
+await sleep(400)
+
 log('\n— other views —')
 await nav(2)
 await sleep(900)
@@ -366,6 +411,107 @@ await sleep(500)
 check('command palette opens', await page.evaluate(() => !!document.querySelector('.nx-palette')))
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
+
+// ---------------------------------------------------------------- vault mirror
+log('\n— vault mirror —')
+const mirrorDir = join(tmpdir(), `nexus-mirror-${Date.now()}`)
+
+// A file the user put there themselves. The mirror must never remove it.
+mkdirSync(mirrorDir, { recursive: true })
+writeFileSync(join(mirrorDir, 'MY OWN FILE.md'), 'do not delete me')
+
+const synced = await page.evaluate(async (dir) => {
+  await window.api.mirror.setFolder(dir)
+  return window.api.mirror.syncNow()
+}, mirrorDir)
+check('mirror wrote files', synced.written >= 2, JSON.stringify(synced))
+
+const tree = () => {
+  const walk = (d, pre = '') =>
+    readdirSync(d, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(join(d, e.name), pre + e.name + '/') : [pre + e.name]
+    )
+  return walk(mirrorDir).sort()
+}
+const files = tree()
+check('index file written', files.includes('_nexus-index.md'), JSON.stringify(files))
+check('folder tree mirrored as directories', files.some((f) => f.includes('/')), JSON.stringify(files))
+
+const kinetics = files.find((f) => f.includes('Reaction kinetics'))
+check('page written under a readable name', !!kinetics, JSON.stringify(files))
+const md = readFileSync(join(mirrorDir, kinetics), 'utf-8')
+check('frontmatter present', md.startsWith('---\n'), md.slice(0, 40))
+check('body carried over', md.includes('Rate depends on temperature'))
+check('tags in frontmatter', md.includes('tags: ["kinetics"]'), md.split('---')[1]?.trim().slice(0, 160))
+check('properties in frontmatter', md.includes('difficulty:'), md.split('---')[1]?.trim().slice(0, 160))
+// The [[ link was made on the second page, so that is the file to look in.
+const linker = readFileSync(join(mirrorDir, files.find((f) => f.includes('Catalysis'))), 'utf-8')
+check('wiki-link preserved as [[Title]]', linker.includes('[[Reaction kinetics]]'),
+  JSON.stringify(linker.slice(-160)))
+
+// An unchanged vault must be a true no-op, or the folder churns mtimes every
+// couple of seconds while typing.
+const again = await page.evaluate(() => window.api.mirror.syncNow())
+check('re-syncing an unchanged vault writes nothing', again.written === 0, JSON.stringify(again))
+
+// Renaming moves the file and leaves nothing behind.
+await page.evaluate(async () => {
+  const pages = await window.api.pages.getAll()
+  const p = pages.find((x) => x.title === 'Reaction kinetics')
+  await window.api.pages.update(p.id, { title: 'Renamed kinetics' })
+  return window.api.mirror.syncNow()
+})
+const after = tree()
+check('rename moved the file', after.some((f) => f.includes('Renamed kinetics')), JSON.stringify(after))
+check('no leftover under the old name', !after.some((f) => f.includes('Reaction kinetics')), JSON.stringify(after))
+check('a file the user added is untouched',
+  readFileSync(join(mirrorDir, 'MY OWN FILE.md'), 'utf-8') === 'do not delete me')
+
+// A page title cannot escape the mirror root.
+await page.evaluate(async () => {
+  const p = await window.api.pages.create('note')
+  await window.api.pages.update(p.id, { title: '../../escaped' })
+  return window.api.mirror.syncNow()
+})
+check('path traversal refused', !existsSync(join(mirrorDir, '..', '..', 'escaped.md')))
+check('sanitised inside the root', tree().some((f) => f.includes('escaped')), JSON.stringify(tree()))
+
+await page.evaluate(() => window.api.mirror.setFolder(null))
+rmSync(mirrorDir, { recursive: true, force: true })
+
+// ---------------------------------------------------------------- persistence
+// Last, because it types into a page and would otherwise skew the activity
+// counts above.
+log('\n— persistence across an editor remount —')
+
+// The editor is keyed by page id and seeded from the store's copy of
+// `page.content`. A content save that reached the database but not the store
+// left the next remount showing an empty document — and the following
+// keystroke then saved that empty document over the real one.
+await nav(1)
+await sleep(700)
+const reopen = await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-tree-row--page')].find(
+    (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === 'Reaction kinetics'
+  )
+  if (!row) return 'ROW_NOT_FOUND'
+  row.click()
+  return 'OK'
+})
+await sleep(1200)
+check('reopened the first page', reopen === 'OK', reopen)
+
+const shown = await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? 'NO_EDITOR')
+check('body survives the remount', shown.includes('Rate depends on temperature'), JSON.stringify(shown.slice(0, 60)))
+
+// The destructive half: if the remount started empty, this save wipes the page.
+await page.click('.bn-editor .bn-block-content')
+await page.keyboard.press('End')
+await page.keyboard.type(' Checked.', { delay: 20 })
+await sleep(1400)
+const persisted = JSON.stringify(await firstDoc())
+check('earlier text is not overwritten by the next edit', persisted.includes('Rate depends on temperature'))
+check('the new edit saved as well', persisted.includes('Checked.'))
 
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 

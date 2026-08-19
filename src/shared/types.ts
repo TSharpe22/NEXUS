@@ -14,6 +14,22 @@ export interface Page {
   updated_at: string
 }
 
+/**
+ * A search hit. Matched terms inside `titleMarked` and `bodySnippet` are
+ * wrapped in the control characters below — never interpolate these as HTML;
+ * split on them instead (see `SearchHighlight`).
+ */
+export const SEARCH_MARK_OPEN = '\u0002'
+export const SEARCH_MARK_CLOSE = '\u0003'
+
+export interface SearchResult {
+  page: Page
+  /** Page title with matched terms wrapped in the sentinels above. */
+  titleMarked: string
+  /** Body excerpt around the match, or null when only the title matched. */
+  bodySnippet: string | null
+}
+
 /** A node in the Notes list tree. A page belongs to at most one folder. */
 export interface Folder {
   id: string
@@ -133,7 +149,37 @@ export interface GraphData {
 // IPC API contract
 // ============================================================
 
+export interface MirrorConfig {
+  enabled: boolean
+  folder: string | null
+  lastSyncAt: string | null
+}
+
+export interface MirrorResult {
+  written: number
+  deleted: number
+  unchanged: number
+  total: number
+}
+
 export interface NexusAPI {
+  /**
+   * One-way export of the vault to a Markdown tree on disk, so any assistant,
+   * editor or backup tool can read it as ordinary files.
+   */
+  mirror: {
+    getConfig(): Promise<MirrorConfig>
+    /** Passing a folder also enables the mirror; passing null disables it. */
+    setFolder(folder: string | null): Promise<MirrorConfig>
+    setEnabled(enabled: boolean): Promise<MirrorConfig>
+    syncNow(): Promise<MirrorResult>
+  }
+  search: {
+    /** Full-text search over page titles and body content. */
+    pages(query: string, limit?: number): Promise<SearchResult[]>
+    /** Rebuild the index from scratch. Returns the number of pages indexed. */
+    rebuildIndex(): Promise<number>
+  }
   pages: {
     create(typeId?: string): Promise<Page>
     getAll(): Promise<Page[]>

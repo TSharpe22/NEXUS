@@ -151,7 +151,7 @@ db.pragma('foreign_keys = ON')
 // ------------------------------------------------------------------
 console.log('\nmigration from first-build schema:')
 check('backup taken before migrating', backupCalls, 1)
-check('user_version stamped', db.pragma('user_version', { simple: true }), 3)
+check('user_version stamped', db.pragma('user_version', { simple: true }), 5)
 check('legacy blocks table dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='blocks'`).get().c, 0)
 check('legacy property_values dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='property_values'`).get().c, 0)
 check('activity_log created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='activity_log'`).get().c, 1)
@@ -171,6 +171,23 @@ check('folders table created', db.prepare(`SELECT count(*) c FROM sqlite_master 
 check('tags table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='tags'`).get().c, 1)
 check('page_tags table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='page_tags'`).get().c, 1)
 check('migrated pages start at the folder root', db.prepare('SELECT count(*) c FROM pages WHERE folder_id IS NOT NULL').get().c, 0)
+
+// v4 — the full-text index. Also additive, and derived: the table has to exist
+// after migrating, but stays empty until repo.ensureSearchIndex() fills it at
+// startup, so an empty index here is the expected state and not a failure.
+check('page_fts table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='page_fts'`).get().c, 1)
+
+// v5 — settings and the vault mirror manifest. Additive as well.
+check('settings table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='settings'`).get().c, 1)
+check('mirror_files table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='mirror_files'`).get().c, 1)
+check('page_fts is queryable', (() => {
+  try {
+    db.prepare(`SELECT count(*) c FROM page_fts WHERE page_fts MATCH 'x'`).get()
+    return true
+  } catch {
+    return false
+  }
+})(), true)
 
 check('archived page folded into trash', db.prepare('SELECT is_deleted FROM pages WHERE id = ?').get('p2').is_deleted, 1)
 check('page with no blocks gets empty doc', db.prepare('SELECT content FROM pages WHERE id = ?').get('p3').content, '[]')

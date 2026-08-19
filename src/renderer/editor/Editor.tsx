@@ -47,7 +47,13 @@ export function Editor({ page }: EditorProps) {
     setSaveStatus('saving')
     try {
       const document = editor.document
-      await window.api.pages.update(page.id, { content: JSON.stringify(document) })
+      const serialised = JSON.stringify(document)
+      await window.api.pages.update(page.id, { content: serialised })
+      // The store's copy is what a remount reads back through `initialContent`.
+      // Leaving it stale made an edit look like it reverted on reopening the
+      // page — and the next keystroke then saved that stale document over the
+      // good one. `saveTitle` below has always patched; this has to as well.
+      patchPage(page.id, { content: serialised })
       await window.api.links.syncLinks(page.id, extractLinkTargets(document))
       setSaveStatus('saved')
     } catch (e) {

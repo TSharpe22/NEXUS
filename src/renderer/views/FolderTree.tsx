@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { SearchHighlight } from '../design/SearchHighlight'
 import type { Folder, Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Icon } from '../design/Icon'
@@ -45,12 +46,22 @@ interface Props {
   /** True while a search or tag filter is active. */
   filtering: boolean
   query: string
+  /** Page id to body excerpt, for hits matched on content rather than title. */
+  snippets?: Map<string, string>
   typeName: (typeId: string) => string
   onDuplicate: (page: Page) => void
   onTrash: (page: Page) => void
 }
 
-export function FolderTree({ pages, filtering, query, typeName, onDuplicate, onTrash }: Props) {
+export function FolderTree({
+  pages,
+  filtering,
+  query,
+  snippets,
+  typeName,
+  onDuplicate,
+  onTrash
+}: Props) {
   const folders = useAppStore((s) => s.folders)
   const expandedFolderIds = useAppStore((s) => s.expandedFolderIds)
   const activePageId = useAppStore((s) => s.activePageId)
@@ -161,6 +172,11 @@ export function FolderTree({ pages, filtering, query, typeName, onDuplicate, onT
       </span>
       <span className="nx-tree-row__main">
         <span className="nx-tree-row__title">{page.title || 'Untitled'}</span>
+        {snippets?.get(page.id) && (
+          <span className="nx-tree-row__snippet">
+            <SearchHighlight text={snippets.get(page.id)!} />
+          </span>
+        )}
         <span className="nx-tree-row__meta nx-type-data">
           {typeName(page.type_id)} · {relativeTime(page.updated_at)}
         </span>

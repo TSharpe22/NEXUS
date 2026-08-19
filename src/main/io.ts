@@ -12,7 +12,17 @@ interface BlockNoteBlock {
 function inlineToText(content: unknown): string {
   if (!Array.isArray(content)) return ''
   return content
-    .map((node) => (typeof node === 'object' && node && 'text' in node ? String((node as { text: unknown }).text) : ''))
+    .map((node) => {
+      if (typeof node !== 'object' || !node) return ''
+      // A page mention carries its label in props, not as `text` — without
+      // this branch every [[link]] vanished from exported markdown.
+      const n = node as { type?: string; text?: unknown; props?: { pageTitle?: unknown } }
+      if (n.type === 'pageMention') {
+        const label = String(n.props?.pageTitle ?? '').trim()
+        return label ? `[[${label}]]` : ''
+      }
+      return 'text' in n ? String(n.text) : ''
+    })
     .join('')
 }
 

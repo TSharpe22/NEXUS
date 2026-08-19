@@ -494,6 +494,26 @@
   text-overflow: ellipsis;
 }
 
+.nx-tree-row__snippet {
+  display: block;
+  width: 100%;
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--nx-text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.nx-search-hit {
+  background: var(--nx-accent-tint);
+  color: var(--nx-text);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
 .nx-tree-row__title--folder {
   flex: 1;
   min-width: 0;
