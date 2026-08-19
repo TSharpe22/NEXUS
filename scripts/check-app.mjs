@@ -635,6 +635,80 @@ check(
 )
 await page.screenshot({ path: SHOT + '/07-tables.png' })
 
+// Sorting: the view was a static dump ordered by last-modified, with no way to
+// ask it anything.
+const tableTitles = () =>
+  page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.querySelector('td').innerText.trim()))
+const clickHeader = (name) =>
+  page.evaluate((n) => {
+    const th = [...document.querySelectorAll('.nx-table th')].find((e) => new RegExp('^' + n, 'i').test(e.innerText))
+    if (!th) return 'HEADER_NOT_FOUND'
+    th.click()
+    return 'OK'
+  }, name)
+
+const defaultOrder = await tableTitles()
+check('rows start newest-first', defaultOrder.length === 2, JSON.stringify(defaultOrder))
+
+check('name header is a sort control', (await clickHeader('name')) === 'OK')
+await sleep(400)
+// The default order happens to start with Catalysis too, so assert the header
+// state as well rather than trusting a coincidence.
+check('sorted by name ascending', (await tableTitles())[0] === 'Catalysis', JSON.stringify(await tableTitles()))
+check(
+  'the name column reports ascending',
+  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
+    'ascending'
+)
+
+await clickHeader('name')
+await sleep(400)
+check('clicking again reverses it', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+check(
+  'the sorted column is marked',
+  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
+    'descending'
+)
+
+await clickHeader('name')
+await sleep(400)
+check('a third click returns to the default order', JSON.stringify(await tableTitles()) === JSON.stringify(defaultOrder))
+check('no column is marked sorted', (await page.evaluate(() => !document.querySelector('.nx-table th.nx-th--sorted'))))
+
+// Only one of the two pages has a Difficulty, so this is the blanks-last rule:
+// the filled row leads in both directions.
+await clickHeader('difficulty')
+await sleep(400)
+check('ascending puts the filled cell first', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+await clickHeader('difficulty')
+await sleep(400)
+check('descending keeps blanks last', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+await clickHeader('difficulty')
+await sleep(400)
+
+// Filtering matches what the cells show, not just the title — so a relation's
+// target or a property value finds its row.
+const typeFilter = async (text) => {
+  await page.evaluate(() => {
+    const input = document.querySelector('.nx-tables__filter')
+    input.focus()
+    input.select()
+  })
+  await page.keyboard.press('Backspace')
+  if (text) await page.keyboard.type(text, { delay: 25 })
+  await sleep(500)
+}
+await typeFilter('catal')
+check('filtering by title', JSON.stringify(await tableTitles()) === JSON.stringify(['Catalysis']), JSON.stringify(await tableTitles()))
+await typeFilter('medium')
+check('filtering by a property value', JSON.stringify(await tableTitles()) === JSON.stringify(['Reaction kinetics']), JSON.stringify(await tableTitles()))
+await typeFilter('nothing here')
+check('a filter that matches nothing says so', (await page.evaluate(() => document.body.innerText)).includes('Nothing matches that filter'))
+await typeFilter('')
+check('clearing the filter restores every row', (await tableTitles()).length === 2)
+await page.screenshot({ path: SHOT + '/07b-tables-sorted.png' })
+
+
 await nav(3)
 await sleep(900)
 check('Activity has rows', (await page.evaluate(() => document.querySelectorAll('.nx-table tbody tr').length)) > 0)

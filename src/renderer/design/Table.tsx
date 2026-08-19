@@ -34,8 +34,30 @@ export function TableRow({ selected, clickable, className, ...rest }: TableRowPr
   return <tr className={classes} {...rest} />
 }
 
-export function Th(props: ThHTMLAttributes<HTMLTableCellElement>) {
-  return <th {...props} />
+interface ThProps extends ThHTMLAttributes<HTMLTableCellElement> {
+  /** Direction when this is the column being sorted by; null when it isn't. */
+  sort?: 'asc' | 'desc' | null
+}
+
+/** A header with an `onClick` becomes a sort control and grows an indicator. */
+export function Th({ sort, className, children, ...rest }: ThProps) {
+  const sortable = Boolean(rest.onClick)
+  const classes = [sortable && 'nx-th--sortable', sort && 'nx-th--sorted', className].filter(Boolean).join(' ')
+
+  return (
+    <th
+      className={classes || undefined}
+      aria-sort={sort === 'asc' ? 'ascending' : sort === 'desc' ? 'descending' : undefined}
+      {...rest}
+    >
+      {children}
+      {sortable && (
+        <span className="nx-th__sort" aria-hidden="true">
+          {sort === 'asc' ? '▲' : sort === 'desc' ? '▼' : '·'}
+        </span>
+      )}
+    </th>
+  )
 }
 
 export function Td(props: TdHTMLAttributes<HTMLTableCellElement>) {
