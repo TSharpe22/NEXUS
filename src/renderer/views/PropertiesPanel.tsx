@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Page, Property, PropertyDefinition, PropertyType } from '@shared/types'
 import { useAppStore } from '../store/app-store'
+import { usePageTitles } from '../hooks/use-page-titles'
 import { Button } from '../design/Button'
 
 interface Props {
@@ -134,6 +135,7 @@ export function PropertiesPanel({ page }: Props) {
         <PropertyRow
           key={def.id}
           def={def}
+          pageId={page.id}
           value={values[def.key]}
           onSave={(v) => save(def, v)}
           onRemove={() => removeProperty(def)}
@@ -184,11 +186,13 @@ export function PropertiesPanel({ page }: Props) {
 
 function PropertyRow({
   def,
+  pageId,
   value,
   onSave,
   onRemove
 }: {
   def: PropertyDefinition
+  pageId: string
   value: Property | undefined
   onSave: (value: string | number | null) => void
   onRemove: () => void
@@ -204,6 +208,17 @@ function PropertyRow({
       return <SelectField def={def} value={typeof current === 'string' ? current : null} onSave={onSave} />
     }
 
+    if (def.property_type === 'relation') {
+      return (
+        <RelationField
+          def={def}
+          pageId={pageId}
+          value={typeof current === 'string' ? current : null}
+          onSave={onSave}
+        />
+      )
+    }
+
     if (def.property_type === 'boolean') {
       return (
         <input
@@ -215,7 +230,7 @@ function PropertyRow({
       )
     }
 
-    // text, number, date, url, relation — a single scalar field.
+    // text, number, date, url — a single scalar field.
     return <ScalarField def={def} current={current} onSave={onSave} />
   })()
 
@@ -451,6 +466,150 @@ function SelectField({
               onClick={() => choose(option)}
             >
               <span className="nx-tagbar__name">{option}</span>
+            </button>
+          ))}
+        </span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * A relation points at another page by id.
+ *
+ * It was offered in the property-type list from the start and never worked:
+ * `setProperty` wrote the value into `value_text` while this panel read
+ * `value_relation`, and there was no picker at all — it fell through to a
+ * plain text box that expected you to know a uuid. The picker below is the
+ * one already behind `[[`, over the same `links.searchPages`.
+ *
+ * The chip resolves its label from the store rather than storing a copy of the
+ * title, so renaming the target updates every relation pointing at it. Nothing
+ * enforces the reference in SQL, so a page deleted for good leaves an id with
+ * no page — that reads as a missing target rather than as an empty value,
+ * which is the honest thing to show.
+ */
+function RelationField({
+  def,
+  pageId,
+  value,
+  onSave
+}: {
+  def: PropertyDefinition
+  pageId: string
+  value: string | null
+  onSave: (value: string | null) => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [highlight, setHighlight] = useState(0)
+  const [results, setResults] = useState<Page[]>([])
+
+  const openPage = useAppStore((s) => s.openPage)
+  const titleOf = usePageTitles()
+  const title = titleOf(value)
+
+  useEffect(() => {
+    if (!editing) return
+    let cancelled = false
+    // An empty query returns the most recently touched pages, which is the
+    // right default list to open on.
+    window.api.links.searchPages(draft, pageId).then((pages) => {
+      if (!cancelled) setResults(pages)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [editing, draft, pageId])
+
+  const choose = (target: Page | null) => {
+    onSave(target?.id ?? null)
+    setDraft('')
+    setHighlight(0)
+    setEditing(false)
+  }
+
+  if (!editing) {
+    if (!value) {
+      return (
+        <button className="nx-properties__select-empty" onClick={() => setEditing(true)}>
+          Empty
+        </button>
+      )
+    }
+
+    return (
+      <span className="nx-properties__select">
+        <span className={`nx-tag-chip ${title ? 'nx-tag-chip--accent' : 'nx-tag-chip--critical'}`}>
+          <button
+            className="nx-tag-chip__label"
+            title={title ? `Open ${title}` : 'This page no longer exists'}
+            disabled={!title}
+            onClick={() => openPage(value)}
+          >
+            {title ?? 'Missing page'}
+          </button>
+          <button className="nx-tag-chip__x" aria-label={`Clear ${def.name}`} onClick={() => choose(null)}>
+            ×
+          </button>
+        </span>
+      </span>
+    )
+  }
+
+  return (
+    <span className="nx-properties__tag-field">
+      <input
+        className="nx-properties__tag-input"
+        autoFocus
+        placeholder="Search pages…"
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value)
+          setHighlight(0)
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowDown' && results.length) {
+            e.preventDefault()
+            setHighlight((h) => (h + 1) % results.length)
+            return
+          }
+          if (e.key === 'ArrowUp' && results.length) {
+            e.preventDefault()
+            setHighlight((h) => (h - 1 + results.length) % results.length)
+            return
+          }
+          if (e.key === 'Enter') {
+            e.preventDefault()
+            // Only an existing page can be chosen: unlike a select there is no
+            // sensible free-text fallback, since the value has to be an id.
+            if (results[highlight]) choose(results[highlight])
+            else setEditing(false)
+            return
+          }
+          if (e.key === 'Escape') {
+            e.preventDefault()
+            setDraft('')
+            setEditing(false)
+          }
+        }}
+        onBlur={() => {
+          setDraft('')
+          setEditing(false)
+        }}
+      />
+
+      {results.length > 0 && (
+        <span className="nx-properties__tag-menu">
+          {results.slice(0, 8).map((target, i) => (
+            <button
+              key={target.id}
+              className={`nx-tagbar__option ${i === highlight ? 'is-highlighted' : ''}`}
+              onMouseEnter={() => setHighlight(i)}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => choose(target)}
+            >
+              <span className="nx-tagbar__name">{target.title || 'Untitled'}</span>
             </button>
           ))}
         </span>

@@ -454,6 +454,101 @@ await sleep(1200)
 const graph = await page.evaluate(() => window.api.stats.getGraph())
 check('link recorded as a graph edge', graph.edges.length > 0, `${graph.nodes.length} nodes, ${graph.edges.length} edges`)
 
+// ---------------------------------------------------------------- relations
+// The active page here is the second one, Catalysis, and the first page now
+// exists to point at.
+log('\n— relation properties —')
+
+const pageIdByTitle = (title) =>
+  page.evaluate((t) => window.api.pages.getAll().then((all) => all.find((p) => p.title === t)?.id ?? null), title)
+const propsOf = (pageId) => page.evaluate((id) => window.api.properties.getForPage(id), pageId)
+const catalysisId = await pageIdByTitle('Catalysis')
+const kineticsId = await pageIdByTitle('Reaction kinetics')
+
+check('add-property control opens on the second page', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Related', { delay: 20 })
+await page.selectOption('.nx-properties__add-form .nx-select', 'relation')
+await clickText('Add')
+await sleep(600)
+
+const openRelation = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+    if (!row) return 'ROW_NOT_FOUND'
+    const trigger = row.querySelector('.nx-properties__select-empty, .nx-tag-chip__label')
+    if (!trigger) return 'TRIGGER_NOT_FOUND'
+    trigger.click()
+    return 'OK'
+  })
+const relationChip = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+    return row?.querySelector('.nx-tag-chip__label')?.textContent.trim() ?? null
+  })
+
+// A relation used to fall through to a plain text box expecting a uuid.
+check('relation opens a page picker', (await openRelation()) === 'OK')
+await sleep(400)
+await page.keyboard.type('Reaction', { delay: 30 })
+await sleep(600)
+const relationOptions = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-properties__tag-menu .nx-tagbar__option')].map((b) => b.textContent.trim())
+)
+check('the picker searches pages', relationOptions.includes('Reaction kinetics'), JSON.stringify(relationOptions))
+check('the picker excludes the page being edited', !relationOptions.includes('Catalysis'), JSON.stringify(relationOptions))
+await page.keyboard.press('Enter')
+await sleep(700)
+
+// The whole point: it has to land in value_relation, which is the column every
+// reader looks at. It used to go to value_text and read back as empty.
+const relationProp = (await propsOf(catalysisId)).find((p) => p.key === 'related')
+check('relation stored in value_relation', relationProp?.value_relation === kineticsId, JSON.stringify(relationProp))
+check('relation does not leak into value_text', relationProp?.value_text === null, JSON.stringify(relationProp))
+check('the chip resolves the target title', (await relationChip()) === 'Reaction kinetics')
+
+// The bug this feature reads as working right up until you hit: leave the page
+// and come back, and see whether the value is still there.
+const openInTree = (title) =>
+  page.evaluate((t) => {
+    const row = [...document.querySelectorAll('.nx-tree-row--page')].find(
+      (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === t
+    )
+    if (!row) return 'ROW_NOT_FOUND'
+    row.click()
+    return 'OK'
+  }, title)
+check('navigated away', (await openInTree('Reaction kinetics')) === 'OK')
+await sleep(900)
+check('navigated back', (await openInTree('Catalysis')) === 'OK')
+await sleep(1200)
+check('the relation is still set after reopening the page', (await relationChip()) === 'Reaction kinetics')
+await page.screenshot({ path: SHOT + '/05b-relation.png' })
+
+// Clearing it writes a real null rather than leaving the old id behind.
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+  row.querySelector('.nx-tag-chip__x').click()
+})
+await sleep(700)
+check(
+  'clearing a relation empties the column',
+  (await propsOf(catalysisId)).find((p) => p.key === 'related')?.value_relation === null
+)
+
+// Put it back — the rest of the run reads it from Tables and the mirror.
+await openRelation()
+await sleep(400)
+await page.keyboard.type('Reaction', { delay: 30 })
+await sleep(600)
+await page.keyboard.press('Enter')
+await sleep(700)
+check(
+  'relation set again',
+  (await propsOf(catalysisId)).find((p) => p.key === 'related')?.value_relation === kineticsId
+)
+
 // ---------------------------------------------------------------- graph
 log('\n— graph —')
 await nav(0)
@@ -529,6 +624,15 @@ check(
     /difficulty/i.test(h)
   )
 )
+check(
+  'Tables resolves a relation to the target title',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-table tbody tr')]
+      .map((r) => r.innerText)
+      .join(' | ')
+  )).includes('Reaction kinetics'),
+  await page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.innerText).join(' | '))
+)
 await page.screenshot({ path: SHOT + '/07-tables.png' })
 
 await nav(3)
@@ -587,6 +691,8 @@ check('properties in frontmatter', md.includes('difficulty:'), md.split('---')[1
 const linker = readFileSync(join(mirrorDir, files.find((f) => f.includes('Catalysis'))), 'utf-8')
 check('wiki-link preserved as [[Title]]', linker.includes('[[Reaction kinetics]]'),
   JSON.stringify(linker.slice(-160)))
+check('relation mirrored as a wiki-link, not a uuid', linker.includes('related: "[[Reaction kinetics]]"'),
+  linker.split('---')[1]?.trim().slice(0, 240))
 
 // An unchanged vault must be a true no-op, or the folder churns mtimes every
 // couple of seconds while typing.

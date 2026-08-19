@@ -522,9 +522,15 @@ export function setProperty(
 ): Property {
   const db = getDb()
   const id = uuidv4()
-  const valueText = type === 'date' ? null : typeof value === 'string' ? value : null
+  const text = typeof value === 'string' ? value : null
+  // A relation is the id of another page, and every reader — the panel, the
+  // Tables cell, the mirror's frontmatter — looks for it in `value_relation`.
+  // This wrote it to `value_text` along with everything else, so a relation
+  // saved and then read back empty every time.
+  const valueRelation = type === 'relation' ? text : null
+  const valueText = type === 'date' || type === 'relation' ? null : text
   const valueNumber = typeof value === 'number' ? value : null
-  const valueDate = type === 'date' && typeof value === 'string' ? value : null
+  const valueDate = type === 'date' ? text : null
 
   const read = db.prepare('SELECT * FROM properties WHERE page_id = ? AND key = ?')
   const existing = read.get(pageId, key) as Property | undefined
@@ -537,18 +543,23 @@ export function setProperty(
     existing.type === type &&
     existing.value_text === valueText &&
     existing.value_number === valueNumber &&
-    existing.value_date === valueDate
+    existing.value_date === valueDate &&
+    existing.value_relation === valueRelation
   ) {
     return existing
   }
 
+  // Every column is written on conflict, including the ones this value does
+  // not use: retyping a property otherwise left the old column populated and
+  // the row read as two values at once.
   db.prepare(
-    `INSERT INTO properties (id, page_id, key, type, value_text, value_number, value_date)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO properties (id, page_id, key, type, value_text, value_number, value_date, value_relation)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(page_id, key) DO UPDATE SET
        type = excluded.type, value_text = excluded.value_text,
-       value_number = excluded.value_number, value_date = excluded.value_date`
-  ).run(id, pageId, key, type, valueText, valueNumber, valueDate)
+       value_number = excluded.value_number, value_date = excluded.value_date,
+       value_relation = excluded.value_relation`
+  ).run(id, pageId, key, type, valueText, valueNumber, valueDate, valueRelation)
 
   logActivity(pageId, 'property', `set "${key}"`)
 

@@ -7,10 +7,19 @@ import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
 import { Table, TableHead, TableBody, TableRow, Th, Td } from '../design/Table'
 import { relativeTime } from '../hooks/use-relative-time'
+import { usePageTitles } from '../hooks/use-page-titles'
 import './Tables.css'
 
-function renderValue(def: PropertyDefinition, prop: Property | undefined): string {
+type TitleLookup = (id: string | null | undefined) => string | null
+
+function renderValue(def: PropertyDefinition, prop: Property | undefined, titleOf: TitleLookup): string {
   if (!prop) return '—'
+  // A relation holds an id; printing that verbatim is unreadable, and this
+  // column showed a permanent '—' because it read the wrong field entirely.
+  if (def.property_type === 'relation') {
+    if (!prop.value_relation) return '—'
+    return titleOf(prop.value_relation) ?? 'Missing page'
+  }
   if (def.property_type === 'date') return prop.value_date ?? '—'
   if (def.property_type === 'number') return prop.value_number?.toString() ?? '—'
   if (def.property_type === 'multi_select') {
@@ -27,6 +36,8 @@ function renderValue(def: PropertyDefinition, prop: Property | undefined): strin
 
 export function Tables() {
   const { types, pages, tableTypeId, setTableTypeId, openPage, createPage, renameType, deleteType } = useAppStore()
+
+  const titleOf = usePageTitles()
 
   const [definitions, setDefinitions] = useState<PropertyDefinition[]>([])
   const [entries, setEntries] = useState<PageSummary[]>([])
@@ -163,7 +174,7 @@ export function Tables() {
                     <Td>{entry.title || 'Untitled'}</Td>
                     {definitions.map((def) => (
                       <Td key={def.id} className="nx-type-data">
-                        {renderValue(def, byKey[def.key])}
+                        {renderValue(def, byKey[def.key], titleOf)}
                       </Td>
                     ))}
                     <Td className="nx-type-data">{relativeTime(entry.updated_at)}</Td>

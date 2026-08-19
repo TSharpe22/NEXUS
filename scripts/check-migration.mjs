@@ -135,7 +135,7 @@ await build({
   platform: 'node',
   external: ['better-sqlite3']
 })
-const { applySchema } = await import(pathToFileURL(bundlePath).href)
+const { applySchema, SCHEMA_VERSION } = await import(pathToFileURL(bundlePath).href)
 
 const db = new Database(dbPath)
 db.pragma('foreign_keys = OFF')
@@ -151,7 +151,7 @@ db.pragma('foreign_keys = ON')
 // ------------------------------------------------------------------
 console.log('\nmigration from first-build schema:')
 check('backup taken before migrating', backupCalls, 1)
-check('user_version stamped', db.pragma('user_version', { simple: true }), 5)
+check('user_version stamped', db.pragma('user_version', { simple: true }), SCHEMA_VERSION)
 check('legacy blocks table dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='blocks'`).get().c, 0)
 check('legacy property_values dropped', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='property_values'`).get().c, 0)
 check('activity_log created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='activity_log'`).get().c, 1)
@@ -235,6 +235,44 @@ check('pages table usable', (() => {
   return fresh.prepare('SELECT content FROM pages WHERE id = ?').get('x').content
 })(), '[]')
 fresh.close()
+
+// ------------------------------------------------------------------
+// v6: relation values stranded in the wrong column by the old setProperty.
+//
+// Modelled the way a real file got that way — a database already at v5, with a
+// relation whose id went into `value_text` because setProperty wrote every
+// string there while every reader looked at `value_relation`.
+// ------------------------------------------------------------------
+console.log('\nv5 file with a stranded relation:')
+const strandedPath = join(dir, 'stranded.db')
+const stranded = new Database(strandedPath)
+stranded.pragma('foreign_keys = OFF')
+applySchema(stranded, () => null)
+
+stranded.pragma('user_version = 5')
+stranded.exec(`
+  INSERT INTO pages (id, type_id, title, content) VALUES ('src', 'note', 'Source', '[]');
+  INSERT INTO pages (id, type_id, title, content) VALUES ('dst', 'note', 'Target', '[]');
+  INSERT INTO properties (id, page_id, key, type, value_text)
+    VALUES ('pr1', 'src', 'related', 'relation', 'dst');
+  INSERT INTO properties (id, page_id, key, type, value_text)
+    VALUES ('pr2', 'src', 'status', 'select', 'active');
+`)
+
+applySchema(stranded, () => null)
+const moved = stranded.prepare('SELECT * FROM properties WHERE id = ?').get('pr1')
+check('relation moved into value_relation', moved.value_relation, 'dst')
+check('relation cleared out of value_text', moved.value_text, null)
+const untouched = stranded.prepare('SELECT * FROM properties WHERE id = ?').get('pr2')
+check('a non-relation property is left alone', untouched.value_text, 'active')
+check('schema version stamped', stranded.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+
+// Running it again must not undo the repair or move anything else.
+applySchema(stranded, () => null)
+check('re-running leaves the relation in place', stranded.prepare('SELECT value_relation FROM properties WHERE id = ?').get('pr1').value_relation, 'dst')
+stranded.pragma('foreign_keys = ON')
+check('foreign keys still satisfied after the repair', stranded.pragma('foreign_key_check'), [])
+stranded.close()
 
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
