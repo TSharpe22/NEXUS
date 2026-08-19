@@ -1453,6 +1453,8 @@ check('a renamed entry is still found for today',
 
 // ---------------------------------------------------------------- vault mirror
 log('\n— vault mirror —')
+// Comfortably past the mirror's own 1500ms debounce.
+const DEBOUNCE_SETTLE_MS = 2600
 const mirrorDir = join(tmpdir(), `nexus-mirror-${Date.now()}`)
 
 // A file the user put there themselves. The mirror must never remove it.
@@ -1521,6 +1523,93 @@ await page.evaluate(async () => {
 })
 check('path traversal refused', !existsSync(join(mirrorDir, '..', '..', 'escaped.md')))
 check('sanitised inside the root', tree().some((f) => f.includes('escaped')), JSON.stringify(tree()))
+
+// --- incremental sync ---------------------------------------------------
+// A mutation names the page it touched, so a keystroke no longer costs a pass
+// over the whole vault. The risk that buys is a *stale* mirror: a change that
+// affects pages other than the one edited has to still reach them. These
+// assertions are the guard on that, and they go through the debounce rather
+// than calling syncNow(), so the wiring is what is under test.
+const settle = () => sleep(DEBOUNCE_SETTLE_MS)
+const fileFor = (fragment) => {
+  const f = tree().find((x) => x.includes(fragment))
+  return f ? readFileSync(join(mirrorDir, f), 'utf-8') : null
+}
+
+// 1. The edited page itself reaches disk with no explicit sync.
+await page.evaluate(async () => {
+  const pages = await window.api.pages.getAll()
+  const p = pages.find((x) => x.title === 'Renamed kinetics')
+  const doc = JSON.parse(p.content)
+  doc.push({ id: 'incr-1', type: 'paragraph', props: {}, content: [{ type: 'text', text: 'written by the debounce', styles: {} }], children: [] })
+  await window.api.pages.update(p.id, { content: JSON.stringify(doc) })
+})
+await settle()
+check('a debounced edit reaches the mirror unprompted',
+  (fileFor('Renamed kinetics') ?? '').includes('written by the debounce'))
+
+// 2. Renaming a *type* changes `type:` in the frontmatter of every page of
+//    it, none of which is itself edited. Narrowing that call site to a page
+//    id would leave every one of those files stale.
+const typed = await page.evaluate(async () => {
+  const type = await window.api.types.create('Mirror scope type', null)
+  const p = await window.api.pages.create(type.id)
+  await window.api.pages.update(p.id, { title: 'Scope probe' })
+  return { typeId: type.id, title: 'Scope probe' }
+})
+await settle()
+check('a new typed page is mirrored with its type',
+  (fileFor(typed.title) ?? '').includes('type: "Mirror scope type"'),
+  (fileFor(typed.title) ?? '').split('---')[1]?.trim().slice(0, 160))
+
+await page.evaluate((t) => window.api.types.rename(t.typeId, 'Renamed scope type'), typed)
+await settle()
+check('renaming a type reaches pages that were not themselves edited',
+  (fileFor(typed.title) ?? '').includes('type: "Renamed scope type"'),
+  (fileFor(typed.title) ?? '').split('---')[1]?.trim().slice(0, 160))
+
+// 3. Same shape for tags: the page carrying one is never itself touched when
+//    the tag is renamed. Uses its own tag rather than mutating a fixture the
+//    assertions above still depend on.
+await page.evaluate(async () => {
+  const pages = await window.api.pages.getAll()
+  const probe = pages.find((p) => p.title === 'Scope probe')
+  await window.api.tags.addToPage(probe.id, 'scope-tag')
+})
+await settle()
+check('a tag added to a page is mirrored', (fileFor('Scope probe') ?? '').includes('scope-tag'))
+
+await page.evaluate(async () => {
+  const tags = await window.api.tags.list()
+  const t = tags.find((x) => x.name === 'scope-tag')
+  await window.api.tags.rename(t.id, 'renamed-scope-tag')
+})
+await settle()
+check('renaming a tag reaches pages that were not themselves edited',
+  (fileFor('Scope probe') ?? '').includes('renamed-scope-tag'),
+  (fileFor('Scope probe') ?? '').split('---')[1]?.trim().slice(0, 160))
+
+// 4. Two pages sharing a title are told apart by a "(2)" suffix, decided by
+//    the order they come back in. Ordering that by recency meant editing one
+//    of them renamed *both* files; creation order is what makes a page's path
+//    depend only on its own title and folder.
+const twins = await page.evaluate(async () => {
+  const a = await window.api.pages.create('note')
+  await window.api.pages.update(a.id, { title: 'Twin note' })
+  const b = await window.api.pages.create('note')
+  await window.api.pages.update(b.id, { title: 'Twin note' })
+  return { a: a.id, b: b.id }
+})
+await settle()
+const twinFilesBefore = tree().filter((f) => f.includes('Twin note'))
+check('two pages sharing a title get distinct files', twinFilesBefore.length === 2, JSON.stringify(twinFilesBefore))
+await page.evaluate(async (ids) => {
+  await window.api.pages.update(ids.a, { content: JSON.stringify([{ id: 'tw', type: 'paragraph', props: {}, content: [{ type: 'text', text: 'edited', styles: {} }], children: [] }]) })
+}, twins)
+await settle()
+check('editing one of them does not rename the other',
+  JSON.stringify(tree().filter((f) => f.includes('Twin note'))) === JSON.stringify(twinFilesBefore),
+  JSON.stringify(tree().filter((f) => f.includes('Twin note'))))
 
 await page.evaluate(() => window.api.mirror.setFolder(null))
 rmSync(mirrorDir, { recursive: true, force: true })

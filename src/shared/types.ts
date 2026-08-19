@@ -174,6 +174,17 @@ export interface PropertyDefinition {
   sort_order: number
 }
 
+/**
+ * Just enough of a page to decide where its mirror file goes. The mirror
+ * recomputes every path on every sync, and pulling whole `Page` rows for that
+ * meant dragging every content blob out of SQLite to read three columns.
+ */
+export interface PageLocation {
+  id: string
+  title: string
+  folder_id: string | null
+}
+
 export interface PageSummary extends Page {
   properties: Property[]
 }

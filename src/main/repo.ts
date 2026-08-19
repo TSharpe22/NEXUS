@@ -12,6 +12,7 @@ import type {
   ActivityLogEntry,
   StorageStats,
   PageSummary,
+  PageLocation,
   GraphPreview,
   GraphData,
   GraphNode,
@@ -120,6 +121,22 @@ export function getAllPages(): Page[] {
   return getDb()
     .prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC')
     .all() as Page[]
+}
+
+/**
+ * Every live page's id, title and folder — the three columns the vault mirror
+ * needs to compute paths. Deliberately not `getAllPages()`: that pulls each
+ * page's whole document with it, which is the bulk of the row and is not read
+ * unless the page is actually being rewritten.
+ */
+export function getPageLocations(): PageLocation[] {
+  return getDb()
+    // Ordered by creation, not by `updated_at`: `computePaths` disambiguates
+    // two same-titled pages by which it sees first, so a recency order made
+    // editing one of them rename *both* files on disk. Creation order never
+    // changes, so a page's path only moves when its own title or folder does.
+    .prepare('SELECT id, title, folder_id FROM pages WHERE is_deleted = 0 ORDER BY created_at, id')
+    .all() as PageLocation[]
 }
 
 export function getPagesSummary(typeId?: string): PageSummary[] {

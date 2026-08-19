@@ -226,6 +226,47 @@ The document walkers those projections share live in `src/shared/document.ts`,
 reachable from both processes, because a second copy of that parsing in the
 renderer is how the two would drift.
 
+### The vault mirror
+
+`src/main/mirror.ts` writes the whole vault out as a Markdown tree, one file
+per page with the page's tags and typed properties as YAML frontmatter, plus
+a `_nexus-index.md` table of contents. Deliberately **one-way**: edits made to
+those files are never read back. The point is that any assistant, editor or
+backup tool can read the vault as ordinary files.
+
+`scheduleSync(pageId?)` runs after every mutation, debounced. **The argument
+is the whole performance contract**: naming the page a mutation touched keeps
+the sync to that one file, and leaving it off asks for a pass over every page
+in the vault. A full pass renders each page from scratch — four queries and a
+markdown build each — on the main process, which is also the process serving
+autosave, so at a few hundred pages an un-narrowed call site is a visible
+stutter while typing. Measured on a 1500-page vault: 474ms for a full pass
+against 45ms for a scoped one.
+
+So the rule for a new call site is: **pass the page id when the mutation
+changes exactly that page, and leave it off when it changes others.** Renaming
+a type or a tag rewrites the frontmatter of every page carrying it while
+editing none of them — those must stay full passes, and `check-app.mjs` has an
+assertion per case that fails if one is narrowed. Leaving the id off is always
+*correct*, only slow, so when in doubt leave it off.
+
+Two things happen on every sync regardless of scope, and neither needs a call
+site to remember them:
+
+- **Paths are recomputed for every page.** They are not independent — one
+  page's title decides whether another needs a `(2)` suffix — so any page
+  whose path moved is rewritten even when nothing marked it. That is what
+  makes folder renames and page moves safe without special-casing. It is
+  cheap because it reads three columns (`repo.getPageLocations()`) rather
+  than dragging every document blob out of SQLite.
+- **Path order is creation order, not `updated_at`.** The dedup suffix is
+  decided by which page is seen first, so a recency order meant editing one of
+  two same-titled pages renamed *both* files on disk.
+
+If a sync throws, the pending set is escalated to a full pass rather than
+dropped — the pages it was going to write are no longer marked, and anything
+less would leave them stale forever.
+
 `src/main/repo.ts` holds all reads/writes as plain functions, called by
 `src/main/ipc.ts` today. Any future integration surface (an HTTP API for
 external tools/agents to read or write notes) would call the same

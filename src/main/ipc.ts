@@ -16,20 +16,23 @@ function rethrow(channel: string, error: unknown): never {
 export function registerIpcHandlers(): void {
   ipcMain.handle('pages:create', (_, typeId?: string) => {
     try {
-      return repo.createPage(typeId)
+      const page = repo.createPage(typeId)
+      // Scheduled here rather than in a `finally`, because the id of a page
+      // that has just been created is only in the return value. Naming it is
+      // what keeps a new page off the mirror's whole-vault path.
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('pages:create', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('journal:today', () => {
     try {
-      return repo.getOrCreateTodayEntry()
+      const page = repo.getOrCreateTodayEntry()
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('journal:today', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
@@ -115,7 +118,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:update', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:softDelete', (_, id: string) => {
@@ -124,7 +127,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:softDelete', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:restore', (_, id: string) => {
@@ -133,7 +136,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:restore', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:hardDelete', (_, id: string) => {
@@ -142,7 +145,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:hardDelete', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:getDeleted', () => {
@@ -154,11 +157,11 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('pages:duplicate', (_, id: string) => {
     try {
-      return repo.duplicatePage(id)
+      const page = repo.duplicatePage(id)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('pages:duplicate', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
@@ -167,7 +170,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:setType', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('pages:emptyTrash', () => {
@@ -186,7 +189,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:move', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
 
@@ -256,7 +259,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('tags:addToPage', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:removeFromPage', (_, pageId: string, tagId: string) => {
@@ -265,7 +268,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('tags:removeFromPage', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:rename', (_, id: string, name: string) => {
@@ -319,7 +322,7 @@ export function registerIpcHandlers(): void {
       } catch (e) {
         rethrow('properties:set', e)
       } finally {
-        mirror.scheduleSync()
+        mirror.scheduleSync(pageId)
       }
     }
   )
@@ -336,7 +339,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('properties:remove', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
 
@@ -494,7 +497,7 @@ export function registerIpcHandlers(): void {
     } finally {
       // Ticking a task rewrites the page's body, so the mirror is stale until
       // it re-runs — the same reason every other page write schedules one.
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('activity:getRecent', (_, limit?: number) => {
@@ -557,20 +560,20 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('io:importMarkdown', (_, content: string, filename: string) => {
     try {
-      return io.importMarkdown(content, filename)
+      const page = io.importMarkdown(content, filename)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('io:importMarkdown', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('io:importJSON', (_, content: string) => {
     try {
-      return io.importJSON(content)
+      const page = io.importJSON(content)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('io:importJSON', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 
