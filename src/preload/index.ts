@@ -59,7 +59,8 @@ const api: NexusAPI = {
     defineProperty: (typeId, name, propertyType) =>
       ipcRenderer.invoke('types:defineProperty', typeId, name, propertyType),
     renameProperty: (definitionId, name) => ipcRenderer.invoke('types:renameProperty', definitionId, name),
-    removeProperty: (definitionId) => ipcRenderer.invoke('types:removeProperty', definitionId)
+    removeProperty: (definitionId) => ipcRenderer.invoke('types:removeProperty', definitionId),
+    reorderProperties: (typeId, orderedIds) => ipcRenderer.invoke('types:reorderProperties', typeId, orderedIds)
   },
   links: {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),

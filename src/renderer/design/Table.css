@@ -58,3 +58,34 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Sortable header. The indicator holds its space whether or not the column is
+   the sorted one, so switching columns doesn't shift the header row. */
+.nx-table thead th.nx-th--sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--nx-motion);
+}
+
+.nx-table thead th.nx-th--sortable:hover,
+.nx-table thead th.nx-th--sorted {
+  color: var(--nx-text);
+}
+
+.nx-th__sort {
+  display: inline-block;
+  width: 10px;
+  margin-left: 5px;
+  font-size: 8px;
+  opacity: 0;
+  transition: opacity var(--nx-motion);
+}
+
+.nx-table thead th.nx-th--sortable:hover .nx-th__sort {
+  opacity: 0.5;
+}
+
+.nx-table thead th.nx-th--sorted .nx-th__sort {
+  opacity: 1;
+  color: var(--nx-accent);
+}

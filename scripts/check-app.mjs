@@ -289,6 +289,202 @@ check(
   )
 )
 
+const props = () => page.evaluate(() => window.api.pages.getAll().then((p) => window.api.properties.getForPage(p[0].id)))
+const propValue = async (key) => (await props()).find((p) => p.key === key)?.value_text ?? null
+const focusRow = (name) =>
+  page.evaluate((n) => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes(n))
+    if (!row) return 'ROW_NOT_FOUND'
+    const input = row.querySelector('input')
+    input.focus()
+    input.select?.()
+    return 'OK'
+  }, name)
+
+// The panel is the first thing under the title now, not a footer you scroll
+// the whole document to reach.
+check(
+  'properties render above the document body',
+  await page.evaluate(() => {
+    const panel = document.querySelector('.nx-properties')
+    const body = document.querySelector('.bn-editor')
+    if (!panel || !body) return false
+    // DOCUMENT_POSITION_FOLLOWING: the body comes after the panel.
+    return (panel.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  })
+)
+
+// Enter used to do nothing at all — the value only committed on blur, so
+// typing one and pressing Enter looked like the app had dropped it.
+check('property row focused', (await focusRow('Difficulty')) === 'OK')
+await page.keyboard.type('medium', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('Enter commits a property value', (await propValue('difficulty')) === 'medium')
+
+// ...and Escape puts the field back rather than committing the edit.
+await focusRow('Difficulty')
+await page.keyboard.type('scrapped', { delay: 20 })
+await page.keyboard.press('Escape')
+await sleep(500)
+check('Escape reverts the draft', (await propValue('difficulty')) === 'medium')
+check(
+  'the field shows the stored value again',
+  (await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Difficulty'))
+    return row.querySelector('input').value
+  })) === 'medium'
+)
+
+// Blurring a field you never touched used to write, and every write logs —
+// which buried the Activity feed under rows recording no change at all.
+const propEvents = () =>
+  page.evaluate(() =>
+    window.api.activity.getRecent(300).then((rows) => rows.filter((r) => r.message.includes('difficulty')).length)
+  )
+const eventsBefore = await propEvents()
+await focusRow('Difficulty')
+await page.evaluate(() => document.querySelector('.nx-editor__title').focus())
+await sleep(600)
+check('an untouched field logs nothing', (await propEvents()) === eventsBefore, `before ${eventsBefore}`)
+
+// A second definition whose name slugifies onto an existing key used to
+// silently retype the first one, stranding every stored value.
+check(
+  'a duplicate property name is refused',
+  await page.evaluate(() =>
+    window.api.types.defineProperty('note', 'Difficulty', 'number').then(
+      () => false,
+      () => true
+    )
+  )
+)
+
+// ---------------------------------------------------------------- select
+log('\n— select properties —')
+check('add-property control reopens', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Status', { delay: 20 })
+await page.selectOption('.nx-properties__add-form .nx-select', 'select')
+await clickText('Add')
+await sleep(600)
+check(
+  'select definition created',
+  (await page.evaluate(() => window.api.types.getPropertyDefinitions('note'))).some(
+    (d) => d.key === 'status' && d.property_type === 'select'
+  )
+)
+
+// A select fell through to a plain text box before, so there was no list at
+// all. Empty is a control you click, not a text field.
+const openSelect = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Status'))
+    if (!row) return 'ROW_NOT_FOUND'
+    const trigger = row.querySelector('.nx-properties__select-empty, .nx-tag-chip__label')
+    if (!trigger) return 'TRIGGER_NOT_FOUND'
+    trigger.click()
+    return 'OK'
+  })
+check('select opens an editor, not a text input', (await openSelect()) === 'OK')
+await sleep(300)
+await page.keyboard.type('active', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('select value saved', (await propValue('status')) === 'active')
+check(
+  'the chosen value shows as a chip',
+  (await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Status'))
+    return row.querySelector('.nx-tag-chip .nx-tag-chip__label')?.textContent.trim()
+  })) === 'active'
+)
+
+// The regression guard for the real blocker: getKnownPropertyValues dropped
+// every value that wasn't a JSON array, so the option list came back empty
+// and a "select" had nothing to select from.
+check(
+  'known values include plain (non-array) values',
+  (await page.evaluate(() => window.api.properties.knownValues('status'))).includes('active'),
+  JSON.stringify(await page.evaluate(() => window.api.properties.knownValues('status')))
+)
+check(
+  'a plain text property lists its values too',
+  (await page.evaluate(() => window.api.properties.knownValues('difficulty'))).includes('medium')
+)
+
+// Reopening offers what is already in use, which is what makes it a list.
+check('select reopens on the chip', (await openSelect()) === 'OK')
+await sleep(400)
+check(
+  'the option list is populated from values already in use',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-properties__tag-menu .nx-tagbar__option')].map((b) => b.textContent.trim())
+  )).includes('active')
+)
+await page.keyboard.press('Escape')
+await sleep(300)
+check('select value survives cancelling', (await propValue('status')) === 'active')
+await page.screenshot({ path: SHOT + '/06b-properties.png' })
+
+// ------------------------------------------------- renaming and reordering
+log('\n— property definitions —')
+const labels = () =>
+  page.evaluate(() => [...document.querySelectorAll('.nx-properties__row-label')].map((e) => e.textContent.trim()))
+const defsOfNote = () => page.evaluate(() => window.api.types.getPropertyDefinitions('note'))
+
+check('property names are rename controls', (await labels()).includes('Status'), JSON.stringify(await labels()))
+
+// `renamePropertyDefinition` was wired all the way through preload and had no
+// UI at all. The key is deliberately left alone, so the value survives.
+await page.evaluate(() => {
+  const label = [...document.querySelectorAll('.nx-properties__row-label')].find((e) => e.textContent.trim() === 'Status')
+  label.click()
+})
+await sleep(300)
+await page.evaluate(() => {
+  const input = document.querySelector('.nx-properties__rename')
+  input.focus()
+  input.select()
+})
+await page.keyboard.type('Stage', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(700)
+const renamed = (await defsOfNote()).find((d) => d.key === 'status')
+check('property renamed', renamed?.name === 'Stage', JSON.stringify(renamed))
+check('the key is left alone so stored values survive', renamed?.key === 'status')
+check('the value is still there', (await propValue('status')) === 'active')
+
+// `reorderPropertyDefinitions` existed in repo.ts with no handler, no preload
+// binding and no UI, so creation order was permanent.
+const orderBefore = (await defsOfNote()).map((d) => d.key)
+check('definitions start in creation order', JSON.stringify(orderBefore) === JSON.stringify(['difficulty', 'status']), JSON.stringify(orderBefore))
+
+const dragged = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('.nx-properties__row')]
+  const source = rows.find((r) => r.textContent.includes('Stage'))
+  const target = rows.find((r) => r.textContent.includes('Difficulty'))
+  if (!source || !target) return 'MISSING'
+  // Same approach as the folder-tree drag: Chromium won't synthesise a real
+  // HTML5 drag from script, but the handlers are ordinary listeners.
+  const dt = new DataTransfer()
+  const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }))
+  fire(source.querySelector('.nx-properties__grip'), 'dragstart')
+  fire(target, 'dragover')
+  fire(target, 'drop')
+  return 'OK'
+})
+check('dragged one property onto another', dragged === 'OK', dragged)
+await sleep(800)
+check(
+  'the new order is persisted',
+  JSON.stringify((await defsOfNote()).map((d) => d.key)) === JSON.stringify(['status', 'difficulty']),
+  JSON.stringify((await defsOfNote()).map((d) => d.key))
+)
+check('the panel shows the new order', JSON.stringify(await labels()) === JSON.stringify(['Stage', 'Difficulty']), JSON.stringify(await labels()))
+
+
 // ---------------------------------------------------------------- links
 log('\n— second page and [[ links —')
 const before = await page.evaluate(() => window.api.pages.getAll().then((p) => p.length))
@@ -314,6 +510,101 @@ await page.evaluate(() => document.querySelector('.nx-link-menu__item').click())
 await sleep(1200)
 const graph = await page.evaluate(() => window.api.stats.getGraph())
 check('link recorded as a graph edge', graph.edges.length > 0, `${graph.nodes.length} nodes, ${graph.edges.length} edges`)
+
+// ---------------------------------------------------------------- relations
+// The active page here is the second one, Catalysis, and the first page now
+// exists to point at.
+log('\n— relation properties —')
+
+const pageIdByTitle = (title) =>
+  page.evaluate((t) => window.api.pages.getAll().then((all) => all.find((p) => p.title === t)?.id ?? null), title)
+const propsOf = (pageId) => page.evaluate((id) => window.api.properties.getForPage(id), pageId)
+const catalysisId = await pageIdByTitle('Catalysis')
+const kineticsId = await pageIdByTitle('Reaction kinetics')
+
+check('add-property control opens on the second page', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Related', { delay: 20 })
+await page.selectOption('.nx-properties__add-form .nx-select', 'relation')
+await clickText('Add')
+await sleep(600)
+
+const openRelation = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+    if (!row) return 'ROW_NOT_FOUND'
+    const trigger = row.querySelector('.nx-properties__select-empty, .nx-tag-chip__label')
+    if (!trigger) return 'TRIGGER_NOT_FOUND'
+    trigger.click()
+    return 'OK'
+  })
+const relationChip = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+    return row?.querySelector('.nx-tag-chip__label')?.textContent.trim() ?? null
+  })
+
+// A relation used to fall through to a plain text box expecting a uuid.
+check('relation opens a page picker', (await openRelation()) === 'OK')
+await sleep(400)
+await page.keyboard.type('Reaction', { delay: 30 })
+await sleep(600)
+const relationOptions = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-properties__tag-menu .nx-tagbar__option')].map((b) => b.textContent.trim())
+)
+check('the picker searches pages', relationOptions.includes('Reaction kinetics'), JSON.stringify(relationOptions))
+check('the picker excludes the page being edited', !relationOptions.includes('Catalysis'), JSON.stringify(relationOptions))
+await page.keyboard.press('Enter')
+await sleep(700)
+
+// The whole point: it has to land in value_relation, which is the column every
+// reader looks at. It used to go to value_text and read back as empty.
+const relationProp = (await propsOf(catalysisId)).find((p) => p.key === 'related')
+check('relation stored in value_relation', relationProp?.value_relation === kineticsId, JSON.stringify(relationProp))
+check('relation does not leak into value_text', relationProp?.value_text === null, JSON.stringify(relationProp))
+check('the chip resolves the target title', (await relationChip()) === 'Reaction kinetics')
+
+// The bug this feature reads as working right up until you hit: leave the page
+// and come back, and see whether the value is still there.
+const openInTree = (title) =>
+  page.evaluate((t) => {
+    const row = [...document.querySelectorAll('.nx-tree-row--page')].find(
+      (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === t
+    )
+    if (!row) return 'ROW_NOT_FOUND'
+    row.click()
+    return 'OK'
+  }, title)
+check('navigated away', (await openInTree('Reaction kinetics')) === 'OK')
+await sleep(900)
+check('navigated back', (await openInTree('Catalysis')) === 'OK')
+await sleep(1200)
+check('the relation is still set after reopening the page', (await relationChip()) === 'Reaction kinetics')
+await page.screenshot({ path: SHOT + '/05b-relation.png' })
+
+// Clearing it writes a real null rather than leaving the old id behind.
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Related'))
+  row.querySelector('.nx-tag-chip__x').click()
+})
+await sleep(700)
+check(
+  'clearing a relation empties the column',
+  (await propsOf(catalysisId)).find((p) => p.key === 'related')?.value_relation === null
+)
+
+// Put it back — the rest of the run reads it from Tables and the mirror.
+await openRelation()
+await sleep(400)
+await page.keyboard.type('Reaction', { delay: 30 })
+await sleep(600)
+await page.keyboard.press('Enter')
+await sleep(700)
+check(
+  'relation set again',
+  (await propsOf(catalysisId)).find((p) => p.key === 'related')?.value_relation === kineticsId
+)
 
 // ---------------------------------------------------------------- graph
 log('\n— graph —')
@@ -390,7 +681,90 @@ check(
     /difficulty/i.test(h)
   )
 )
+check(
+  'Tables resolves a relation to the target title',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-table tbody tr')]
+      .map((r) => r.innerText)
+      .join(' | ')
+  )).includes('Reaction kinetics'),
+  await page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.innerText).join(' | '))
+)
 await page.screenshot({ path: SHOT + '/07-tables.png' })
+
+// Sorting: the view was a static dump ordered by last-modified, with no way to
+// ask it anything.
+const tableTitles = () =>
+  page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.querySelector('td').innerText.trim()))
+const clickHeader = (name) =>
+  page.evaluate((n) => {
+    const th = [...document.querySelectorAll('.nx-table th')].find((e) => new RegExp('^' + n, 'i').test(e.innerText))
+    if (!th) return 'HEADER_NOT_FOUND'
+    th.click()
+    return 'OK'
+  }, name)
+
+const defaultOrder = await tableTitles()
+check('rows start newest-first', defaultOrder.length === 2, JSON.stringify(defaultOrder))
+
+check('name header is a sort control', (await clickHeader('name')) === 'OK')
+await sleep(400)
+// The default order happens to start with Catalysis too, so assert the header
+// state as well rather than trusting a coincidence.
+check('sorted by name ascending', (await tableTitles())[0] === 'Catalysis', JSON.stringify(await tableTitles()))
+check(
+  'the name column reports ascending',
+  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
+    'ascending'
+)
+
+await clickHeader('name')
+await sleep(400)
+check('clicking again reverses it', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+check(
+  'the sorted column is marked',
+  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
+    'descending'
+)
+
+await clickHeader('name')
+await sleep(400)
+check('a third click returns to the default order', JSON.stringify(await tableTitles()) === JSON.stringify(defaultOrder))
+check('no column is marked sorted', (await page.evaluate(() => !document.querySelector('.nx-table th.nx-th--sorted'))))
+
+// Only one of the two pages has a Difficulty, so this is the blanks-last rule:
+// the filled row leads in both directions.
+await clickHeader('difficulty')
+await sleep(400)
+check('ascending puts the filled cell first', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+await clickHeader('difficulty')
+await sleep(400)
+check('descending keeps blanks last', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
+await clickHeader('difficulty')
+await sleep(400)
+
+// Filtering matches what the cells show, not just the title — so a relation's
+// target or a property value finds its row.
+const typeFilter = async (text) => {
+  await page.evaluate(() => {
+    const input = document.querySelector('.nx-tables__filter')
+    input.focus()
+    input.select()
+  })
+  await page.keyboard.press('Backspace')
+  if (text) await page.keyboard.type(text, { delay: 25 })
+  await sleep(500)
+}
+await typeFilter('catal')
+check('filtering by title', JSON.stringify(await tableTitles()) === JSON.stringify(['Catalysis']), JSON.stringify(await tableTitles()))
+await typeFilter('medium')
+check('filtering by a property value', JSON.stringify(await tableTitles()) === JSON.stringify(['Reaction kinetics']), JSON.stringify(await tableTitles()))
+await typeFilter('nothing here')
+check('a filter that matches nothing says so', (await page.evaluate(() => document.body.innerText)).includes('Nothing matches that filter'))
+await typeFilter('')
+check('clearing the filter restores every row', (await tableTitles()).length === 2)
+await page.screenshot({ path: SHOT + '/07b-tables-sorted.png' })
+
 
 await nav(3)
 await sleep(900)
@@ -444,10 +818,17 @@ check('frontmatter present', md.startsWith('---\n'), md.slice(0, 40))
 check('body carried over', md.includes('Rate depends on temperature'))
 check('tags in frontmatter', md.includes('tags: ["kinetics"]'), md.split('---')[1]?.trim().slice(0, 160))
 check('properties in frontmatter', md.includes('difficulty:'), md.split('---')[1]?.trim().slice(0, 160))
+check(
+  'frontmatter follows the type\'s property order',
+  md.indexOf('status:') < md.indexOf('difficulty:'),
+  md.split('---')[1]?.trim().slice(0, 240)
+)
 // The [[ link was made on the second page, so that is the file to look in.
 const linker = readFileSync(join(mirrorDir, files.find((f) => f.includes('Catalysis'))), 'utf-8')
 check('wiki-link preserved as [[Title]]', linker.includes('[[Reaction kinetics]]'),
   JSON.stringify(linker.slice(-160)))
+check('relation mirrored as a wiki-link, not a uuid', linker.includes('related: "[[Reaction kinetics]]"'),
+  linker.split('---')[1]?.trim().slice(0, 240))
 
 // An unchanged vault must be a true no-op, or the folder churns mtimes every
 // couple of seconds while typing.
@@ -512,6 +893,83 @@ await sleep(1400)
 const persisted = JSON.stringify(await firstDoc())
 check('earlier text is not overwritten by the next edit', persisted.includes('Rate depends on temperature'))
 check('the new edit saved as well', persisted.includes('Checked.'))
+
+// ------------------------------------------- clearing versus removing
+// The × on a property row used to delete the definition from the whole type,
+// wiping the value from every page of it — a schema edit behind a control that
+// reads as "clear this field".
+log('\n— clearing a value against removing a property —')
+
+const openPageId = await page.evaluate(() => window.api.pages.getAll().then((p) => p[0].id))
+const scratchDef = async () => (await page.evaluate(() => window.api.types.getPropertyDefinitions('note'))).find((d) => d.key === 'scratch')
+const scratchValue = async () =>
+  (await page.evaluate((id) => window.api.properties.getForPage(id), openPageId)).find((p) => p.key === 'scratch') ?? null
+
+check('add-property control', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Scratch', { delay: 20 })
+await clickText('Add')
+await sleep(600)
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Scratch'))
+  row.querySelector('input').focus()
+})
+await page.keyboard.type('temporary', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('scratch value set', (await scratchValue())?.value_text === 'temporary')
+
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Scratch'))
+  row.querySelector('.nx-properties__remove').click()
+})
+await sleep(600)
+check('× clears this page\'s value', (await scratchValue()) === null)
+check('× leaves the property on the type', (await scratchDef()) !== undefined)
+
+// Removing from the type lives behind the rename state, and behind a dialog
+// this test can actually drive — Playwright dismisses `window.confirm`, so the
+// destructive paths behind one were never exercised at all.
+const startRenaming = () =>
+  page.evaluate(() => {
+    const label = [...document.querySelectorAll('.nx-properties__row-label')].find((e) => e.textContent.trim() === 'Scratch')
+    if (!label) return 'LABEL_NOT_FOUND'
+    label.click()
+    return 'OK'
+  })
+const clickUnset = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.querySelector('.nx-properties__unset'))
+    if (!row) return 'NOT_FOUND'
+    row.querySelector('.nx-properties__unset').click()
+    return 'OK'
+  })
+const clickInDialog = (label) =>
+  page.evaluate((l) => {
+    const btn = [...document.querySelectorAll('.nx-confirm button')].find((b) => b.textContent.trim() === l)
+    if (!btn) return 'NOT_FOUND'
+    btn.click()
+    return 'OK'
+  }, label)
+
+check('renaming exposes the schema-level remove', (await startRenaming()) === 'OK')
+await sleep(300)
+check('the remove control is there', (await clickUnset()) === 'OK')
+await sleep(400)
+check('a styled dialog opens, not a native one', (await page.evaluate(() => !!document.querySelector('.nx-confirm'))))
+await page.screenshot({ path: SHOT + '/09-confirm.png' })
+check('cancelling', (await clickInDialog('Cancel')) === 'OK')
+await sleep(400)
+check('cancelling leaves the property alone', (await scratchDef()) !== undefined)
+
+await startRenaming()
+await sleep(300)
+await clickUnset()
+await sleep(400)
+check('confirming', (await clickInDialog('Remove property')) === 'OK')
+await sleep(700)
+check('the property is gone from the type', (await scratchDef()) === undefined)
 
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 

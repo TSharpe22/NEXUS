@@ -228,12 +228,30 @@ function renderPage(page: Page, relPath: string, typeName: string): string {
 
   // A typed page's properties are the structured half of the note; an
   // assistant reading the folder should see them without opening the app.
-  for (const prop of repo.getPropertiesForPage(page.id)) {
+  // Ordered by the type's own property order rather than however SQLite
+  // returns the rows: it is what reordering in the panel is for, and it keeps
+  // the file byte-identical between syncs so an unchanged page is never
+  // rewritten.
+  const order = new Map(repo.getPropertyDefinitions(page.type_id).map((d, i) => [d.key, i]))
+  const ordered = [...repo.getPropertiesForPage(page.id)].sort(
+    (a, b) => (order.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.key) ?? Number.MAX_SAFE_INTEGER)
+  )
+
+  for (const prop of ordered) {
+    // A relation stores the target's id. Writing that into the frontmatter
+    // gives a reader a uuid to resolve by hand; the wiki-link form is what the
+    // body already uses for the same reference, so relations mirror the same
+    // way. A target deleted for good leaves nothing worth writing.
+    if (prop.type === 'relation') {
+      const target = prop.value_relation ? repo.getPageById(prop.value_relation) : null
+      if (target) front.push(`${prop.key}: ${yamlString(`[[${target.title || 'Untitled'}]]`)}`)
+      continue
+    }
+
     const value =
       prop.value_text ??
       (prop.value_number !== null ? String(prop.value_number) : null) ??
-      prop.value_date ??
-      prop.value_relation
+      prop.value_date
     if (value === null || value === undefined || value === '') continue
     front.push(`${prop.key}: ${yamlString(String(value))}`)
   }

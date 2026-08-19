@@ -7,6 +7,7 @@ import { EmptyState } from '../design/EmptyState'
 import { Table, TableHead, TableBody, TableRow, Th, Td } from '../design/Table'
 import { GraphView } from './GraphView'
 import { relativeTime } from '../hooks/use-relative-time'
+import { usePageTitles } from '../hooks/use-page-titles'
 import './Home.css'
 
 function formatBytes(bytes: number): string {
@@ -15,11 +16,20 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function summarizeProperties(entry: PageSummary): string {
+function summarizeProperties(
+  entry: PageSummary,
+  titleOf: (id: string | null | undefined) => string | null
+): string {
   const parts = entry.properties
-    .filter((p) => (p.value_text || p.value_number != null || p.value_date) && p.value_text !== '[]')
+    .filter(
+      (p) =>
+        (p.value_text || p.value_number != null || p.value_date || p.value_relation) && p.value_text !== '[]'
+    )
     .slice(0, 2)
     .map((p) => {
+      // A relation is an id — it belongs here under the name it points at, not
+      // as a uuid, and it was filtered out of this summary entirely before.
+      if (p.value_relation) return `${p.key}: ${titleOf(p.value_relation) ?? 'missing page'}`
       // Tags are stored as a JSON array; showing the raw string is noise.
       if (p.value_text?.startsWith('[')) {
         try {
@@ -40,6 +50,7 @@ export function Home() {
   const setActiveView = useAppStore((s) => s.setActiveView)
   const types = useAppStore((s) => s.types)
   const pages = useAppStore((s) => s.pages)
+  const titleOf = usePageTitles()
 
   const [entries, setEntries] = useState<PageSummary[]>([])
   const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] })
@@ -105,7 +116,7 @@ export function Home() {
                   <Td className="nx-type-data">
                     {types.find((t) => t.id === entry.type_id)?.name ?? 'Note'}
                   </Td>
-                  <Td className="nx-type-data">{summarizeProperties(entry)}</Td>
+                  <Td className="nx-type-data">{summarizeProperties(entry, titleOf)}</Td>
                   <Td className="nx-type-data">{relativeTime(entry.updated_at)}</Td>
                 </TableRow>
               ))}

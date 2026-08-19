@@ -27,8 +27,13 @@ let db: Database.Database
  *     it is missing or empty, so losing it costs nothing.
  * 5 — vault mirror: a `settings` key/value table, and `mirror_files`, the
  *     manifest of files the mirror has written. Purely additive.
+ * 6 — relation values move to the column they were always meant to live in.
+ *     `setProperty` wrote every string to `value_text` regardless of type,
+ *     while the properties panel read `value_relation` — so a relation saved,
+ *     and then read back empty. No structural change; this step is the data
+ *     repair for files written by that code.
  */
-const SCHEMA_VERSION = 5
+export const SCHEMA_VERSION = 6
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -519,6 +524,19 @@ export function applySchema(
       rel_path TEXT NOT NULL
     );
   `)
+
+  // v6. Relation values written into `value_text` by the old `setProperty`
+  // move to `value_relation`, which is where every reader looks for them.
+  // Guarded on the stored version rather than run every startup: it is a data
+  // repair, not a structural step, and there is nothing to re-repair once a
+  // file has been through it.
+  if (version < 6) {
+    db.exec(`
+      UPDATE properties
+         SET value_relation = value_text, value_text = NULL
+       WHERE type = 'relation' AND value_relation IS NULL AND value_text IS NOT NULL
+    `)
+  }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 

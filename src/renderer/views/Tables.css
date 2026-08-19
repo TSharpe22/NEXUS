@@ -27,3 +27,9 @@
 .nx-tables__hint {
   padding: 0 var(--nx-space-1);
 }
+
+/* Sits with the type actions rather than above the table: the bar is already
+   the row that scopes what you are looking at. */
+.nx-tables__filter {
+  width: 180px;
+}
