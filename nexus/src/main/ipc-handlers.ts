@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as db from './database'
 import * as io from './io'
+import * as mirror from './mirror'
 
 function rethrowIpcError(channel: string, error: unknown): never {
   console.error(channel, error)
@@ -14,9 +15,10 @@ function rethrowIpcError(channel: string, error: unknown): never {
 
 export function registerIpcHandlers(): void {
   // Pages
-  ipcMain.handle('pages:create', () => {
-    try { return db.createPage() }
+  ipcMain.handle('pages:create', (_, parentPageId?: string | null) => {
+    try { return db.createPage(parentPageId ?? null) }
     catch (e) { rethrowIpcError('pages:create', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('pages:getAll', () => {
@@ -32,21 +34,25 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('pages:update', (_, id: string, data: Record<string, unknown>) => {
     try { return db.updatePage(id, data) }
     catch (e) { rethrowIpcError('pages:update', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('pages:softDelete', (_, id: string) => {
     try { return db.softDeletePage(id) }
     catch (e) { rethrowIpcError('pages:softDelete', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('pages:restore', (_, id: string) => {
     try { return db.restorePage(id) }
     catch (e) { rethrowIpcError('pages:restore', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('pages:hardDelete', (_, id: string) => {
     try { return db.hardDeletePage(id) }
     catch (e) { rethrowIpcError('pages:hardDelete', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('pages:getDeleted', () => {
@@ -57,7 +63,17 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('pages:duplicate', (_, id: string) => {
     try { return db.duplicatePage(id) }
     catch (e) { rethrowIpcError('pages:duplicate', e) }
+    finally { mirror.scheduleSync() }
   })
+
+  ipcMain.handle(
+    'pages:move',
+    (_, pageId: string, newParentId: string | null, targetIndex: number) => {
+      try { return db.movePage(pageId, newParentId ?? null, Number(targetIndex) || 0) }
+      catch (e) { rethrowIpcError('pages:move', e) }
+    finally { mirror.scheduleSync() }
+    }
+  )
 
   // Blocks
   ipcMain.handle('blocks:getByPageId', (_, pageId: string) => {
@@ -73,6 +89,7 @@ export function registerIpcHandlers(): void {
       return db.saveBlocks(pageId, blocks as any)
     }
     catch (e) { rethrowIpcError('blocks:save', e) }
+    finally { mirror.scheduleSync() }
   })
 
   // Links
@@ -89,6 +106,38 @@ export function registerIpcHandlers(): void {
       return db.syncLinks(pageId, linkTargets as any)
     }
     catch (e) { rethrowIpcError('links:syncLinks', e) }
+  })
+
+  // Vault mirror
+  ipcMain.handle('mirror:getConfig', () => {
+    try { return mirror.getConfig() }
+    catch (e) { rethrowIpcError('mirror:getConfig', e) }
+  })
+
+  ipcMain.handle('mirror:setFolder', (_, folder: string | null) => {
+    try { return mirror.setFolder(folder || null) }
+    catch (e) { rethrowIpcError('mirror:setFolder', e) }
+  })
+
+  ipcMain.handle('mirror:setEnabled', (_, enabled: boolean) => {
+    try { return mirror.setEnabled(Boolean(enabled)) }
+    catch (e) { rethrowIpcError('mirror:setEnabled', e) }
+  })
+
+  ipcMain.handle('mirror:syncNow', () => {
+    try { return mirror.syncNow() }
+    catch (e) { rethrowIpcError('mirror:syncNow', e) }
+  })
+
+  // Search
+  ipcMain.handle('search:pages', (_, query: string, limit?: number) => {
+    try { return db.searchPages(String(query ?? ''), limit ?? 50) }
+    catch (e) { rethrowIpcError('search:pages', e) }
+  })
+
+  ipcMain.handle('search:rebuildIndex', () => {
+    try { return db.rebuildSearchIndex() }
+    catch (e) { rethrowIpcError('search:rebuildIndex', e) }
   })
 
   // IO — Export
@@ -116,16 +165,19 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('io:importMarkdown', (_, content: string, filename: string) => {
     try { return io.importMarkdown(content, filename) }
     catch (e) { rethrowIpcError('io:importMarkdown', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('io:importJSON', (_, content: string) => {
     try { return io.importJSON(content) }
     catch (e) { rethrowIpcError('io:importJSON', e) }
+    finally { mirror.scheduleSync() }
   })
 
   ipcMain.handle('io:importPlainText', (_, content: string, filename: string) => {
     try { return io.importPlainText(content, filename) }
     catch (e) { rethrowIpcError('io:importPlainText', e) }
+    finally { mirror.scheduleSync() }
   })
 
   // Dialog

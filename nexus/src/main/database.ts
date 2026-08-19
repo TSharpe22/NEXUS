@@ -3,7 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync, existsSync } from 'fs'
 import { v4 as uuidv4 } from 'uuid'
-import type { Page, Block, BacklinkResult, LinkTarget } from '../shared/types'
+import type { Page, Block, BacklinkResult, LinkTarget, SearchResult } from '../shared/types'
 
 let db: Database.Database
 
@@ -41,6 +41,24 @@ function columnExists(table: string, column: string): boolean {
   return cols.some((c) => c.name === column)
 }
 
+/**
+ * Add a column if the table predates it.
+ *
+ * `CREATE TABLE IF NOT EXISTS` silently does nothing when the table already
+ * exists, even if its columns no longer match the DDL above — so a vault
+ * created by an earlier version of Nexus keeps its original shape forever.
+ * Anything that then referenced the newer column (an index, a query) failed at
+ * startup with "no such column". Every column added after the first release is
+ * backfilled here, before any index can depend on it.
+ *
+ * `ddl` must carry a constant default: SQLite rejects ALTER TABLE ADD COLUMN
+ * with a non-constant default such as datetime('now').
+ */
+function ensureColumn(table: string, column: string, ddl: string): void {
+  if (columnExists(table, column)) return
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`)
+}
+
 function runMigrations(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS types (
@@ -65,10 +83,6 @@ function runMigrations(): void {
       updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(type_id);
-    CREATE INDEX IF NOT EXISTS idx_pages_archived ON pages(is_archived);
-    CREATE INDEX IF NOT EXISTS idx_pages_deleted ON pages(is_deleted);
-
     CREATE TABLE IF NOT EXISTS blocks (
       id              TEXT PRIMARY KEY,
       page_id         TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -79,10 +93,6 @@ function runMigrations(): void {
       created_at      TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
     );
-
-    CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id);
-    CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_block_id);
-    CREATE INDEX IF NOT EXISTS idx_blocks_order ON blocks(page_id, sort_order);
 
     CREATE TABLE IF NOT EXISTS property_definitions (
       id            TEXT PRIMARY KEY,
@@ -107,9 +117,6 @@ function runMigrations(): void {
       UNIQUE(page_id, property_def_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_propvals_page ON property_values(page_id);
-    CREATE INDEX IF NOT EXISTS idx_propvals_def ON property_values(property_def_id);
-
     CREATE TABLE IF NOT EXISTS links (
       id              TEXT PRIMARY KEY,
       source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -119,14 +126,331 @@ function runMigrations(): void {
       UNIQUE(source_page_id, target_page_id)
     );
 
+  `)
+
+  // ---- Column backfill --------------------------------------------------
+  // Runs before any index below, so an older vault gains the column first.
+
+  // Present in the original schema, but a vault from an early build may
+  // predate them. Backfilled defensively — the indexes depend on them.
+  ensureColumn('pages', 'icon', 'TEXT')
+  ensureColumn('pages', 'cover', 'TEXT')
+  ensureColumn('pages', 'is_archived', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('pages', 'is_deleted', 'INTEGER NOT NULL DEFAULT 0')
+
+  // Phase 03: page_width (TEXT, stores legacy preset names or numeric px values)
+  ensureColumn('pages', 'page_width', `TEXT NOT NULL DEFAULT '720'`)
+
+  // Sidebar hierarchy. ON DELETE SET NULL rather than CASCADE: permanently
+  // deleting one page must never silently destroy the subtree beneath it —
+  // orphaned children are promoted to the root instead.
+  ensureColumn('pages', 'parent_page_id', 'TEXT REFERENCES pages(id) ON DELETE SET NULL')
+  ensureColumn('pages', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0')
+
+  // Manual ordering within a parent. Existing vaults are seeded from their
+  // current recency order so the sidebar looks unchanged after upgrading.
+  const seedSortOrder = !columnExists('pages', 'sort_order')
+  ensureColumn('pages', 'sort_order', 'REAL NOT NULL DEFAULT 0')
+  if (seedSortOrder) {
+    const rows = db.prepare('SELECT id FROM pages ORDER BY updated_at DESC').all() as
+      { id: string }[]
+    const seed = db.prepare('UPDATE pages SET sort_order = ? WHERE id = ?')
+    const trx = db.transaction(() => {
+      rows.forEach((r, i) => seed.run(i + 1, r.id))
+    })
+    trx()
+  }
+
+  ensureColumn('blocks', 'parent_block_id', 'TEXT REFERENCES blocks(id) ON DELETE CASCADE')
+  ensureColumn('blocks', 'sort_order', 'REAL NOT NULL DEFAULT 0')
+
+  // ---- Indexes ----------------------------------------------------------
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(type_id);
+    CREATE INDEX IF NOT EXISTS idx_pages_archived ON pages(is_archived);
+    CREATE INDEX IF NOT EXISTS idx_pages_deleted ON pages(is_deleted);
+    CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
+
+    CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id);
+    CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_block_id);
+    CREATE INDEX IF NOT EXISTS idx_blocks_order ON blocks(page_id, sort_order);
+
+    CREATE INDEX IF NOT EXISTS idx_propvals_page ON property_values(page_id);
+    CREATE INDEX IF NOT EXISTS idx_propvals_def ON property_values(property_def_id);
+
     CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_page_id);
     CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_page_id);
   `)
 
-  // Phase 03 migration: page_width column (TEXT, stores legacy preset names or numeric px values)
-  if (!columnExists('pages', 'page_width')) {
-    db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT '720'`)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key   TEXT PRIMARY KEY,
+      value TEXT
+    );
+
+    -- Manifest of files the vault mirror has written. The mirror deletes only
+    -- paths recorded here, so it can never remove a file it did not create,
+    -- however the user rearranges the target folder.
+    -- Deliberately no foreign key: the row must outlive its page so the
+    -- orphaned file can still be cleaned up on the next sync.
+    CREATE TABLE IF NOT EXISTS mirror_files (
+      page_id  TEXT PRIMARY KEY,
+      rel_path TEXT NOT NULL
+    );
+  `)
+
+  initSearchIndex()
+}
+
+// ============================================================
+// Settings (key/value)
+// ============================================================
+
+export function getSetting(key: string): string | null {
+  const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as
+    | { value: string | null }
+    | undefined
+  return row?.value ?? null
+}
+
+export function setSetting(key: string, value: string | null): void {
+  db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `).run(key, value)
+}
+
+// ============================================================
+// Vault mirror manifest
+// ============================================================
+
+export function getMirrorManifest(): Map<string, string> {
+  const rows = db.prepare('SELECT page_id, rel_path FROM mirror_files').all() as
+    { page_id: string; rel_path: string }[]
+  return new Map(rows.map((r) => [r.page_id, r.rel_path]))
+}
+
+export function replaceMirrorManifest(entries: Map<string, string>): void {
+  const insert = db.prepare('INSERT INTO mirror_files (page_id, rel_path) VALUES (?, ?)')
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM mirror_files').run()
+    for (const [pageId, relPath] of entries) insert.run(pageId, relPath)
+  })
+  trx()
+}
+
+// ============================================================
+// Full-text search
+// ============================================================
+
+// Sentinel characters wrapping matched terms in snippets. Control codes are
+// used deliberately: they cannot occur in real note text, so the renderer can
+// split on them without any HTML parsing or escaping.
+const MARK_OPEN = '\u0002'
+const MARK_CLOSE = '\u0003'
+
+// FTS5 is compiled into better-sqlite3 by default, but a custom build could
+// omit it. If the virtual table cannot be created we degrade to LIKE scans
+// rather than leaving the app with no search at all.
+let ftsAvailable = false
+
+function initSearchIndex(): void {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
+        page_id UNINDEXED,
+        title,
+        body,
+        tokenize = "unicode61 remove_diacritics 2"
+      );
+    `)
+    ftsAvailable = true
+  } catch (err) {
+    console.error('[nexus] FTS5 unavailable, falling back to LIKE search:', err)
+    ftsAvailable = false
+    return
   }
+
+  // Populate on first run after upgrading an existing vault. An empty index
+  // alongside existing pages is also how a corrupted index heals itself.
+  const indexed = (db.prepare('SELECT count(*) AS n FROM page_fts').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (indexed === 0 && total > 0) {
+    rebuildSearchIndex()
+  }
+}
+
+/**
+ * Recursively collect human-readable strings out of a parsed BlockNote block.
+ *
+ * Only values under keys literally named `text`, `content`, or `pageTitle` are
+ * collected, so prop values like `textColor: "default"` never enter the index.
+ * `pageTitle` is the label a `pageMention` renders, and users reasonably expect
+ * a page containing [[Chemistry]] to be findable by "chemistry".
+ *
+ * Walking generically means new block types (and table cells) are covered
+ * without needing a per-type branch here.
+ */
+function collectText(value: unknown, out: string[]): void {
+  if (value === null || value === undefined) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectText(item, out)
+    return
+  }
+  if (typeof value !== 'object') return
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      (key === 'text' || key === 'content' || key === 'pageTitle') &&
+      typeof child === 'string'
+    ) {
+      if (child) out.push(child)
+    } else {
+      collectText(child, out)
+    }
+  }
+}
+
+/** Flatten one block's stored JSON content to plain text for indexing. */
+export function blockContentToPlainText(content: string | null): string {
+  if (!content) return ''
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    // Pre-JSON or corrupt rows: index the raw string rather than dropping it.
+    return content
+  }
+  const out: string[] = []
+  collectText(parsed, out)
+  return out.join(' ')
+}
+
+function buildPageBody(pageId: string): string {
+  const rows = db.prepare(
+    'SELECT content FROM blocks WHERE page_id = ? ORDER BY sort_order ASC'
+  ).all(pageId) as { content: string | null }[]
+  return rows.map((r) => blockContentToPlainText(r.content)).filter(Boolean).join('\n')
+}
+
+/** Rewrite the index row for one page. Safe to call for a page that no longer exists. */
+export function reindexPage(pageId: string): void {
+  if (!ftsAvailable) return
+  db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(pageId)
+  const page = db.prepare('SELECT title FROM pages WHERE id = ?').get(pageId) as
+    | { title: string }
+    | undefined
+  if (!page) return
+  db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)').run(
+    pageId,
+    page.title || '',
+    buildPageBody(pageId)
+  )
+}
+
+/** Drop and rebuild the whole index. Returns the number of pages indexed. */
+export function rebuildSearchIndex(): number {
+  if (!ftsAvailable) return 0
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM page_fts').run()
+    const rows = db.prepare('SELECT id, title FROM pages').all() as
+      { id: string; title: string }[]
+    const insert = db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)')
+    for (const row of rows) {
+      insert.run(row.id, row.title || '', buildPageBody(row.id))
+    }
+    return rows.length
+  })
+  return trx()
+}
+
+/**
+ * Turn free-typed input into a valid FTS5 MATCH expression.
+ *
+ * Splitting on non-alphanumerics mirrors how the unicode61 tokenizer built the
+ * index. Every token is quoted (with embedded quotes doubled) so no user input
+ * can be read as FTS5 operator syntax, and each gets a prefix wildcard so
+ * search-as-you-type matches partial words.
+ */
+function toMatchQuery(raw: string): string | null {
+  const tokens = raw.split(/[^\p{L}\p{N}_]+/u).filter(Boolean)
+  if (tokens.length === 0) return null
+  return tokens.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ')
+}
+
+/** Wrap occurrences of any token in `text` with the snippet sentinels. */
+function markTokens(text: string, tokens: string[]): string {
+  if (!text || tokens.length === 0) return text
+  const pattern = tokens
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .sort((a, b) => b.length - a.length)
+    .join('|')
+  return text.replace(new RegExp(pattern, 'giu'), (m) => `${MARK_OPEN}${m}${MARK_CLOSE}`)
+}
+
+function likeFallback(query: string, limit: number): SearchResult[] {
+  const tokens = query.split(/[^\p{L}\p{N}_]+/u).filter(Boolean)
+  const rows = (db.prepare(`
+    SELECT DISTINCT p.* FROM pages p
+    LEFT JOIN blocks b ON b.page_id = p.id
+    WHERE p.is_deleted = 0 AND p.is_archived = 0
+      AND (p.title LIKE ? OR b.content LIKE ?)
+    ORDER BY p.updated_at DESC
+    LIMIT ?
+  `).all(`%${query}%`, `%${query}%`, limit) as unknown[]).map(mapPage)
+
+  return rows.map((page) => ({
+    page,
+    titleMarked: markTokens(page.title || 'Untitled', tokens),
+    bodySnippet: null,
+  }))
+}
+
+/**
+ * Full-text search across page titles and block content.
+ * Title matches are weighted an order of magnitude above body matches.
+ */
+export function searchPages(query: string, limit = 50): SearchResult[] {
+  if (!query.trim()) return []
+  if (!ftsAvailable) return likeFallback(query, limit)
+
+  const match = toMatchQuery(query)
+  if (!match) return []
+  const tokens = query.split(/[^\p{L}\p{N}_]+/u).filter(Boolean)
+
+  let rows: Record<string, unknown>[]
+  try {
+    rows = db.prepare(`
+      SELECT p.*,
+             snippet(page_fts, 2, ?, ?, '…', 12) AS body_snippet
+      FROM page_fts
+      JOIN pages p ON p.id = page_fts.page_id
+      WHERE page_fts MATCH ?
+        AND p.is_deleted = 0
+        AND p.is_archived = 0
+      ORDER BY bm25(page_fts, 0.0, 10.0, 1.0) ASC, p.updated_at DESC
+      LIMIT ?
+    `).all(MARK_OPEN, MARK_CLOSE, match, limit) as Record<string, unknown>[]
+  } catch (err) {
+    // A malformed MATCH expression should never take search down.
+    console.error('[nexus] FTS query failed, falling back to LIKE:', err)
+    return likeFallback(query, limit)
+  }
+
+  return rows.map((row) => {
+    const { body_snippet, ...pageRow } = row
+    const page = mapPage(pageRow)
+    const snippet = typeof body_snippet === 'string' ? body_snippet.trim() : ''
+    return {
+      page,
+      titleMarked: markTokens(page.title || 'Untitled', tokens),
+      // Only surface a body preview when it actually contains a hit — FTS5
+      // otherwise returns the opening words of the column, which is noise for
+      // a title-only match.
+      bodySnippet: snippet.includes(MARK_OPEN) ? snippet : null,
+    }
+  })
 }
 
 // Map legacy string preset names to pixel values.
@@ -160,19 +484,27 @@ function mapPage(row: unknown): Page {
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 
-export function createPage(): Page {
+export function createPage(parentPageId: string | null = null): Page {
   const id = uuidv4()
   const timestamp = now()
+  // Sort ahead of every current sibling so a new page appears at the top of
+  // its list rather than buried at the bottom.
+  const minOrder = (db.prepare(
+    'SELECT min(sort_order) AS m FROM pages WHERE is_deleted = 0 AND parent_page_id IS ?'
+  ).get(parentPageId) as { m: number | null }).m
+  const sortOrder = minOrder === null ? 1 : minOrder - 1
+
   db.prepare(`
-    INSERT INTO pages (id, type_id, title, created_at, updated_at)
-    VALUES (?, 'note', '', ?, ?)
-  `).run(id, timestamp, timestamp)
+    INSERT INTO pages (id, type_id, title, parent_page_id, sort_order, created_at, updated_at)
+    VALUES (?, 'note', '', ?, ?, ?, ?)
+  `).run(id, parentPageId, sortOrder, timestamp, timestamp)
+  reindexPage(id)
   return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(id))
 }
 
 export function getAllPages(): Page[] {
   return (db.prepare(
-    'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC'
+    'SELECT * FROM pages WHERE is_deleted = 0 ORDER BY sort_order ASC, updated_at DESC'
   ).all() as unknown[]).map(mapPage)
 }
 
@@ -182,7 +514,7 @@ export function getPageById(id: string): Page | null {
 }
 
 export function updatePage(id: string, data: Partial<Page>): void {
-  const allowed = ['title', 'icon', 'cover', 'is_archived', 'page_width'] as const
+  const allowed = ['title', 'icon', 'cover', 'is_archived', 'page_width', 'is_favorite'] as const
   const sets: string[] = []
   const values: unknown[] = []
 
@@ -201,18 +533,59 @@ export function updatePage(id: string, data: Partial<Page>): void {
   values.push(id)
 
   db.prepare(`UPDATE pages SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+
+  // Body text is untouched here; only a title edit changes the index.
+  if ('title' in data) reindexPage(id)
 }
 
+/**
+ * Every page in the subtree rooted at `id`, including `id` itself.
+ * The `seen` set makes this safe even if the table somehow holds a cycle.
+ */
+function collectSubtree(id: string): string[] {
+  const childrenOf = db.prepare('SELECT id FROM pages WHERE parent_page_id = ?')
+  const out: string[] = []
+  const seen = new Set<string>()
+  const stack = [id]
+
+  while (stack.length > 0) {
+    const current = stack.pop()!
+    if (seen.has(current)) continue
+    seen.add(current)
+    out.push(current)
+    for (const row of childrenOf.all(current) as { id: string }[]) {
+      stack.push(row.id)
+    }
+  }
+  return out
+}
+
+/**
+ * Soft-deleting a page takes its whole subtree with it — leaving children
+ * behind would scatter them to the sidebar root with no way to tell where
+ * they came from. Restoring reverses the same set.
+ */
 export function softDeletePage(id: string): void {
-  db.prepare('UPDATE pages SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), id)
+  setDeletedFlag(id, 1)
 }
 
 export function restorePage(id: string): void {
-  db.prepare('UPDATE pages SET is_deleted = 0, updated_at = ? WHERE id = ?').run(now(), id)
+  setDeletedFlag(id, 0)
+}
+
+function setDeletedFlag(id: string, flag: 0 | 1): void {
+  const ids = collectSubtree(id)
+  const timestamp = now()
+  const update = db.prepare('UPDATE pages SET is_deleted = ?, updated_at = ? WHERE id = ?')
+  const trx = db.transaction(() => {
+    for (const pageId of ids) update.run(flag, timestamp, pageId)
+  })
+  trx()
 }
 
 export function hardDeletePage(id: string): void {
   db.prepare('DELETE FROM pages WHERE id = ?').run(id)
+  if (ftsAvailable) db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(id)
 }
 
 export function getDeletedPages(): Page[] {
@@ -229,9 +602,13 @@ export function duplicatePage(id: string): Page {
   const timestamp = now()
 
   db.prepare(`
-    INSERT INTO pages (id, type_id, title, icon, cover, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(newId, source.type_id, `${source.title} (copy)`, source.icon, source.cover, timestamp, timestamp)
+    INSERT INTO pages (id, type_id, title, icon, cover, parent_page_id, sort_order, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    newId, source.type_id, `${source.title} (copy)`, source.icon, source.cover,
+    // Sits directly after the original; is_favorite is deliberately not copied.
+    source.parent_page_id, source.sort_order + 0.5, timestamp, timestamp
+  )
 
   // Duplicate blocks while preserving parent-child relationships.
   const blocks = db.prepare(
@@ -257,7 +634,90 @@ export function duplicatePage(id: string): Page {
     )
   }
 
+  reindexPage(newId)
   return mapPage(db.prepare('SELECT * FROM pages WHERE id = ?').get(newId))
+}
+
+// ============================================================
+// Hierarchy
+// ============================================================
+
+/** True when `candidateId` sits at or below `ancestorId` in the tree. */
+function isSelfOrDescendant(candidateId: string, ancestorId: string): boolean {
+  const parentOf = db.prepare('SELECT parent_page_id FROM pages WHERE id = ?')
+  const seen = new Set<string>()
+  let current: string | null = candidateId
+
+  while (current) {
+    if (current === ancestorId) return true
+    if (seen.has(current)) return false // defensive: never loop on a bad row
+    seen.add(current)
+    const row = parentOf.get(current) as { parent_page_id: string | null } | undefined
+    current = row?.parent_page_id ?? null
+  }
+  return false
+}
+
+/** Renumber one parent's children to whole values, collapsing fractional drift. */
+function reindexSiblings(parentPageId: string | null): void {
+  const rows = db.prepare(`
+    SELECT id FROM pages
+    WHERE is_deleted = 0 AND parent_page_id IS ?
+    ORDER BY sort_order ASC, updated_at DESC
+  `).all(parentPageId) as { id: string }[]
+  const update = db.prepare('UPDATE pages SET sort_order = ? WHERE id = ?')
+  rows.forEach((row, i) => update.run(i + 1, row.id))
+}
+
+/**
+ * Reparent and/or reposition a page.
+ *
+ * `targetIndex` is the slot the page should occupy among its new siblings,
+ * counted with the moved page already removed from the list.
+ *
+ * Ordering uses fractional indexing — the midpoint between the neighbours on
+ * either side — so a move rewrites exactly one row. When the gap gets too
+ * small to halve reliably, that parent's children are renumbered.
+ */
+export function movePage(
+  pageId: string,
+  newParentId: string | null,
+  targetIndex: number
+): void {
+  if (newParentId === pageId) {
+    throw new Error('A page cannot be its own parent')
+  }
+  if (newParentId && isSelfOrDescendant(newParentId, pageId)) {
+    throw new Error('Cannot move a page inside one of its own descendants')
+  }
+
+  const trx = db.transaction(() => {
+    const siblings = db.prepare(`
+      SELECT id, sort_order FROM pages
+      WHERE is_deleted = 0 AND parent_page_id IS ? AND id != ?
+      ORDER BY sort_order ASC, updated_at DESC
+    `).all(newParentId, pageId) as { id: string; sort_order: number }[]
+
+    const index = Math.max(0, Math.min(Math.trunc(targetIndex), siblings.length))
+    const before = index > 0 ? siblings[index - 1].sort_order : null
+    const after = index < siblings.length ? siblings[index].sort_order : null
+
+    let sortOrder: number
+    if (before === null && after === null) sortOrder = 1
+    else if (before === null) sortOrder = after! - 1
+    else if (after === null) sortOrder = before + 1
+    else sortOrder = (before + after) / 2
+
+    db.prepare(
+      'UPDATE pages SET parent_page_id = ?, sort_order = ?, updated_at = ? WHERE id = ?'
+    ).run(newParentId, sortOrder, now(), pageId)
+
+    if (before !== null && after !== null && Math.abs(after - before) < 0.001) {
+      reindexSiblings(newParentId)
+    }
+  })
+
+  trx()
 }
 
 // ============================================================
@@ -291,6 +751,10 @@ export function saveBlocks(pageId: string, blocks: Block[]): void {
 
     // Touch the page's updated_at
     db.prepare('UPDATE pages SET updated_at = ? WHERE id = ?').run(timestamp, pageId)
+
+    // Reindex inside the transaction so the index can never describe a state
+    // the blocks table never had.
+    reindexPage(pageId)
   })
 
   trx()

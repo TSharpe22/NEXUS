@@ -1,7 +1,8 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, dialog, shell } from 'electron'
 import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc-handlers'
+import { flushPending as flushMirror } from './mirror'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -58,7 +59,21 @@ function createWindow(): void {
 // ============================================================
 
 app.whenReady().then(() => {
-  initDatabase()
+  // A failed migration used to reject silently and leave the app running with
+  // no window and no explanation. Surface it instead.
+  try {
+    initDatabase()
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    dialog.showErrorBox(
+      'Nexus could not open your vault',
+      `The database could not be prepared, so Nexus cannot start.\n\n${detail}\n\n` +
+        'Your data has not been modified.',
+    )
+    app.exit(1)
+    return
+  }
+
   registerIpcHandlers()
   createWindow()
 
@@ -70,6 +85,8 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
+  // Flush before the database closes — the mirror reads from it.
+  flushMirror()
   closeDatabase()
   if (process.platform !== 'darwin') {
     app.quit()
@@ -77,5 +94,6 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  flushMirror()
   closeDatabase()
 })

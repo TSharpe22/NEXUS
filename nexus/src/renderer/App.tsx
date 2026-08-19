@@ -16,12 +16,17 @@ export function App() {
     createPage, deletePage,
     loadPages, selectPage,
     loadDeletedPages,
+    loadMirrorConfig,
   } = useAppStore()
 
   // Load trash count on mount
   useEffect(() => {
     loadDeletedPages()
   }, [loadDeletedPages])
+
+  useEffect(() => {
+    loadMirrorConfig()
+  }, [loadMirrorConfig])
 
   // Global keyboard shortcuts
   useEffect(() => {

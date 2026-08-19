@@ -13,6 +13,11 @@ export interface Page {
   icon: string | null
   cover: string | null
   page_width: PageWidth
+  /** Parent in the sidebar tree; null for a root-level page. */
+  parent_page_id: string | null
+  /** Manual position among siblings. Fractional — see `movePage`. */
+  sort_order: number
+  is_favorite: number
   is_archived: number
   is_deleted: number
   created_at: string
@@ -121,20 +126,59 @@ export interface LinkTarget {
 }
 
 // ============================================================
+// Search
+// ============================================================
+
+/**
+ * Matched terms inside `titleMarked` and `bodySnippet` are wrapped in these
+ * control characters. They are stripped/rendered by `SearchHighlight` — never
+ * interpolate these strings as HTML.
+ */
+export const SEARCH_MARK_OPEN = '\u0002'
+export const SEARCH_MARK_CLOSE = '\u0003'
+
+export interface SearchResult {
+  page: Page
+  /** Page title with matched terms wrapped in the sentinels above. */
+  titleMarked: string
+  /** Body excerpt around the match, or null when only the title matched. */
+  bodySnippet: string | null
+}
+
+// ============================================================
+// Vault mirror
+// ============================================================
+
+export interface MirrorConfig {
+  enabled: boolean
+  folder: string | null
+  lastSyncAt: string | null
+}
+
+export interface MirrorResult {
+  written: number
+  deleted: number
+  unchanged: number
+  total: number
+}
+
+// ============================================================
 // IPC API contract
 // ============================================================
 
 export interface NexusAPI {
   pages: {
-    create(): Promise<Page>
+    create(parentPageId?: string | null): Promise<Page>
     getAll(): Promise<Page[]>
     getById(id: string): Promise<Page | null>
-    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived' | 'page_width'>>): Promise<void>
+    update(id: string, data: Partial<Pick<Page, 'title' | 'icon' | 'cover' | 'is_archived' | 'page_width' | 'is_favorite'>>): Promise<void>
     softDelete(id: string): Promise<void>
     restore(id: string): Promise<void>
     hardDelete(id: string): Promise<void>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
+    /** Reparent and/or reposition a page. `targetIndex` counts siblings with the moved page excluded. */
+    move(pageId: string, newParentId: string | null, targetIndex: number): Promise<void>
   }
   blocks: {
     getByPageId(pageId: string): Promise<Block[]>
@@ -143,6 +187,17 @@ export interface NexusAPI {
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
     syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
+  }
+  search: {
+    pages(query: string, limit?: number): Promise<SearchResult[]>
+    rebuildIndex(): Promise<number>
+  }
+  mirror: {
+    getConfig(): Promise<MirrorConfig>
+    /** Passing a folder also enables the mirror; passing null disables it. */
+    setFolder(folder: string | null): Promise<MirrorConfig>
+    setEnabled(enabled: boolean): Promise<MirrorConfig>
+    syncNow(): Promise<MirrorResult>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>

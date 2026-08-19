@@ -3,7 +3,7 @@ import type { NexusAPI } from '../shared/types'
 
 const api: NexusAPI = {
   pages: {
-    create: () => ipcRenderer.invoke('pages:create'),
+    create: (parentPageId) => ipcRenderer.invoke('pages:create', parentPageId ?? null),
     getAll: () => ipcRenderer.invoke('pages:getAll'),
     getById: (id) => ipcRenderer.invoke('pages:getById', id),
     update: (id, data) => ipcRenderer.invoke('pages:update', id, data),
@@ -12,6 +12,8 @@ const api: NexusAPI = {
     hardDelete: (id) => ipcRenderer.invoke('pages:hardDelete', id),
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
     duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id),
+    move: (pageId, newParentId, targetIndex) =>
+      ipcRenderer.invoke('pages:move', pageId, newParentId, targetIndex),
   },
   blocks: {
     getByPageId: (pageId) => ipcRenderer.invoke('blocks:getByPageId', pageId),
@@ -20,6 +22,16 @@ const api: NexusAPI = {
   links: {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
     syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),
+  },
+  search: {
+    pages: (query, limit) => ipcRenderer.invoke('search:pages', query, limit),
+    rebuildIndex: () => ipcRenderer.invoke('search:rebuildIndex'),
+  },
+  mirror: {
+    getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
+    setFolder: (folder) => ipcRenderer.invoke('mirror:setFolder', folder),
+    setEnabled: (enabled) => ipcRenderer.invoke('mirror:setEnabled', enabled),
+    syncNow: () => ipcRenderer.invoke('mirror:syncNow'),
   },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),
