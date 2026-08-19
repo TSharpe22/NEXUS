@@ -1,0 +1,48 @@
+.nx-settings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-5);
+  max-width: 620px;
+}
+
+.nx-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+  padding: var(--nx-space-2) 0;
+  border-bottom: 1px solid var(--nx-row-line);
+}
+
+.nx-settings__row:last-child {
+  border-bottom: none;
+}
+
+/* A filesystem path shouldn't stretch the panel; let it wrap instead. */
+.nx-settings__path {
+  word-break: break-all;
+  margin-top: 2px;
+}
+
+.nx-settings__shortcuts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-2);
+}
+
+.nx-settings__shortcut {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+}
+
+.nx-settings__kbd {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  color: var(--nx-text-muted);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-sm);
+  padding: 2px 7px;
+  white-space: nowrap;
+}

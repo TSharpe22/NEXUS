@@ -1,0 +1,594 @@
+@import '@blocknote/core/style.css';
+@import '@blocknote/react/style.css';
+@import '@blocknote/ariakit/style.css';
+
+.nx-editor__title {
+  display: block;
+  width: 100%;
+  resize: none;
+  overflow: hidden;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  padding: 0;
+  margin: 0 0 var(--nx-space-4);
+}
+
+.nx-editor__title::placeholder {
+  color: var(--nx-text-dim);
+}
+
+/* ----------------------------------------------------------------
+   BlockNote surface
+   ---------------------------------------------------------------- */
+
+.bn-container {
+  background: transparent;
+  color: var(--nx-text);
+  /* Chakra Petch is a condensed display face — fine for chrome, tiring for
+     body copy. The document itself gets a normal reading face. */
+  font-family: var(--nx-font-reading);
+  font-size: 15px;
+  line-height: 1.65;
+}
+
+.bn-editor {
+  padding: 0;
+  /* BlockNote's own default puts a hardcoded #1f1f1f rounded box
+     (--bn-colors-editor-background / --bn-border-radius-large) around
+     the whole document — a second, differently-coloured "panel" nested
+     inside ours. Flatten it so content sits directly on the page. */
+  background: transparent !important;
+  border-radius: 0 !important;
+}
+
+/* Headings inside the document use the display face, which is what it's for. */
+.bn-block-content[data-content-type='heading'] {
+  font-family: var(--nx-font-sans);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.bn-block-content[data-content-type='heading'][data-level='1'] {
+  font-size: 24px;
+}
+
+.bn-block-content[data-content-type='heading'][data-level='2'] {
+  font-size: 19px;
+}
+
+.bn-block-content[data-content-type='heading'][data-level='3'] {
+  font-size: 16px;
+}
+
+.bn-inline-content code {
+  font-family: var(--nx-font-mono);
+  font-size: 0.88em;
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border);
+  padding: 1px 5px;
+  border-radius: var(--nx-radius-sm);
+}
+
+.bn-block-content[data-content-type='codeBlock'] {
+  font-family: var(--nx-font-mono);
+  font-size: 13px;
+  background: var(--nx-surface-sunken);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  padding: var(--nx-space-3);
+}
+
+.bn-block-content[data-content-type='quote'] {
+  border-left: 2px solid var(--nx-border-2);
+  padding-left: var(--nx-space-3);
+  color: var(--nx-text-muted);
+}
+
+.bn-container ::placeholder,
+.bn-container [data-placeholder]::before {
+  color: var(--nx-text-dim);
+  opacity: 1;
+}
+
+/* ----------------------------------------------------------------
+   Popup chrome.
+
+   @blocknote/ariakit ships its own hardcoded light-theme colours for menus,
+   toolbars and tooltips — independent of BlockNote core's --bn-colors-*
+   variables and not actually wired to its own `.dark` CSS (the class exists
+   in ariakit's stylesheet but nothing in the package applies it). These
+   overrides restyle that chrome directly rather than fighting the library's
+   theme system.
+   ---------------------------------------------------------------- */
+
+.bn-ak-menu,
+.bn-ak-popover {
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+  color: var(--nx-text);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: var(--nx-space-1);
+  font-family: var(--nx-font-sans);
+}
+
+/* These popovers portal to document.body, outside .bn-container, so
+   font-family doesn't inherit from it — force it on every descendant. */
+.bn-ak-menu *,
+.bn-ak-popover *,
+.bn-ak-tooltip {
+  font-family: var(--nx-font-sans);
+}
+
+.bn-ak-group-label {
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--nx-text-dim);
+  padding: var(--nx-space-2) var(--nx-space-2) var(--nx-space-1);
+}
+
+.bn-ak-menu-item,
+.bn-grid-suggestion-menu-item {
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  font-size: 13.5px;
+}
+
+.bn-ak-menu-item[aria-selected='true'],
+.bn-ak-menu-item:hover,
+.bn-grid-suggestion-menu-item[aria-selected='true'],
+.bn-grid-suggestion-menu-item:hover {
+  background: var(--nx-accent-tint) !important;
+  color: var(--nx-text) !important;
+}
+
+.bn-ak-suggestion-menu-item-subtitle {
+  color: var(--nx-text-dim);
+  font-size: 11.5px;
+}
+
+/* Keyboard shortcut chips inside menu items. */
+.bn-ak-menu-item kbd,
+.bn-ak-suggestion-menu-item-section[data-position='right'] {
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+  color: var(--nx-text-dim);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  padding: 1px 5px;
+}
+
+.bn-toolbar {
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: 3px;
+  gap: 1px;
+}
+
+.bn-toolbar .bn-ak-button {
+  background: transparent;
+  border-color: transparent;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-muted);
+}
+
+.bn-toolbar .bn-ak-button[data-selected],
+.bn-toolbar .bn-ak-button:hover {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+}
+
+.bn-ak-tooltip {
+  background: var(--nx-surface-raised) !important;
+  border: 1px solid var(--nx-border-2) !important;
+  color: var(--nx-text) !important;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  border-radius: var(--nx-radius-sm);
+  box-shadow: none;
+}
+
+.bn-ak-input {
+  background: var(--nx-surface-sunken) !important;
+  border-color: var(--nx-border) !important;
+  color: var(--nx-text) !important;
+  border-radius: var(--nx-radius-sm);
+  font-family: var(--nx-font-sans);
+}
+
+/* The drag handle / add-block controls in the left gutter. Kept, but quiet —
+   they only need to be visible on hover of the block they belong to. */
+.bn-side-menu {
+  color: var(--nx-text-dim);
+}
+
+.bn-side-menu .bn-ak-button {
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  border-radius: var(--nx-radius-sm);
+}
+
+.bn-side-menu .bn-ak-button:hover {
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
+}
+
+/* ----------------------------------------------------------------
+   Custom blocks
+   ---------------------------------------------------------------- */
+
+.nx-toggle {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-space-1);
+  width: 100%;
+}
+
+.nx-toggle__chevron {
+  /* Centred on the FIRST LINE of the summary, not on the block.
+     `1lh` is the line box the adjacent text occupies, so the chevron stays
+     optically centred at any font size — the previous `margin-top: 4px` was a
+     fixed nudge that left it sitting below the text.
+
+     `font: inherit` matters: a <button> carries a UA font and line-height of
+     its own, and `1lh` resolves against the element's OWN line-height. Without
+     the inherit the box is ~15px against a 24px line and the chevron rides
+     high instead of low. */
+  font: inherit;
+  height: 1lh;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  padding: 0 2px;
+  transform: rotate(0deg);
+  transition: transform var(--nx-motion), color var(--nx-motion);
+  flex-shrink: 0;
+}
+
+.nx-toggle__chevron:hover {
+  color: var(--nx-text);
+}
+
+.nx-toggle[data-open='true'] .nx-toggle__chevron {
+  transform: rotate(90deg);
+}
+
+.nx-toggle__summary {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Hide a closed toggle's children.
+   The real DOM (BlockNote 0.24, verified against the running app) is:
+
+     .bn-block-outer
+       > .bn-block[data-node-type=blockContainer]
+           > .react-renderer.bn-react-node-view-renderer
+               > .bn-block-content[data-content-type=toggle] > .nx-toggle
+           > .bn-block-group          <- the children
+
+   The previous selector missed on both counts: it looked for .bn-block-content
+   as a direct child of .bn-block (there's a .react-renderer wrapper in the way
+   for custom React blocks) and for .bn-block-group under .bn-block-outer
+   (it hangs off .bn-block). It therefore never matched, and collapsing a
+   toggle rotated the chevron and did nothing else. */
+.bn-block:has(> .react-renderer > .bn-block-content > .nx-toggle[data-open='false']) > .bn-block-group,
+.bn-block:has(> .bn-block-content > .nx-toggle[data-open='false']) > .bn-block-group {
+  display: none;
+}
+
+/* Nested content reads as belonging to the toggle, the way the chevron
+   implies — a hairline in the same vocabulary as the app's other rules. */
+.bn-block:has(> .react-renderer > .bn-block-content > .nx-toggle) > .bn-block-group,
+.bn-block:has(> .bn-block-content > .nx-toggle) > .bn-block-group {
+  position: relative;
+  padding-left: var(--nx-space-3);
+}
+
+.bn-block:has(> .react-renderer > .bn-block-content > .nx-toggle) > .bn-block-group::before,
+.bn-block:has(> .bn-block-content > .nx-toggle) > .bn-block-group::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 1px;
+  background: var(--nx-border-2);
+}
+
+/* An open toggle with nothing in it says so, rather than looking broken. */
+.bn-block:not(:has(> .bn-block-group)) .nx-toggle[data-open='true']::after {
+  content: 'Empty — press Enter to add content';
+  position: absolute;
+  left: 22px;
+  top: 100%;
+  color: var(--nx-text-dim);
+  font-size: 12px;
+  opacity: 0.7;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.bn-block:not(:has(> .bn-block-group)):has(.nx-toggle[data-open='true']) {
+  padding-bottom: 18px;
+}
+
+.nx-callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--nx-space-3);
+  padding: var(--nx-space-3);
+  border-left: 2px solid;
+  border-radius: var(--nx-radius-sm);
+  width: 100%;
+}
+
+.nx-callout__marker {
+  /* Same treatment as the toggle chevron: a box the height of the first text
+     line, centred inside. `margin-top: 5px` left the marker 5px low. */
+  position: relative;
+  height: 1lh;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.nx-callout__marker-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: var(--nx-radius-sm);
+  transition: background var(--nx-motion);
+}
+
+.nx-callout__marker-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.nx-callout__picker {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-1);
+  padding: var(--nx-space-2);
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+}
+
+.nx-callout__picker-row {
+  display: flex;
+  gap: var(--nx-space-1);
+}
+
+.nx-callout__picker-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  cursor: pointer;
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-callout__picker-cell:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-callout__picker-cell.is-active {
+  border-color: var(--nx-border-2);
+  background: var(--nx-row-hover);
+}
+
+.nx-callout__content {
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-page-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px 1px 5px;
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-accent-tint-soft);
+  box-shadow: inset 0 0 0 1px var(--nx-border-2);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-size: 0.94em;
+  transition: background var(--nx-motion), box-shadow var(--nx-motion);
+}
+
+.nx-page-mention:hover {
+  background: var(--nx-accent-tint);
+  box-shadow: inset 0 0 0 1px var(--nx-accent);
+}
+
+.nx-page-mention--trashed {
+  text-decoration: line-through;
+  color: var(--nx-text-muted);
+}
+
+.nx-page-mention--deleted {
+  color: var(--nx-text-dim);
+  cursor: default;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--nx-border);
+}
+
+.nx-page-mention--deleted:hover {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--nx-border);
+}
+
+.nx-link-menu {
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  padding: var(--nx-space-1);
+  min-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  font-family: var(--nx-font-sans);
+}
+
+.nx-link-menu__header {
+  padding: var(--nx-space-2) var(--nx-space-2) var(--nx-space-1);
+}
+
+.nx-link-menu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  width: 100%;
+  padding: 6px var(--nx-space-2);
+  background: none;
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  text-align: left;
+  cursor: pointer;
+  font-size: 13.5px;
+}
+
+.nx-link-menu__item:hover,
+.nx-link-menu__item--selected {
+  background: var(--nx-accent-tint);
+}
+
+/* ---------------- tag bar under the page title ---------------- */
+
+.nx-tagbar {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--nx-space-1);
+  margin-bottom: var(--nx-space-4);
+  min-height: 22px;
+}
+
+.nx-tagbar__add {
+  background: transparent;
+  border: 1px dashed var(--nx-border-2);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  padding: 1px var(--nx-space-2);
+  opacity: 0.6;
+  transition: opacity var(--nx-motion), color var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-tagbar:hover .nx-tagbar__add,
+.nx-tagbar__add:hover {
+  opacity: 1;
+  color: var(--nx-text-muted);
+  border-color: var(--nx-accent-tint);
+}
+
+.nx-tagbar__field {
+  position: relative;
+}
+
+.nx-tagbar__input {
+  width: 150px;
+  padding: 1px var(--nx-space-2);
+  font-size: 11.5px;
+  line-height: 16px;
+}
+
+.nx-tagbar__menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 190px;
+  max-height: 260px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  padding: var(--nx-space-1);
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+}
+
+.nx-tagbar__option {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  width: 100%;
+  padding: 4px var(--nx-space-2);
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  font-size: 12.5px;
+  text-align: left;
+  transition: background var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-tagbar__option.is-highlighted {
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
+}
+
+.nx-tagbar__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+}
+
+.nx-tagbar__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tagbar__count {
+  font-size: 10.5px;
+}
+
+.nx-tagbar__create {
+  color: var(--nx-accent);
+}

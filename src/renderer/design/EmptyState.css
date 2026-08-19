@@ -1,0 +1,22 @@
+.nx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-7) var(--nx-space-4);
+  text-align: center;
+}
+
+.nx-empty__text {
+  color: var(--nx-text-muted);
+  font-size: 13.5px;
+}
+
+.nx-empty__meta {
+  max-width: 340px;
+}
+
+.nx-empty__action {
+  margin-top: var(--nx-space-2);
+}

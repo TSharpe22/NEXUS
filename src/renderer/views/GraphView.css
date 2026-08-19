@@ -1,0 +1,119 @@
+.nx-graph {
+  position: relative;
+  width: 100%;
+  border-radius: var(--nx-radius-md);
+  overflow: hidden;
+  background: var(--nx-surface-sunken);
+}
+
+.nx-graph__canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  cursor: grab;
+  touch-action: none;
+}
+
+.nx-graph__canvas:active {
+  cursor: grabbing;
+}
+
+.nx-graph__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--nx-border);
+  border-radius: var(--nx-radius-md);
+}
+
+.nx-graph__edge {
+  stroke: var(--nx-border-2);
+  stroke-width: 1;
+  transition: stroke var(--nx-motion), opacity var(--nx-motion);
+}
+
+.nx-graph__edge--dim {
+  opacity: 0.15;
+}
+
+.nx-graph__edge--active {
+  stroke: var(--nx-accent);
+  opacity: 1;
+}
+
+.nx-graph__node {
+  cursor: pointer;
+  transition: opacity var(--nx-motion);
+}
+
+.nx-graph__node--dim {
+  opacity: 0.25;
+}
+
+/* Invisible, larger than the dot — makes small nodes comfortable to grab. */
+.nx-graph__node-hit {
+  fill: transparent;
+}
+
+.nx-graph__node-dot {
+  fill: var(--nx-text-dim);
+  stroke: var(--nx-surface-sunken);
+  stroke-width: 2;
+  transition: fill var(--nx-motion);
+}
+
+.nx-graph__node:hover .nx-graph__node-dot {
+  fill: var(--nx-accent);
+}
+
+.nx-graph__node--active .nx-graph__node-dot {
+  fill: var(--nx-accent);
+  stroke: var(--nx-accent-tint);
+  stroke-width: 4;
+}
+
+.nx-graph__node-label {
+  fill: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.nx-graph__node:hover .nx-graph__node-label,
+.nx-graph__node--active .nx-graph__node-label {
+  fill: var(--nx-text);
+}
+
+.nx-graph__controls {
+  position: absolute;
+  top: var(--nx-space-2);
+  right: var(--nx-space-2);
+  display: flex;
+  gap: var(--nx-space-1);
+}
+
+.nx-graph__controls button {
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  min-width: 24px;
+  padding: 3px 6px;
+  transition: color var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-graph__controls button:hover {
+  color: var(--nx-accent);
+  border-color: var(--nx-accent);
+}
+
+.nx-graph__legend {
+  position: absolute;
+  left: var(--nx-space-3);
+  bottom: var(--nx-space-2);
+  pointer-events: none;
+}

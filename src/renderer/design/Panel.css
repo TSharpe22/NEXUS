@@ -1,0 +1,42 @@
+.nx-panel {
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  padding: var(--nx-space-4);
+  transition: border-color var(--nx-motion);
+}
+
+.nx-panel--dense {
+  padding: 0;
+  overflow: hidden;
+}
+
+.nx-panel--flush {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.nx-panel--error {
+  border-color: var(--nx-critical);
+  background: linear-gradient(var(--nx-critical-tint), var(--nx-critical-tint)), var(--nx-surface);
+}
+
+.nx-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-3);
+  margin: 0 0 var(--nx-space-3);
+}
+
+/* A dense panel's own padding is zero so tables can reach its edges — the
+   header still needs its own inset. */
+.nx-panel--dense .nx-panel__header {
+  padding: var(--nx-space-3) var(--nx-space-4) 0;
+  margin-bottom: var(--nx-space-2);
+}
+
+.nx-panel__title {
+  margin: 0;
+}

@@ -1,0 +1,334 @@
+/* latin-subset only — the full 400.css pulls every subset (cyrillic, thai,
+   vietnamese, etc.), which bloats the renderer bundle for no benefit here. */
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
+@import '@fontsource/chakra-petch/latin-400.css';
+@import '@fontsource/chakra-petch/latin-600.css';
+
+:root {
+  /* ----------------------------------------------------------------
+     Surfaces.
+
+     Three levels, and the order matters: the app background sits above
+     sunken wells and below raised panels. Previously panels were *darker*
+     than the page behind them, which read as holes rather than cards and
+     was a good part of why the UI looked muddy.
+     ---------------------------------------------------------------- */
+  --nx-bg: #0f1013;
+  --nx-surface: #16181d;
+  --nx-surface-raised: #1c1f25;
+  --nx-surface-sunken: #0b0c0e;
+
+  --nx-border: #23262e;
+  --nx-border-2: #2e323c;
+
+  /* Text. A genuine mid-grey for secondary text — the old --nx-text-dim was
+     dark enough against the panel to sit under 3:1 contrast. */
+  --nx-text: #e6e7ec;
+  --nx-text-muted: #9b9ead;
+  --nx-text-dim: #71747f;
+
+  --nx-row-line: #1b1e24;
+  --nx-row-hover: #1f232a;
+
+  /* Status */
+  --nx-success: #7fae7a;
+  --nx-info: #7ea3c9;
+  --nx-critical: #d9604f;
+  --nx-critical-tint: rgba(217, 96, 79, 0.12);
+
+  /* Accent — amber, kept as the identity but spent sparingly: selection,
+     links, focus, and the wordmark. Not on every label. */
+  --nx-accent: #d4a86a;
+  --nx-accent-hover: #e3bb84;
+  --nx-accent-pressed: #b98e52;
+  --nx-accent-tint: rgba(212, 168, 106, 0.14);
+  --nx-accent-tint-soft: rgba(212, 168, 106, 0.07);
+
+  /* Typography */
+  --nx-font-sans: 'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
+  --nx-font-mono: 'IBM Plex Mono', 'SFMono-Regular', Consolas, monospace;
+  /* The editor body reads better in something less condensed than Chakra
+     Petch, which is a display face. */
+  --nx-font-reading: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+
+  /* Spacing */
+  --nx-space-1: 4px;
+  --nx-space-2: 8px;
+  --nx-space-3: 12px;
+  --nx-space-4: 16px;
+  --nx-space-5: 24px;
+  --nx-space-6: 32px;
+  --nx-space-7: 48px;
+
+  /* Radius */
+  --nx-radius-sm: 3px;
+  --nx-radius-md: 6px;
+  --nx-radius-lg: 10px;
+
+  --nx-motion: 120ms ease-out;
+
+  /* Width of the editor's reading column. */
+  --nx-reading-width: 720px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--nx-bg);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 13.5px;
+  font-weight: 400;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--nx-accent-tint);
+  color: var(--nx-text);
+}
+
+a {
+  color: inherit;
+}
+
+button {
+  font-family: inherit;
+}
+
+/* Focus ring for controls only. The editor's contentEditable is focused the
+   whole time you're writing, and a global rule drew a permanent amber box
+   around the entire document. */
+:focus-visible {
+  outline: 1.5px solid var(--nx-accent);
+  outline-offset: 1px;
+}
+
+[contenteditable]:focus-visible,
+[contenteditable] :focus-visible,
+.bn-container [contenteditable],
+.bn-editor:focus-visible,
+.bn-editor *:focus-visible {
+  outline: none;
+}
+
+/* ----------------------------------------------------------------
+   Type scale.
+
+   `nx-type-label` is now the only uppercase-mono style and is reserved for
+   section headers and table columns. It used to be applied to ordinary
+   inline values too, which is what made every screen shout.
+   ---------------------------------------------------------------- */
+
+.nx-type-display {
+  font-family: var(--nx-font-sans);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.nx-type-heading {
+  font-family: var(--nx-font-sans);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.nx-type-panel-title {
+  font-family: var(--nx-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nx-type-body {
+  font-family: var(--nx-font-sans);
+  font-size: 13.5px;
+  font-weight: 400;
+}
+
+.nx-type-label {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--nx-text-dim);
+}
+
+/* Numbers, timestamps, ids — mono but not shouted. */
+.nx-type-data {
+  font-family: var(--nx-font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--nx-text-muted);
+}
+
+.nx-scrollbar,
+.nx-content,
+.nx-notes__list-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--nx-border-2) transparent;
+}
+
+.nx-scrollbar::-webkit-scrollbar,
+.nx-content::-webkit-scrollbar,
+.nx-notes__list-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.nx-scrollbar::-webkit-scrollbar-thumb,
+.nx-content::-webkit-scrollbar-thumb,
+.nx-notes__list-scroll::-webkit-scrollbar-thumb {
+  background: var(--nx-border-2);
+  border-radius: 99px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+/* Shared form controls — inputs and selects were previously styled ad hoc in
+   each view, which is why they didn't match each other. */
+.nx-input,
+.nx-select {
+  background: var(--nx-surface-sunken);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  padding: 5px 8px;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-input::placeholder {
+  color: var(--nx-text-dim);
+}
+
+.nx-input:focus,
+.nx-select:focus {
+  outline: none;
+  border-color: var(--nx-accent);
+}
+
+.nx-select {
+  cursor: pointer;
+}
+
+/* ============================================================
+   Tag chip
+   ------------------------------------------------------------
+   Shared by the tag bar under a page title, the tag filter in the Notes
+   list, and the multi_select property editor, so all three read as one
+   control. Colour comes from a modifier class rather than an inline style —
+   tags carry one of the four semantic colour names.
+   ============================================================ */
+
+.nx-tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  padding: 1px 2px 1px 8px;
+  border: 1px solid var(--nx-tag-color, var(--nx-border-2));
+  border-radius: 99px;
+  background: var(--nx-tag-tint, transparent);
+  color: var(--nx-text);
+  font-size: 11.5px;
+  line-height: 16px;
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-tag-chip--accent {
+  --nx-tag-color: var(--nx-accent);
+  --nx-tag-tint: var(--nx-accent-tint-soft);
+}
+.nx-tag-chip--info {
+  --nx-tag-color: var(--nx-info);
+  --nx-tag-tint: rgba(126, 163, 201, 0.08);
+}
+.nx-tag-chip--success {
+  --nx-tag-color: var(--nx-success);
+  --nx-tag-tint: rgba(127, 174, 122, 0.08);
+}
+.nx-tag-chip--critical {
+  --nx-tag-color: var(--nx-critical);
+  --nx-tag-tint: rgba(217, 96, 79, 0.08);
+}
+
+/* Active = this tag is filtering the list. Per DESIGN.md a selection reads as
+   an accent-tinted fill, so the chip fills with its own colour. */
+.nx-tag-chip.is-active {
+  background: var(--nx-tag-color, var(--nx-accent));
+  border-color: var(--nx-tag-color, var(--nx-accent));
+}
+
+.nx-tag-chip.is-active .nx-tag-chip__label,
+.nx-tag-chip.is-active .nx-tag-chip__count {
+  color: var(--nx-surface-sunken);
+}
+
+.nx-tag-chip__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tag-chip__count {
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 10px;
+}
+
+.nx-tag-chip__x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--nx-motion), background var(--nx-motion);
+}
+
+.nx-tag-chip:hover .nx-tag-chip__x {
+  opacity: 0.6;
+}
+
+.nx-tag-chip__x:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nx-tag-chip__input {
+  min-width: 90px;
+  padding: 1px var(--nx-space-2);
+  font-size: 11.5px;
+  line-height: 16px;
+}
