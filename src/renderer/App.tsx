@@ -7,6 +7,7 @@ import { ConfirmHost } from './design/Confirm'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
 import { Tables } from './views/Tables'
+import { Tracker } from './views/Tracker'
 import { Activity } from './views/Activity'
 import { Settings } from './views/Settings'
 import './App.css'
@@ -15,6 +16,7 @@ const NAV: { view: View; label: string; hint: string }[] = [
   { view: 'home', label: 'Home', hint: 'Overview and graph' },
   { view: 'notes', label: 'Notes', hint: 'Write and edit pages' },
   { view: 'tables', label: 'Tables', hint: 'Browse pages by type' },
+  { view: 'tracker', label: 'Tracker', hint: "What's due, week by week" },
   { view: 'activity', label: 'Activity', hint: 'What changed, when' },
   { view: 'settings', label: 'Settings', hint: 'Data, import and export' }
 ]
@@ -23,6 +25,7 @@ const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   home: Home,
   notes: Notes,
   tables: Tables,
+  tracker: Tracker,
   activity: Activity,
   settings: Settings
 }
@@ -31,6 +34,7 @@ const VIEW_TITLE: Record<View, string> = {
   home: 'Home',
   notes: 'Notes',
   tables: 'Tables',
+  tracker: 'Tracker',
   activity: 'Activity',
   settings: 'Settings'
 }

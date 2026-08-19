@@ -1,0 +1,403 @@
+.nx-tracker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-4);
+  padding: var(--nx-space-5) var(--nx-space-6);
+  max-width: 980px;
+}
+
+.nx-tracker__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+}
+
+/* Mode switch — the two date windows, and later the year grid. A segmented
+   control rather than a dropdown: there are few enough of them that the
+   choices are worth seeing. */
+.nx-tracker__modes {
+  display: flex;
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  overflow: hidden;
+}
+
+.nx-tracker__mode {
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--nx-border);
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 5px 14px;
+  text-transform: uppercase;
+  transition: background var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-tracker__mode:last-child {
+  border-right: none;
+}
+
+.nx-tracker__mode:hover {
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
+}
+
+.nx-tracker__mode--active {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+}
+
+.nx-tracker__stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-1);
+}
+
+.nx-tracker__step {
+  background: transparent;
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+  min-width: 26px;
+  padding: 4px 8px;
+  transition: background var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-tracker__step:hover:not(:disabled) {
+  background: var(--nx-row-hover);
+  color: var(--nx-text);
+}
+
+.nx-tracker__step:disabled {
+  color: var(--nx-text-dim);
+  cursor: default;
+}
+
+.nx-tracker__head {
+  align-items: baseline;
+  display: flex;
+  gap: var(--nx-space-3);
+  justify-content: space-between;
+}
+
+.nx-tracker__counts,
+.nx-tracker__error {
+  color: var(--nx-text-dim);
+}
+
+.nx-tracker__error {
+  color: var(--nx-critical);
+  padding: var(--nx-space-2) 0 0;
+}
+
+.nx-tracker__month {
+  border-bottom: 1px solid var(--nx-border);
+  color: var(--nx-text-muted);
+  padding: var(--nx-space-4) var(--nx-space-4) var(--nx-space-2);
+}
+
+/* A day is a label column and a body column, so every day's items line up
+   down the page whatever their label's length. */
+.nx-tracker__day {
+  border-bottom: 1px solid var(--nx-row-line);
+  display: grid;
+  gap: var(--nx-space-3);
+  grid-template-columns: 120px 1fr;
+  padding: var(--nx-space-3) var(--nx-space-4);
+}
+
+.nx-tracker__day:last-child {
+  border-bottom: none;
+}
+
+.nx-tracker__day--today {
+  background: var(--nx-accent-tint-soft);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.nx-tracker__day-label {
+  color: var(--nx-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 3px;
+}
+
+.nx-tracker__day--today .nx-tracker__day-label {
+  color: var(--nx-text);
+}
+
+.nx-tracker__today {
+  color: var(--nx-accent);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.nx-tracker__day-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nx-tracker__blank {
+  color: var(--nx-text-dim);
+}
+
+.nx-tracker__task {
+  align-items: center;
+  border-radius: var(--nx-radius-sm);
+  display: flex;
+  gap: var(--nx-space-2);
+  min-width: 0;
+  padding: 2px var(--nx-space-2) 2px 0;
+}
+
+.nx-tracker__task:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-tracker__check {
+  align-items: center;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  padding: 2px;
+}
+
+.nx-tracker__task-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tracker__task--done .nx-tracker__task-text {
+  color: var(--nx-text-dim);
+  text-decoration: line-through;
+}
+
+/* Which page a task came from. Muted, because the task is the thing being
+   read here — but clickable, because the page is where it can be edited. */
+.nx-tracker__source {
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  padding: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tracker__source:hover {
+  color: var(--nx-accent);
+}
+
+.nx-tracker__page {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  cursor: pointer;
+  display: flex;
+  gap: var(--nx-space-2);
+  min-width: 0;
+  padding: 3px var(--nx-space-2) 3px 2px;
+  text-align: left;
+  width: 100%;
+}
+
+.nx-tracker__page:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-tracker__page-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-tracker__page-meta {
+  color: var(--nx-text-dim);
+  flex-shrink: 0;
+}
+
+.nx-tracker__overdue .nx-tracker__task-text {
+  color: var(--nx-text);
+}
+
+.nx-tracker__overdue {
+  border-color: var(--nx-border-2);
+}
+
+/* ----------------------------------------------------------------
+   Habits — a year at a glance.
+
+   Columns are weeks and rows are weekdays, so a column reads as one week the
+   way a wall calendar does. Three cell states and no more: no entry, an entry
+   that says no, an entry that says yes. Filled is reserved for the last one,
+   which is the only "active" state here.
+   ---------------------------------------------------------------- */
+
+.nx-habits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-3);
+}
+
+.nx-habits__loading {
+  color: var(--nx-text-dim);
+  padding: var(--nx-space-4);
+}
+
+.nx-habits__controls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nx-space-2);
+}
+
+.nx-habits__select {
+  background: var(--nx-surface);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  font-family: var(--nx-font-mono);
+  font-size: 11.5px;
+  padding: 4px 8px;
+}
+
+.nx-habits__year {
+  align-items: center;
+  display: flex;
+  gap: var(--nx-space-2);
+  margin-left: auto;
+}
+
+.nx-habits__stats {
+  color: var(--nx-text-dim);
+}
+
+/* A year is 53 columns wide and will not always fit — it scrolls in its own
+   box rather than pushing the page sideways. */
+.nx-habits__scroll {
+  overflow-x: auto;
+  padding-bottom: var(--nx-space-2);
+}
+
+.nx-habits__grid {
+  display: flex;
+  gap: var(--nx-space-2);
+  min-width: min-content;
+}
+
+.nx-habits__weekdays {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /* Clears the month row so the weekday labels line up with their cells. */
+  padding-top: 20px;
+}
+
+.nx-habits__weekday {
+  align-items: center;
+  color: var(--nx-text-dim);
+  display: flex;
+  font-size: 9.5px;
+  height: 13px;
+  width: 26px;
+}
+
+.nx-habits__weeks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nx-habits__months,
+.nx-habits__cells {
+  display: flex;
+  gap: 3px;
+}
+
+.nx-habits__month {
+  color: var(--nx-text-muted);
+  font-size: 9.5px;
+  height: 16px;
+  overflow: visible;
+  white-space: nowrap;
+  width: 13px;
+}
+
+.nx-habits__week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.nx-habits__cell,
+.nx-habits__swatch {
+  background: transparent;
+  border: 1px solid var(--nx-border);
+  border-radius: 2px;
+  height: 13px;
+  padding: 0;
+  width: 13px;
+}
+
+.nx-habits__cell:not(:disabled) {
+  cursor: pointer;
+}
+
+.nx-habits__cell--outside {
+  border-color: transparent;
+}
+
+.nx-habits__cell--missed,
+.nx-habits__swatch--missed {
+  background: var(--nx-surface-raised);
+  border-color: var(--nx-border-2);
+}
+
+.nx-habits__cell--done,
+.nx-habits__swatch--done {
+  background: var(--nx-accent);
+  border-color: var(--nx-accent);
+}
+
+.nx-habits__cell--today {
+  outline: 1px solid var(--nx-text-muted);
+  outline-offset: 1px;
+}
+
+.nx-habits__cell:not(:disabled):hover {
+  border-color: var(--nx-accent-hover);
+}
+
+.nx-habits__legend {
+  align-items: center;
+  color: var(--nx-text-dim);
+  display: flex;
+  gap: var(--nx-space-2);
+}
+
+.nx-habits__swatch {
+  display: inline-block;
+  flex-shrink: 0;
+}

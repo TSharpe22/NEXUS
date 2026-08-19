@@ -434,6 +434,23 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('habits:candidates', () => {
+    try {
+      return repo.getHabitCandidates()
+    } catch (e) {
+      rethrow('habits:candidates', e)
+    }
+  })
+  ipcMain.handle(
+    'habits:days',
+    (_, typeId: string, dateKey: string, booleanKey: string, from: string, to: string) => {
+      try {
+        return repo.getHabitDays(typeId, dateKey, booleanKey, String(from), String(to))
+      } catch (e) {
+        rethrow('habits:days', e)
+      }
+    }
+  )
   ipcMain.handle('tasks:inRange', (_, from: string, to: string) => {
     try {
       return repo.getTasksInRange(String(from), String(to))

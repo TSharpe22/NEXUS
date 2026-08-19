@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { Folder, Page, Tag, TagWithCount, TypeDef } from '@shared/types'
 
-export type View = 'home' | 'notes' | 'tables' | 'activity' | 'settings'
+export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 

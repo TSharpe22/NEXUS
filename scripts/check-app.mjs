@@ -864,11 +864,248 @@ await page.evaluate((id) => window.api.pages.hardDelete(id), projected)
 check('deleting a page for good takes its tasks with it',
   (await inRange(dayFromToday(-90), dayFromToday(90))).every((t) => t.pageTitle !== 'Projection scratch'))
 
-// The fixture goes too. It is a page of type Note, and the Tables section
-// below asserts on how many rows that type has — a test that leaves its
-// fixtures lying around fails the section after it, not itself.
-await page.evaluate((id) => window.api.pages.hardDelete(id), captureId)
+// ---------------------------------------------------------------- tracker
+log('\n— the tracker —')
+
+const trackerPageId = await page.evaluate(
+  async ([todayISO, yesterdayISO]) => {
+    const created = await window.api.pages.create()
+    const doc = [
+      {
+        id: 'trk-today',
+        type: 'checkListItem',
+        props: { checked: false },
+        content: [{ type: 'text', text: `ship the tracker @${todayISO}`, styles: {} }]
+      },
+      {
+        id: 'trk-late',
+        type: 'checkListItem',
+        props: { checked: false },
+        content: [{ type: 'text', text: `chase the invoice @${yesterdayISO}`, styles: {} }]
+      },
+      {
+        id: 'trk-loose',
+        type: 'checkListItem',
+        props: { checked: false },
+        content: [{ type: 'text', text: 'someday, maybe', styles: {} }]
+      }
+    ]
+    await window.api.pages.update(created.id, { title: 'Tracker fixture', content: JSON.stringify(doc) })
+    return created.id
+  },
+  [dayFromToday(0), dayFromToday(-1)]
+)
+
+check('reached the tracker', (await nav('Tracker')) === 'OK')
+await sleep(1200)
+const trackerText = () => page.evaluate(() => document.querySelector('.nx-tracker').innerText)
+let trackerShown = await trackerText()
+check('a task due today shows in the week view', trackerShown.includes('ship the tracker'), trackerShown.slice(0, 400))
+check('the overdue panel calls out what has slipped', /Overdue/i.test(trackerShown) && trackerShown.includes('chase the invoice'))
+check('a task with no date anywhere is still listed', /NO DATE/i.test(trackerShown) && trackerShown.includes('someday, maybe'))
+check('the @token does not survive into the view', !trackerShown.includes('@' + dayFromToday(0)))
+check('today is marked in the week', await page.evaluate(() => !!document.querySelector('.nx-tracker__day--today')))
+check('a week shows every day, empty ones included',
+  (await page.evaluate(() => document.querySelectorAll('.nx-tracker__day').length)) === 7)
+await page.screenshot({ path: SHOT + '/11-tracker-week.png' })
+
+// Ticking here writes back into the block, and the row it produces has to
+// agree with the document — this is the projection's whole contract.
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-tracker__task')].find((r) =>
+    r.innerText.includes('ship the tracker')
+  )
+  row.querySelector('.nx-tracker__check').click()
+})
+await sleep(1200)
+const trackerTasks = await page.evaluate((id) => window.api.tasks.forPage(id), trackerPageId)
+check('ticking a task in the tracker marks it done',
+  trackerTasks.find((t) => t.text === 'ship the tracker')?.isDone === true,
+  JSON.stringify(trackerTasks.map((t) => [t.text, t.isDone])))
+check('and the block in the document agrees',
+  await page.evaluate(async (id) => {
+    const doc = JSON.parse((await window.api.pages.getById(id)).content)
+    return doc.find((b) => b.id === 'trk-today').props.checked === true
+  }, trackerPageId))
+check('the tracker redraws it as done',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-tracker__task--done')].some((r) => r.innerText.includes('ship the tracker'))))
+
+// The store's copy of the page has to move with it: the editor remounts from
+// that copy, so a stale one would be handed back to BlockNote and then saved
+// over this change on the first keystroke. Asserted on "Task capture", whose
+// first checkbox was left unticked above and which the sidebar already knows
+// about — the fixture page was made through the API and never entered the
+// store's page list, so the tree could not open it.
+const captureTask = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tracker__task')].some((r) => r.innerText.includes('draft the outline')))
+check('a task from another page shares the window', captureTask)
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-tracker__task')].find((r) =>
+    r.innerText.includes('draft the outline')
+  )
+  row.querySelector('.nx-tracker__check').click()
+})
+await sleep(1200)
+check('reached Notes', (await nav('Notes')) === 'OK')
+await sleep(600)
+check('found the page in the tree', (await openInTree('Task capture')) === 'OK')
+await sleep(1200)
+check('the editor opens with the tracker’s change already in it',
+  await page.evaluate(() => document.querySelector('.bn-editor input[type="checkbox"]')?.checked === true))
+check('and the store was not left holding the old document',
+  await page.evaluate(async () => {
+    const stored = (await window.api.pages.getAll()).find((p) => p.title === 'Task capture')
+    const rendered = [...document.querySelectorAll('.bn-editor input[type="checkbox"]')].map((i) => i.checked)
+    const inDoc = JSON.parse(stored.content).filter((b) => b.type === 'checkListItem').map((b) => b.props.checked)
+    return JSON.stringify(rendered) === JSON.stringify(inDoc)
+  }))
+
+// Stepping the window is what makes "this week" a window rather than a wall.
+await nav('Tracker')
+await sleep(900)
+const weekLabel = () => page.evaluate(() => document.querySelector('.nx-tracker__head .nx-type-heading').innerText)
+const thisWeek = await weekLabel()
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[0].click())
+await sleep(800)
+check('stepping back moves to another week', (await weekLabel()) !== thisWeek, `${thisWeek} → ${await weekLabel()}`)
+check('a window with nothing in it says so',
+  (await trackerText()).includes('Nothing due') || !(await trackerText()).includes('ship the tracker'))
+check('the overdue panel is scoped to the current window',
+  !/Overdue/i.test(await trackerText()))
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].click())
+await sleep(800)
+check('returning lands on this week again', (await weekLabel()) === thisWeek)
+
+// A quarter is ninety days, so it lists only the days carrying something.
+await page.evaluate(() => {
+  const quarter = [...document.querySelectorAll('.nx-tracker__mode')].find((b) => /quarter/i.test(b.innerText))
+  quarter.click()
+})
+await sleep(900)
+trackerShown = await trackerText()
+check('the quarter view names the quarter', /^Q[1-4] \d{4}$/m.test(trackerShown), trackerShown.slice(0, 200))
+check('the quarter view still finds the dated task', trackerShown.includes('chase the invoice'))
+check('and does not render ninety empty days',
+  (await page.evaluate(() => document.querySelectorAll('.nx-tracker__day').length)) < 90)
+check('a month heading groups the quarter',
+  await page.evaluate(() => !!document.querySelector('.nx-tracker__month')))
+await page.screenshot({ path: SHOT + '/12-tracker-quarter.png' })
+
+// A habit is a type with a date property and a checkbox property — nothing
+// more. If this ever needs a table of its own, the model has gone wrong.
+check('nothing is a habit before a type has both properties',
+  (await page.evaluate(() => window.api.habits.candidates())).length === 0,
+  JSON.stringify(await page.evaluate(() => window.api.habits.candidates())))
+
+await page.evaluate(() => {
+  const quarter = [...document.querySelectorAll('.nx-tracker__mode')].find((b) => /habits/i.test(b.innerText))
+  quarter.click()
+})
+await sleep(700)
+check('the habits view explains what a habit is made of',
+  /No habits yet/i.test(await trackerText()) && /checkbox property/i.test(await trackerText()))
+
+// Fixed dates inside the current year rather than offsets from today, so the
+// grid always holds them however close to New Year this runs.
+const habitYear = new Date().getFullYear()
+const habitPages = await page.evaluate(async (year) => {
+  const type = await window.api.types.create('Habit', null)
+  await window.api.types.defineProperty(type.id, 'Day', 'date')
+  await window.api.types.defineProperty(type.id, 'Done', 'boolean')
+
+  const made = { typeId: type.id, pages: [] }
+  for (const [day, done] of [['02', 'true'], ['03', 'true'], ['04', 'false']]) {
+    const created = await window.api.pages.create(type.id)
+    await window.api.pages.update(created.id, { title: `Run ${day} Mar` })
+    await window.api.properties.set(created.id, 'day', 'date', `${year}-03-${day}`)
+    await window.api.properties.set(created.id, 'done', 'boolean', done)
+    made.pages.push(created.id)
+  }
+  return made
+}, habitYear)
+
+const candidates = await page.evaluate(() => window.api.habits.candidates())
+check('a type with both properties reads as a habit',
+  candidates.length === 1 && candidates[0].typeName === 'Habit', JSON.stringify(candidates))
+check('and it names the properties that qualified it',
+  candidates[0]?.dateKeys.join() === 'day' && candidates[0]?.booleanKeys.join() === 'done',
+  JSON.stringify(candidates[0]))
+
+// Re-enter the view so it picks the new type up.
+await nav('Home')
 await sleep(400)
+await nav('Tracker')
+await sleep(500)
+await page.evaluate(() => {
+  const habits = [...document.querySelectorAll('.nx-tracker__mode')].find((b) => /habits/i.test(b.innerText))
+  habits.click()
+})
+await sleep(900)
+check('the year grid renders a cell per day',
+  (await page.evaluate(() => document.querySelectorAll('.nx-habits__cell').length)) >= 365)
+check('a day marked done is filled',
+  (await page.evaluate(() => document.querySelectorAll('.nx-habits__cell--done').length)) === 2)
+check('a day recorded but not done reads differently',
+  (await page.evaluate(() => document.querySelectorAll('.nx-habits__cell--missed').length)) === 1)
+check('the grid counts the year up', /2 done · 3 recorded/.test(await trackerText()), (await trackerText()).slice(0, 300))
+check('consecutive days count as a streak', /longest streak 2/.test(await trackerText()))
+check('a year with no entries is empty rather than wrong', await page.evaluate(async () => {
+  const back = [...document.querySelectorAll('.nx-habits__year .nx-tracker__step')][0]
+  back.click()
+  await new Promise((r) => setTimeout(r, 700))
+  return document.querySelectorAll('.nx-habits__cell--done').length === 0
+}))
+await page.evaluate(() => {
+  const forward = [...document.querySelectorAll('.nx-habits__year .nx-tracker__step')][1]
+  forward.click()
+})
+await sleep(700)
+await page.screenshot({ path: SHOT + '/13-habits.png' })
+
+// A cell is a way into the page that recorded the day, and a day with no
+// entry is not a link to anywhere.
+check('a day with no entry is not clickable',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => c.disabled).length > 300))
+check('a recorded day is',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => !c.disabled).length === 3))
+check('and it says what it recorded',
+  await page.evaluate(() =>
+    /· done$/.test(document.querySelector('.nx-habits__cell--done')?.getAttribute('title') ?? '')),
+  await page.evaluate(() => document.querySelector('.nx-habits__cell--done')?.getAttribute('title')))
+
+await page.evaluate(() => document.querySelector('.nx-habits__cell--done').click())
+await sleep(900)
+// These fixture pages were made through the API, so the sidebar's list never
+// learned about them and cannot render one — but the cell still has to hand
+// the app over to Notes, which is the part this owns.
+check('clicking a day hands over to Notes',
+  await page.evaluate(() =>
+    document.querySelector('.nx-nav-item--selected')?.textContent.trim() === 'Notes'),
+  await page.evaluate(() => document.querySelector('.nx-nav-item--selected')?.textContent.trim()))
+
+await nav('Tracker')
+await sleep(500)
+
+// The fixture type goes too: Tables defaults to the alphabetically first
+// type, and a stray "Habit" would quietly retarget every assertion below it.
+await page.evaluate(async (habit) => {
+  for (const id of habit.pages) await window.api.pages.hardDelete(id)
+  await window.api.types.remove(habit.typeId)
+}, habitPages)
+check('the habit fixture left no type behind',
+  (await page.evaluate(() => window.api.habits.candidates())).length === 0)
+
+// Both fixtures go: they are pages of type Note, and the Tables section below
+// asserts on how many rows that type has.
+await page.evaluate(async (id) => {
+  window.api.pages.hardDelete(id)
+  const capture = (await window.api.pages.getAll()).find((p) => p.title === 'Task capture')
+  if (capture) await window.api.pages.hardDelete(capture.id)
+}, trackerPageId)
+await sleep(500)
 
 // ---------------------------------------------------------------- graph
 log('\n— graph —')

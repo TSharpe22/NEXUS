@@ -23,7 +23,9 @@ import type {
   TagWithCount,
   SearchResult,
   TrackerTask,
-  DatedPage
+  DatedPage,
+  HabitCandidate,
+  HabitDay
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -846,6 +848,88 @@ export function setTaskDone(pageId: string, blockId: string, done: boolean): Pag
 
   updatePage(pageId, { content: JSON.stringify(blocks) })
   return getPageById(pageId)!
+}
+
+// ============================================================
+// Habits — a view, not a subsystem.
+//
+// A habit is a type with a date property and a checkbox property. That is
+// already everything the year grid needs, and it is all built out of what
+// milestone C shipped: no habit tables, no habit-specific columns, nothing
+// here that a user could not have made by adding two properties to a type.
+// ============================================================
+
+/**
+ * Every type that could be read as a habit, with the properties that qualify
+ * it. A type with two date properties offers both; picking between them is the
+ * reader's business, not this function's.
+ */
+export function getHabitCandidates(): HabitCandidate[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id AS type_id, t.name AS type_name, d.key, d.property_type, d.sort_order
+         FROM types t
+         JOIN property_definitions d ON d.type_id = t.id
+        WHERE d.property_type IN ('date', 'boolean')
+        ORDER BY t.name, d.sort_order`
+    )
+    .all() as { type_id: string; type_name: string; key: string; property_type: string }[]
+
+  const byType = new Map<string, HabitCandidate>()
+  for (const row of rows) {
+    const entry = byType.get(row.type_id) ?? {
+      typeId: row.type_id,
+      typeName: row.type_name,
+      dateKeys: [],
+      booleanKeys: []
+    }
+    if (row.property_type === 'date') entry.dateKeys.push(row.key)
+    else entry.booleanKeys.push(row.key)
+    byType.set(row.type_id, entry)
+  }
+
+  // A type with only one half of the pair is not a habit yet.
+  return [...byType.values()].filter((c) => c.dateKeys.length > 0 && c.booleanKeys.length > 0)
+}
+
+/**
+ * One entry per day for a habit, inside a date window.
+ *
+ * Two pages can land on the same day — nothing stops a second entry being
+ * written — so the day counts as done if any of them says so, and holds the
+ * id of the one the grid opens.
+ */
+export function getHabitDays(
+  typeId: string,
+  dateKey: string,
+  booleanKey: string,
+  from: string,
+  to: string
+): HabitDay[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id AS page_id, d.value_date AS date, b.value_text AS flag
+         FROM pages p
+         JOIN properties d ON d.page_id = p.id AND d.key = ? AND d.type = 'date'
+         LEFT JOIN properties b ON b.page_id = p.id AND b.key = ?
+        WHERE p.is_deleted = 0 AND p.type_id = ?
+          AND d.value_date BETWEEN ? AND ?
+        ORDER BY d.value_date, p.updated_at`
+    )
+    .all(dateKey, booleanKey, typeId, from, to) as {
+    page_id: string
+    date: string
+    flag: string | null
+  }[]
+
+  const byDate = new Map<string, HabitDay>()
+  for (const row of rows) {
+    const done = row.flag === 'true'
+    const existing = byDate.get(row.date)
+    if (!existing) byDate.set(row.date, { date: row.date, done, pageId: row.page_id })
+    else if (done && !existing.done) byDate.set(row.date, { date: row.date, done, pageId: row.page_id })
+  }
+  return [...byDate.values()]
 }
 
 // ============================================================

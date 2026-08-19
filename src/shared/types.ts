@@ -100,6 +100,26 @@ export interface DatedPage {
   date: string
 }
 
+/**
+ * A type that can be read as a habit: one carrying both a date property and a
+ * checkbox property. There is no Habit table and no habit type in the
+ * codebase — a habit is those two properties on a type the user made.
+ */
+export interface HabitCandidate {
+  typeId: string
+  typeName: string
+  dateKeys: string[]
+  booleanKeys: string[]
+}
+
+/** One day of a habit's year. */
+export interface HabitDay {
+  date: string
+  done: boolean
+  /** The page recording that day, so a cell in the grid can open it. */
+  pageId: string
+}
+
 export interface Link {
   id: string
   source_page_id: string
@@ -292,6 +312,17 @@ export interface NexusAPI {
      * write a version of it that disagrees with the document.
      */
     searchPages(query: string, excludePageId?: string): Promise<Page[]>
+  }
+  habits: {
+    /** Types carrying both a date and a checkbox property. */
+    candidates(): Promise<HabitCandidate[]>
+    days(
+      typeId: string,
+      dateKey: string,
+      booleanKey: string,
+      from: string,
+      to: string
+    ): Promise<HabitDay[]>
   }
   tasks: {
     /** Tasks dated inside [from, to], both bounds inclusive, as YYYY-MM-DD. */
