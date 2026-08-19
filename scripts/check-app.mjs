@@ -335,6 +335,51 @@ if (box) {
 }
 
 // ---------------------------------------------------------------- other views
+// ---------------------------------------------------------------- search
+log('\n— full-text search —')
+
+// "Arrhenius" and "temperature" were typed into the body of the first page and
+// appear in no title, so a title-only filter could never surface them.
+const bodyHits = await page.evaluate(() => window.api.search.pages('arrhenius'))
+check('body text is searchable', bodyHits.length === 1 && bodyHits[0].page.title === 'Reaction kinetics',
+  JSON.stringify(bodyHits.map((h) => h.page.title)))
+check('body match carries an excerpt', !!bodyHits[0]?.bodySnippet, JSON.stringify(bodyHits[0]?.bodySnippet))
+
+const titleHits = await page.evaluate(() => window.api.search.pages('reaction'))
+check('title match ranks first', titleHits[0]?.page.title === 'Reaction kinetics',
+  JSON.stringify(titleHits.map((h) => h.page.title)))
+
+check('prefix match works', (await page.evaluate(() => window.api.search.pages('arrhen'))).length === 1)
+check('no false positives', (await page.evaluate(() => window.api.search.pages('zzzznotpresent'))).length === 0)
+
+// FTS5 operators and quotes in user input must be literal terms, never syntax.
+for (const nasty of ['"; DROP TABLE pages --', 'NEAR(a b)', '*', 'a OR b']) {
+  check(`malformed query is safe: ${nasty}`,
+    Array.isArray(await page.evaluate((q) => window.api.search.pages(q), nasty)))
+}
+
+// The Notes list must actually show a body-only match, not just the IPC.
+await page.evaluate(() => {
+  const box = document.querySelector('.nx-notes__search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, 'arrhenius')
+  box.dispatchEvent(new Event('input', { bubbles: true }))
+})
+await sleep(500)
+check('body-only match appears in the notes list',
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-tree-row__title')].some((t) => t.textContent.includes('Reaction kinetics'))))
+check('the excerpt renders under the row',
+  await page.evaluate(() => !!document.querySelector('.nx-tree-row__snippet .nx-search-hit')))
+
+await page.evaluate(() => {
+  const box = document.querySelector('.nx-notes__search')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(box, '')
+  box.dispatchEvent(new Event('input', { bubbles: true }))
+})
+await sleep(400)
+
 log('\n— other views —')
 await nav(2)
 await sleep(900)

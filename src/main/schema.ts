@@ -21,8 +21,12 @@ let db: Database.Database
  * 3 — organisation: `folders` tree with `pages.folder_id`, first-class
  *     `tags` / `page_tags`. Purely additive — a v2 file needs no rebuild,
  *     only the new tables and one ALTER.
+ * 4 — `page_fts`: FTS5 index over page titles and body text, so search
+ *     reaches note content and not just titles. Purely additive, and the
+ *     index is a derived projection — it is rebuilt from `pages` whenever
+ *     it is missing or empty, so losing it costs nothing.
  */
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -482,6 +486,18 @@ export function applySchema(
     db.exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
   }
   db.exec('CREATE INDEX IF NOT EXISTS idx_pages_folder ON pages(folder_id)')
+
+  // v4. Contentless-by-choice: the index stores its own copy of the text so
+  // a query needs no join back to `pages` to rank. Additive, and derived —
+  // `repo.rebuildSearchIndex()` refills it from `pages` on next startup.
+  db.exec(`
+    CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
+      page_id UNINDEXED,
+      title,
+      body,
+      tokenize = "unicode61 remove_diacritics 2"
+    );
+  `)
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 

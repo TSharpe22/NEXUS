@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { NexusAPI } from '../shared/types'
 
 const api: NexusAPI = {
+  search: {
+    pages: (query, limit) => ipcRenderer.invoke('search:pages', query, limit),
+    rebuildIndex: () => ipcRenderer.invoke('search:rebuildIndex'),
+  },
   pages: {
     create: (typeId) => ipcRenderer.invoke('pages:create', typeId),
     getAll: () => ipcRenderer.invoke('pages:getAll'),

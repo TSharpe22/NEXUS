@@ -2,6 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
+import { ensureSearchIndex } from './repo'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -39,6 +40,8 @@ function createWindow(): void {
 
 app.whenReady().then(() => {
   initDatabase()
+  // The v4 migration creates page_fts empty; fill it before the first query.
+  ensureSearchIndex()
   registerIpcHandlers()
   createWindow()
 

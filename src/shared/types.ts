@@ -14,6 +14,22 @@ export interface Page {
   updated_at: string
 }
 
+/**
+ * A search hit. Matched terms inside `titleMarked` and `bodySnippet` are
+ * wrapped in the control characters below — never interpolate these as HTML;
+ * split on them instead (see `SearchHighlight`).
+ */
+export const SEARCH_MARK_OPEN = '\u0002'
+export const SEARCH_MARK_CLOSE = '\u0003'
+
+export interface SearchResult {
+  page: Page
+  /** Page title with matched terms wrapped in the sentinels above. */
+  titleMarked: string
+  /** Body excerpt around the match, or null when only the title matched. */
+  bodySnippet: string | null
+}
+
 /** A node in the Notes list tree. A page belongs to at most one folder. */
 export interface Folder {
   id: string
@@ -134,6 +150,12 @@ export interface GraphData {
 // ============================================================
 
 export interface NexusAPI {
+  search: {
+    /** Full-text search over page titles and body content. */
+    pages(query: string, limit?: number): Promise<SearchResult[]>
+    /** Rebuild the index from scratch. Returns the number of pages indexed. */
+    rebuildIndex(): Promise<number>
+  }
   pages: {
     create(typeId?: string): Promise<Page>
     getAll(): Promise<Page[]>

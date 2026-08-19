@@ -20,6 +20,20 @@ export function registerIpcHandlers(): void {
       rethrow('pages:create', e)
     }
   })
+  ipcMain.handle('search:pages', (_, query: string, limit?: number) => {
+    try {
+      return repo.searchPages(String(query ?? ''), limit ?? 50)
+    } catch (e) {
+      rethrow('search:pages', e)
+    }
+  })
+  ipcMain.handle('search:rebuildIndex', () => {
+    try {
+      return repo.rebuildSearchIndex()
+    } catch (e) {
+      rethrow('search:rebuildIndex', e)
+    }
+  })
   ipcMain.handle('pages:getAll', () => {
     try {
       return repo.getAllPages()

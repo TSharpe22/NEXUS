@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearch } from '../hooks/use-search'
 import toast from 'react-hot-toast'
 import type { Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
@@ -64,6 +65,17 @@ export function Notes() {
     }
   }, [activeTagFilter])
 
+  // Body text lives in `pages.content` as a BlockNote JSON document, so it
+  // cannot be matched in the renderer. The main process owns an FTS index over
+  // titles and that body text; this supplies the page matches below.
+  const { results: searchResults } = useSearch(query)
+
+  const searchSnippets = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const r of searchResults) if (r.bodySnippet) map.set(r.page.id, r.bodySnippet)
+    return map
+  }, [searchResults])
+
   const list = useMemo(() => {
     let source: Page[] = showTrash ? trashed : pages
 
@@ -75,17 +87,22 @@ export function Notes() {
     const q = query.trim().toLowerCase()
     if (!q) return source
 
+    // Trash is a flat list the index does not cover (it only holds live
+    // pages), so it keeps matching on title alone.
+    if (showTrash) {
+      return source.filter((p) => (p.title || 'Untitled').toLowerCase().includes(q))
+    }
+
     // A page also matches when its folder's name does, so searching for a
     // folder surfaces what's inside it.
     const matchingFolderIds = new Set(
       folders.filter((f) => f.name.toLowerCase().includes(q)).map((f) => f.id)
     )
+    const matchedIds = new Set(searchResults.map((r) => r.page.id))
     return source.filter(
-      (p) =>
-        (p.title || 'Untitled').toLowerCase().includes(q) ||
-        (p.folder_id ? matchingFolderIds.has(p.folder_id) : false)
+      (p) => matchedIds.has(p.id) || (p.folder_id ? matchingFolderIds.has(p.folder_id) : false)
     )
-  }, [showTrash, trashed, pages, query, taggedPageIds, folders])
+  }, [showTrash, trashed, pages, query, taggedPageIds, folders, searchResults])
 
   const filtering = query.trim().length > 0 || activeTagFilter.length > 0
 
@@ -228,6 +245,7 @@ export function Notes() {
               pages={list}
               filtering={filtering}
               query={query}
+              snippets={searchSnippets}
               typeName={typeName}
               onDuplicate={(page) => duplicatePage(page.id)}
               onTrash={(page) => trashPage(page.id)}

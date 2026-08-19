@@ -18,7 +18,8 @@ import type {
   PropertyDefinition,
   Folder,
   Tag,
-  TagWithCount
+  TagWithCount,
+  SearchResult
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -34,6 +35,7 @@ export function createPage(typeId: string = 'note'): Page {
   db.prepare(
     `INSERT INTO pages (id, type_id, title, content, created_at, updated_at) VALUES (?, ?, '', '[]', ?, ?)`
   ).run(id, typeId, ts, ts)
+  reindexPage(id)
   logActivity(id, 'created', 'page created')
   return getPageById(id)!
 }
@@ -94,6 +96,9 @@ export function updatePage(
   values.push(now(), id)
   db.prepare(`UPDATE pages SET ${sets.join(', ')} WHERE id = ?`).run(...values)
 
+  // Only the two indexed fields need the index rewritten.
+  if ('title' in data || 'content' in data) reindexPage(id)
+
   if ('title' in data) logActivity(id, 'renamed', `renamed to "${data.title}"`)
   else if ('type_id' in data) logActivity(id, 'retyped', 'type changed')
   else if ('content' in data) logEdit(id)
@@ -110,13 +115,21 @@ export function restorePage(id: string): void {
 }
 
 export function hardDeletePage(id: string): void {
-  getDb().prepare('DELETE FROM pages WHERE id = ?').run(id)
+  const db = getDb()
+  db.prepare('DELETE FROM pages WHERE id = ?').run(id)
+  db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(id)
 }
 
 export function emptyTrash(): number {
   const db = getDb()
   const { c } = db.prepare('SELECT COUNT(*) AS c FROM pages WHERE is_deleted = 1').get() as { c: number }
-  db.prepare('DELETE FROM pages WHERE is_deleted = 1').run()
+  const trx = db.transaction(() => {
+    db.prepare(
+      'DELETE FROM page_fts WHERE page_id IN (SELECT id FROM pages WHERE is_deleted = 1)'
+    ).run()
+    db.prepare('DELETE FROM pages WHERE is_deleted = 1').run()
+  })
+  trx()
   return c
 }
 
@@ -152,7 +165,177 @@ export function duplicatePage(id: string): Page {
      SELECT ?, tag_id, ? FROM page_tags WHERE page_id = ?`
   ).run(newId, ts, id)
 
+  reindexPage(newId)
   return getPageById(newId)!
+}
+
+// ============================================================
+// Full-text search
+// ============================================================
+
+// Sentinels wrapping matched terms in results. Control codes are used
+// deliberately: they cannot occur in real note text, so the renderer can split
+// on them without any HTML parsing or escaping.
+const SEARCH_MARK_OPEN = '\u0002'
+const SEARCH_MARK_CLOSE = '\u0003'
+
+/**
+ * Collect the readable strings out of a parsed BlockNote document.
+ *
+ * Only values under keys named `text`, `content`, or `pageTitle` are taken, so
+ * prop values like `textColor: "default"` never enter the index. `pageTitle` is
+ * the label a page mention renders, so a page containing [[Chemistry]] stays
+ * findable by "chemistry". Walking generically covers table cells and nested
+ * children without needing a branch per block type.
+ */
+function collectText(value: unknown, out: string[]): void {
+  if (value === null || value === undefined) return
+  if (Array.isArray(value)) {
+    for (const item of value) collectText(item, out)
+    return
+  }
+  if (typeof value !== 'object') return
+
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    if ((key === 'text' || key === 'content' || key === 'pageTitle') && typeof child === 'string') {
+      if (child) out.push(child)
+    } else {
+      collectText(child, out)
+    }
+  }
+}
+
+/** Flatten a page's stored BlockNote document to plain text for indexing. */
+export function documentToPlainText(content: string | null): string {
+  if (!content) return ''
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(content)
+  } catch {
+    return content
+  }
+  const out: string[] = []
+  collectText(parsed, out)
+  return out.join(' ')
+}
+
+/** Rewrite the index row for one page. Safe for a page that no longer exists. */
+export function reindexPage(pageId: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(pageId)
+  const page = db.prepare('SELECT title, content FROM pages WHERE id = ?').get(pageId) as
+    | { title: string; content: string }
+    | undefined
+  if (!page) return
+  db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)').run(
+    pageId,
+    page.title || '',
+    documentToPlainText(page.content)
+  )
+}
+
+/** Drop and rebuild the whole index. Returns the number of pages indexed. */
+export function rebuildSearchIndex(): number {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM page_fts').run()
+    const rows = db.prepare('SELECT id, title, content FROM pages').all() as {
+      id: string
+      title: string
+      content: string
+    }[]
+    const insert = db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)')
+    for (const row of rows) insert.run(row.id, row.title || '', documentToPlainText(row.content))
+    return rows.length
+  })
+  return trx()
+}
+
+/**
+ * Fill the index when it is empty but pages exist — the state right after the
+ * v4 migration creates the table, and the self-heal if it is ever lost. Called
+ * once at startup.
+ */
+export function ensureSearchIndex(): void {
+  const db = getDb()
+  const indexed = (db.prepare('SELECT count(*) AS n FROM page_fts').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (indexed === 0 && total > 0) rebuildSearchIndex()
+}
+
+function searchTokens(raw: string): string[] {
+  return raw.split(/[^\p{L}\p{N}_]+/u).filter(Boolean)
+}
+
+/**
+ * Turn free-typed input into a valid FTS5 MATCH expression.
+ *
+ * Splitting on non-alphanumerics mirrors how the unicode61 tokenizer built the
+ * index. Every token is quoted (embedded quotes doubled) so nothing the user
+ * types can be read as FTS5 operator syntax, and each gets a prefix wildcard so
+ * search-as-you-type matches partial words.
+ */
+function toMatchQuery(raw: string): string | null {
+  const tokens = searchTokens(raw)
+  if (tokens.length === 0) return null
+  return tokens.map((t) => `"${t.replace(/"/g, '""')}"*`).join(' ')
+}
+
+/** Wrap occurrences of any token in `text` with the snippet sentinels. */
+function markTokens(text: string, tokens: string[]): string {
+  if (!text || tokens.length === 0) return text
+  const pattern = tokens
+    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .sort((a, b) => b.length - a.length)
+    .join('|')
+  return text.replace(
+    new RegExp(pattern, 'giu'),
+    (m) => `${SEARCH_MARK_OPEN}${m}${SEARCH_MARK_CLOSE}`
+  )
+}
+
+/**
+ * Full-text search across page titles and body text. Title matches are
+ * weighted an order of magnitude above body matches; ties fall back to
+ * recency, which is common for a single-token body hit.
+ */
+export function searchPages(query: string, limit = 50): SearchResult[] {
+  if (!query.trim()) return []
+  const match = toMatchQuery(query)
+  if (!match) return []
+  const tokens = searchTokens(query)
+  const db = getDb()
+
+  let rows: Record<string, unknown>[]
+  try {
+    rows = db
+      .prepare(
+        `SELECT p.*, snippet(page_fts, 2, ?, ?, '…', 12) AS body_snippet
+         FROM page_fts
+         JOIN pages p ON p.id = page_fts.page_id
+         WHERE page_fts MATCH ? AND p.is_deleted = 0
+         ORDER BY bm25(page_fts, 0.0, 10.0, 1.0) ASC, p.updated_at DESC
+         LIMIT ?`
+      )
+      .all(SEARCH_MARK_OPEN, SEARCH_MARK_CLOSE, match, limit) as Record<string, unknown>[]
+  } catch (err) {
+    console.error('[nexus] full-text query failed:', err)
+    return []
+  }
+
+  return rows.map((row) => {
+    const { body_snippet, ...pageRow } = row
+    const page = pageRow as unknown as Page
+    const snippet = typeof body_snippet === 'string' ? body_snippet.trim() : ''
+    return {
+      page,
+      titleMarked: markTokens(page.title || 'Untitled', tokens),
+      // Only surface a body preview when it actually contains a hit — FTS5
+      // otherwise returns the opening words of the column, which is noise on
+      // a title-only match.
+      bodySnippet: snippet.includes(SEARCH_MARK_OPEN) ? snippet : null
+    }
+  })
 }
 
 // ============================================================

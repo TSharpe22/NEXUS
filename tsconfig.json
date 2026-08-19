@@ -14,10 +14,9 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "./out",
-    "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@renderer/*": ["src/renderer/*"]
+      "@shared/*": ["./src/shared/*"],
+      "@renderer/*": ["./src/renderer/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
