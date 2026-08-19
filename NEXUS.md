@@ -19,6 +19,15 @@ block editor library's own internals instead of using what it already gave
 for free. This build is scoped down to an MVP, and deliberately avoids
 rebuilding either of those two things.
 
+**The first build is gone from the working branches.** Both builds share one
+git history, so its commits are still reachable — the branches that carried
+code not already in `main` are kept as `archive/first-build/*` — but nothing
+in the tree comes from it. If you find `LassoSelect.tsx`, `SelectionOverlay`,
+`ColumnResizeHandles`, a `tailwind.config.js`, `src/renderer/components/`, or
+a `nexus-clean.tar.gz`, you are looking at the first build and should stop.
+The current app is `src/main` + `src/renderer` with `views/`, `design/` and
+`store/`, and it is described by this file.
+
 ---
 
 ## Platform and stack
