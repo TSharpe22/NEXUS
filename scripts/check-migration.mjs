@@ -180,6 +180,9 @@ check('page_fts table created', db.prepare(`SELECT count(*) c FROM sqlite_master
 // v5 — settings and the vault mirror manifest. Additive as well.
 check('settings table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='settings'`).get().c, 1)
 check('mirror_files table created', db.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='mirror_files'`).get().c, 1)
+
+// v7 — per-type templates. Additive column on an existing table.
+check('types.template_page_id added', db.pragma('table_info(types)').map((c) => c.name).includes('template_page_id'), true)
 check('page_fts is queryable', (() => {
   try {
     db.prepare(`SELECT count(*) c FROM page_fts WHERE page_fts MATCH 'x'`).get()
@@ -273,6 +276,35 @@ check('re-running leaves the relation in place', stranded.prepare('SELECT value_
 stranded.pragma('foreign_keys = ON')
 check('foreign keys still satisfied after the repair', stranded.pragma('foreign_key_check'), [])
 stranded.close()
+
+// ------------------------------------------------------------------
+// The version collision: templates were built as 6 on their own branch while
+// 6 had already shipped as the relation repair. Anyone who ran that build has
+// a file stamped 6 with no template column, and it has to pick one up.
+// ------------------------------------------------------------------
+console.log('\nfile already stamped 6 by the shipped relation repair:')
+const sixPath = join(dir, 'stamped-six.db')
+const six = new Database(sixPath)
+six.pragma('foreign_keys = OFF')
+// `types` as that build left it — no template_page_id, and CREATE TABLE IF NOT
+// EXISTS in the current schema will not touch it.
+six.exec(`
+  CREATE TABLE types (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, icon TEXT);
+  INSERT INTO types (id, name) VALUES ('note', 'Note');
+`)
+six.pragma('user_version = 6')
+
+applySchema(six, () => null)
+check(
+  'the template column is added even though 6 was already stamped',
+  six.pragma('table_info(types)').map((c) => c.name).includes('template_page_id'),
+  true
+)
+check('and the file moves to the current version', six.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+check('the seeded type survived', six.prepare('SELECT count(*) c FROM types').get().c, 1)
+six.pragma('foreign_keys = ON')
+check('foreign keys satisfied', six.pragma('foreign_key_check'), [])
+six.close()
 
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)

@@ -32,8 +32,12 @@ let db: Database.Database
  *     while the properties panel read `value_relation` — so a relation saved,
  *     and then read back empty. No structural change; this step is the data
  *     repair for files written by that code.
+ * 7 — templates: `types.template_page_id`, the page a new page of that type
+ *     starts from. Purely additive. Built as 6 on its own branch, but 6 had
+ *     already shipped as the relation repair — a version number that means two
+ *     different things to two databases is not recoverable, so it became 7.
  */
-export const SCHEMA_VERSION = 6
+export const SCHEMA_VERSION = 7
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -536,6 +540,16 @@ export function applySchema(
          SET value_relation = value_text, value_text = NULL
        WHERE type = 'relation' AND value_relation IS NULL AND value_text IS NOT NULL
     `)
+  }
+
+  // v7. A type's default template. ON DELETE SET NULL so deleting the template
+  // page leaves the type intact and simply un-templated, rather than cascading
+  // into the type and taking every page of it along. Additive and idempotent,
+  // so it lands on a file already stamped 6 by the step above.
+  if (!columnExists('types', 'template_page_id')) {
+    db.exec(
+      `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
+    )
   }
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)

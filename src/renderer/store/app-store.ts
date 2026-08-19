@@ -43,6 +43,8 @@ interface AppState {
 
   refresh: () => Promise<void>
   createPage: (typeId?: string) => Promise<Page>
+  /** Open today's journal entry, creating it from the template if needed. */
+  openTodayEntry: () => Promise<Page>
   duplicatePage: (id: string) => Promise<Page>
   trashPage: (id: string) => Promise<void>
   restorePage: (id: string) => Promise<void>
@@ -133,6 +135,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Drop filters pointing at tags that no longer exist.
       activeTagFilter: state.activeTagFilter.filter((id) => tags.some((t) => t.id === id))
     }))
+  },
+
+  openTodayEntry: async () => {
+    const page = await window.api.journal.today()
+    await get().refresh()
+    // The entry lives in the Journal folder; open that folder so the page
+    // appears in context rather than seemingly from nowhere.
+    if (page.folder_id) get().setFolderExpanded(page.folder_id, true)
+    set({ activeView: 'notes', activePageId: page.id })
+    void get().loadPageTags(page.id)
+    return page
   },
 
   createPage: async (typeId) => {

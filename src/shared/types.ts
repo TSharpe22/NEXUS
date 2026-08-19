@@ -167,6 +167,10 @@ export interface NexusAPI {
    * One-way export of the vault to a Markdown tree on disk, so any assistant,
    * editor or backup tool can read it as ordinary files.
    */
+  journal: {
+    /** Today's journal entry, created from the Journal template if absent. */
+    today(): Promise<Page>
+  }
   mirror: {
     getConfig(): Promise<MirrorConfig>
     /** Passing a folder also enables the mirror; passing null disables it. */
@@ -234,6 +238,9 @@ export interface NexusAPI {
     remove(pageId: string, key: string): Promise<void>
   }
   types: {
+    /** Point a type at the page its new pages start from, or null to clear. */
+    setTemplate(typeId: string, pageId: string | null): Promise<void>
+    getTemplate(typeId: string): Promise<Page | null>
     list(): Promise<TypeDef[]>
     create(name: string, icon?: string): Promise<TypeDef>
     rename(id: string, name: string): Promise<TypeDef>
