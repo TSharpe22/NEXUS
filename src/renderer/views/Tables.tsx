@@ -4,6 +4,7 @@ import type { PageSummary, PropertyDefinition, Property } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
+import { confirmDialog } from '../design/Confirm'
 import { EmptyState } from '../design/EmptyState'
 import { Table, TableHead, TableBody, TableRow, Th, Td } from '../design/Table'
 import { relativeTime } from '../hooks/use-relative-time'
@@ -170,11 +171,16 @@ export function Tables() {
   const handleDeleteType = async () => {
     if (!activeType) return
     const count = entries.length
-    const warning =
-      count === 0
-        ? `Delete the type "${activeType.name}"?`
-        : `Delete the type "${activeType.name}"? Its ${count} page${count === 1 ? '' : 's'} will be kept and moved to the Note type.`
-    if (!window.confirm(warning)) return
+    const accepted = await confirmDialog({
+      title: `Delete the type "${activeType.name}"?`,
+      message:
+        count === 0
+          ? 'It has no pages.'
+          : `Its ${count} page${count === 1 ? '' : 's'} will be kept and moved to the Note type.`,
+      confirmLabel: 'Delete type',
+      danger: true
+    })
+    if (!accepted) return
     try {
       const { reassigned } = await deleteType(activeType.id)
       toast.success(

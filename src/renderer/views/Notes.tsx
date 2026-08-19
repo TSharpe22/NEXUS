@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import type { Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Button } from '../design/Button'
+import { confirmDialog } from '../design/Confirm'
 import { EmptyState } from '../design/EmptyState'
 import { Editor } from '../editor/Editor'
 import { PropertiesPanel } from './PropertiesPanel'
@@ -123,13 +124,25 @@ export function Notes() {
     const label = page.title || 'Untitled'
     // Permanent and unrecoverable — the one place in the app that warrants a
     // confirm. Previously this fired straight from a hover button.
-    if (!window.confirm(`Delete "${label}" permanently? This cannot be undone.`)) return
+    const accepted = await confirmDialog({
+      title: `Delete "${label}" permanently?`,
+      message: 'This cannot be undone.',
+      confirmLabel: 'Delete',
+      danger: true
+    })
+    if (!accepted) return
     await deletePageForever(page.id)
     toast.success('Page deleted')
   }
 
   const handleEmptyTrash = async () => {
-    if (!window.confirm(`Permanently delete all ${trashed.length} page(s) in the trash?`)) return
+    const accepted = await confirmDialog({
+      title: `Empty the trash?`,
+      message: `All ${trashed.length} page${trashed.length === 1 ? '' : 's'} in it will be deleted permanently.`,
+      confirmLabel: 'Empty trash',
+      danger: true
+    })
+    if (!accepted) return
     const count = await emptyTrash()
     toast.success(`Deleted ${count} page${count === 1 ? '' : 's'}`)
   }

@@ -4,6 +4,7 @@ import type { Page, Property, PropertyDefinition, PropertyType } from '@shared/t
 import { useAppStore } from '../store/app-store'
 import { usePageTitles } from '../hooks/use-page-titles'
 import { Button } from '../design/Button'
+import { confirmDialog } from '../design/Confirm'
 
 interface Props {
   page: Page
@@ -137,15 +138,38 @@ export function PropertiesPanel({ page }: Props) {
     }
   }
 
+  /**
+   * Clears this page's value and nothing else.
+   *
+   * The × on a row used to delete the definition from the whole type, wiping
+   * that property from every page of it — a schema edit behind the control
+   * that looks like "clear this field". `properties.remove` was exposed to the
+   * renderer this whole time and called from nowhere.
+   */
+  const clearValue = async (def: PropertyDefinition) => {
+    try {
+      await window.api.properties.remove(page.id, def.key)
+      setValues((prev) => {
+        const next = { ...prev }
+        delete next[def.key]
+        return next
+      })
+    } catch (e) {
+      console.error('[nexus] failed to clear property', e)
+      toast.error(`Could not clear "${def.name}"`)
+    }
+  }
+
+  /** Removes the property from the type — every page of it loses the value. */
   const removeProperty = async (def: PropertyDefinition) => {
     const typeLabel = types.find((t) => t.id === page.type_id)?.name ?? 'this type'
-    if (
-      !window.confirm(
-        `Remove "${def.name}" from ${typeLabel}? Its values will be cleared from every page of this type.`
-      )
-    ) {
-      return
-    }
+    const accepted = await confirmDialog({
+      title: `Remove "${def.name}" from ${typeLabel}?`,
+      message: 'Its values will be cleared from every page of this type.',
+      confirmLabel: 'Remove property',
+      danger: true
+    })
+    if (!accepted) return
     await window.api.types.removeProperty(def.id)
     await refresh()
     toast.success(`Removed "${def.name}"`)
@@ -189,6 +213,7 @@ export function PropertiesPanel({ page }: Props) {
           onSave={(v) => save(def, v)}
           onRename={(name) => rename(def, name)}
           onReorder={(draggedId) => reorder(draggedId, def.id)}
+          onClear={() => clearValue(def)}
           onRemove={() => removeProperty(def)}
         />
       ))}
@@ -242,6 +267,7 @@ function PropertyRow({
   onSave,
   onRename,
   onReorder,
+  onClear,
   onRemove
 }: {
   def: PropertyDefinition
@@ -250,6 +276,7 @@ function PropertyRow({
   onSave: (value: string | number | null) => void
   onRename: (name: string) => void
   onReorder: (draggedDefinitionId: string) => void
+  onClear: () => void
   onRemove: () => void
 }) {
   const current = valueOf(value)
@@ -354,9 +381,30 @@ function PropertyRow({
       )}
 
       <span className="nx-properties__row-field">{field}</span>
-      <button className="nx-properties__remove" onClick={onRemove} title={`Remove ${def.name}`} aria-label={`Remove ${def.name}`}>
-        ×
-      </button>
+
+      {/* Value-level by default, schema-level while you are editing the name:
+          the two used to be the same button, and it was the destructive one. */}
+      {renaming ? (
+        <button
+          className="nx-properties__unset"
+          // Without this the input's blur unmounts the button before the click
+          // lands on it.
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={onRemove}
+          title={`Remove ${def.name} from this type, and its value from every page of it`}
+        >
+          Remove
+        </button>
+      ) : (
+        <button
+          className="nx-properties__remove"
+          onClick={onClear}
+          title={`Clear ${def.name} on this page`}
+          aria-label={`Clear ${def.name}`}
+        >
+          ×
+        </button>
+      )}
     </div>
   )
 }

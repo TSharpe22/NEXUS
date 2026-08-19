@@ -314,6 +314,25 @@
   color: var(--nx-critical);
 }
 
+/* Shown in place of the × while a property name is being edited — the one
+   place the schema-level delete lives, so it can't be hit reaching for the
+   field. */
+.nx-properties__unset {
+  background: none;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  font-size: 11.5px;
+  padding: 2px 6px;
+  white-space: nowrap;
+  transition: color var(--nx-motion);
+}
+
+.nx-properties__unset:hover {
+  color: var(--nx-critical);
+}
+
 .nx-properties__add-form {
   display: flex;
   align-items: center;

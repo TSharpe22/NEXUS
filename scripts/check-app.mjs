@@ -894,6 +894,83 @@ const persisted = JSON.stringify(await firstDoc())
 check('earlier text is not overwritten by the next edit', persisted.includes('Rate depends on temperature'))
 check('the new edit saved as well', persisted.includes('Checked.'))
 
+// ------------------------------------------- clearing versus removing
+// The × on a property row used to delete the definition from the whole type,
+// wiping the value from every page of it — a schema edit behind a control that
+// reads as "clear this field".
+log('\n— clearing a value against removing a property —')
+
+const openPageId = await page.evaluate(() => window.api.pages.getAll().then((p) => p[0].id))
+const scratchDef = async () => (await page.evaluate(() => window.api.types.getPropertyDefinitions('note'))).find((d) => d.key === 'scratch')
+const scratchValue = async () =>
+  (await page.evaluate((id) => window.api.properties.getForPage(id), openPageId)).find((p) => p.key === 'scratch') ?? null
+
+check('add-property control', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Scratch', { delay: 20 })
+await clickText('Add')
+await sleep(600)
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Scratch'))
+  row.querySelector('input').focus()
+})
+await page.keyboard.type('temporary', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('scratch value set', (await scratchValue())?.value_text === 'temporary')
+
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Scratch'))
+  row.querySelector('.nx-properties__remove').click()
+})
+await sleep(600)
+check('× clears this page\'s value', (await scratchValue()) === null)
+check('× leaves the property on the type', (await scratchDef()) !== undefined)
+
+// Removing from the type lives behind the rename state, and behind a dialog
+// this test can actually drive — Playwright dismisses `window.confirm`, so the
+// destructive paths behind one were never exercised at all.
+const startRenaming = () =>
+  page.evaluate(() => {
+    const label = [...document.querySelectorAll('.nx-properties__row-label')].find((e) => e.textContent.trim() === 'Scratch')
+    if (!label) return 'LABEL_NOT_FOUND'
+    label.click()
+    return 'OK'
+  })
+const clickUnset = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.querySelector('.nx-properties__unset'))
+    if (!row) return 'NOT_FOUND'
+    row.querySelector('.nx-properties__unset').click()
+    return 'OK'
+  })
+const clickInDialog = (label) =>
+  page.evaluate((l) => {
+    const btn = [...document.querySelectorAll('.nx-confirm button')].find((b) => b.textContent.trim() === l)
+    if (!btn) return 'NOT_FOUND'
+    btn.click()
+    return 'OK'
+  }, label)
+
+check('renaming exposes the schema-level remove', (await startRenaming()) === 'OK')
+await sleep(300)
+check('the remove control is there', (await clickUnset()) === 'OK')
+await sleep(400)
+check('a styled dialog opens, not a native one', (await page.evaluate(() => !!document.querySelector('.nx-confirm'))))
+await page.screenshot({ path: SHOT + '/09-confirm.png' })
+check('cancelling', (await clickInDialog('Cancel')) === 'OK')
+await sleep(400)
+check('cancelling leaves the property alone', (await scratchDef()) !== undefined)
+
+await startRenaming()
+await sleep(300)
+await clickUnset()
+await sleep(400)
+check('confirming', (await clickInDialog('Remove property')) === 'OK')
+await sleep(700)
+check('the property is gone from the type', (await scratchDef()) === undefined)
+
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 
 await app.close()

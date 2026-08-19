@@ -3,6 +3,7 @@ import { Toaster } from 'react-hot-toast'
 import { useAppStore, View } from './store/app-store'
 import { NavItem } from './design/NavItem'
 import { CommandPalette } from './design/CommandPalette'
+import { ConfirmHost } from './design/Confirm'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
 import { Tables } from './views/Tables'
@@ -86,6 +87,7 @@ export function App() {
       </div>
 
       <CommandPalette />
+      <ConfirmHost />
       <Toaster
         position="bottom-right"
         toastOptions={{

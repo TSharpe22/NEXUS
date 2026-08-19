@@ -1,0 +1,44 @@
+/* A scrim rather than a shadow: the design system has no elevation, so the
+   dialog separates from the app by dimming what is behind it. */
+.nx-confirm {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--nx-space-6);
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.nx-confirm__panel {
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-3);
+  padding: var(--nx-space-4);
+  background: var(--nx-surface-raised);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+}
+
+.nx-confirm__title {
+  font-family: var(--nx-font-sans);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--nx-text);
+}
+
+.nx-confirm__message {
+  color: var(--nx-text-dim);
+  line-height: 1.5;
+}
+
+.nx-confirm__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--nx-space-2);
+  margin-top: var(--nx-space-1);
+}
