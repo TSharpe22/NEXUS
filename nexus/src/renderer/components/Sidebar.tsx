@@ -5,6 +5,8 @@ import { relativeTime } from '../hooks/use-relative-time'
 import { ContextMenu } from './ContextMenu'
 import { shortcutLabel } from '../utils/shortcuts'
 import { PageIcon } from '../blocks/icons'
+import { SearchHighlight } from './SearchHighlight'
+import { useSearch } from '../hooks/use-search'
 
 export function Sidebar() {
   const {
@@ -169,11 +171,21 @@ export function Sidebar() {
     [setSidebarWidth]
   )
 
-  const filteredPages = searchQuery
-    ? pages.filter((p) =>
-        (p.title || 'Untitled').toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : pages
+  // Full-text search runs in the main process over titles *and* block content.
+  // With no query we fall back to the plain recency list.
+  const { results: searchResults, loading: searchLoading } = useSearch(searchQuery)
+
+  const listItems: {
+    page: (typeof pages)[number]
+    titleMarked: string | null
+    bodySnippet: string | null
+  }[] = searchQuery.trim()
+    ? searchResults.map((r) => ({
+        page: r.page,
+        titleMarked: r.titleMarked,
+        bodySnippet: r.bodySnippet,
+      }))
+    : pages.map((page) => ({ page, titleMarked: null, bodySnippet: null }))
 
   // Collapsed state
   if (sidebarCollapsed) {
@@ -332,7 +344,11 @@ export function Sidebar() {
             </div>
           ) : (
             <>
-              {filteredPages.length === 0 ? (
+              {searchLoading && listItems.length === 0 ? (
+                <div className="px-2.5 py-12 text-center">
+                  <p className="text-[13px] text-[var(--nx-text-tertiary)]">Searching…</p>
+                </div>
+              ) : listItems.length === 0 ? (
                 <div className="px-2.5 py-12 text-center">
                   <svg
                     className="mx-auto mb-3 text-[var(--nx-text-tertiary)] opacity-30"
@@ -363,7 +379,7 @@ export function Sidebar() {
                   )}
                 </div>
               ) : (
-                filteredPages.map((page) => (
+                listItems.map(({ page, titleMarked, bodySnippet }) => (
                   <div
                     key={page.id}
                     onClick={() => {
@@ -375,7 +391,8 @@ export function Sidebar() {
                     }}
                     onDoubleClick={() => startRename(page.id)}
                     className={`
-                      relative group flex items-center gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
+                      relative group flex gap-2.5 px-2.5 py-[6px] rounded-[var(--nx-radius-md)] text-[13px] cursor-pointer transition-all duration-100
+                      ${bodySnippet ? 'items-start' : 'items-center'}
                       ${
                         selectedPageId === page.id
                           ? 'nx-sidebar-page--selected bg-[var(--nx-bg-active)] text-[var(--nx-text-primary)]'
@@ -383,7 +400,11 @@ export function Sidebar() {
                       }
                     `}
                   >
-                    <span className="text-[var(--nx-text-tertiary)] shrink-0">
+                    <span
+                      className={`text-[var(--nx-text-tertiary)] shrink-0 ${
+                        bodySnippet ? 'mt-[3px]' : ''
+                      }`}
+                    >
                       <PageIcon iconKey={page.icon} size={14} />
                     </span>
 
@@ -404,12 +425,26 @@ export function Sidebar() {
                         className="flex-1 bg-[var(--nx-bg-tertiary)] border border-[var(--nx-accent)]/30 rounded-[var(--nx-radius-sm)] px-2 py-0.5 text-[13px] text-[var(--nx-text)] outline-none min-w-0"
                       />
                     ) : (
-                      <>
-                        <span className="flex-1 truncate">{page.title || 'Untitled'}</span>
-                        <span className="text-[10px] text-[var(--nx-text-tertiary)] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                          {relativeTime(page.updated_at)}
-                        </span>
-                      </>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="flex-1 truncate">
+                            {titleMarked ? (
+                              <SearchHighlight text={titleMarked} />
+                            ) : (
+                              page.title || 'Untitled'
+                            )}
+                          </span>
+                          <span className="text-[10px] text-[var(--nx-text-tertiary)] shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {relativeTime(page.updated_at)}
+                          </span>
+                        </div>
+
+                        {bodySnippet && (
+                          <div className="mt-[3px] text-[11px] leading-[1.45] text-[var(--nx-text-tertiary)] line-clamp-2">
+                            <SearchHighlight text={bodySnippet} />
+                          </div>
+                        )}
+                      </div>
                     )}
                   </div>
                 ))

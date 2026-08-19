@@ -121,6 +121,26 @@ export interface LinkTarget {
 }
 
 // ============================================================
+// Search
+// ============================================================
+
+/**
+ * Matched terms inside `titleMarked` and `bodySnippet` are wrapped in these
+ * control characters. They are stripped/rendered by `SearchHighlight` — never
+ * interpolate these strings as HTML.
+ */
+export const SEARCH_MARK_OPEN = '\u0002'
+export const SEARCH_MARK_CLOSE = '\u0003'
+
+export interface SearchResult {
+  page: Page
+  /** Page title with matched terms wrapped in the sentinels above. */
+  titleMarked: string
+  /** Body excerpt around the match, or null when only the title matched. */
+  bodySnippet: string | null
+}
+
+// ============================================================
 // IPC API contract
 // ============================================================
 
@@ -143,6 +163,10 @@ export interface NexusAPI {
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
     syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
+  }
+  search: {
+    pages(query: string, limit?: number): Promise<SearchResult[]>
+    rebuildIndex(): Promise<number>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>

@@ -91,6 +91,17 @@ export function registerIpcHandlers(): void {
     catch (e) { rethrowIpcError('links:syncLinks', e) }
   })
 
+  // Search
+  ipcMain.handle('search:pages', (_, query: string, limit?: number) => {
+    try { return db.searchPages(String(query ?? ''), limit ?? 50) }
+    catch (e) { rethrowIpcError('search:pages', e) }
+  })
+
+  ipcMain.handle('search:rebuildIndex', () => {
+    try { return db.rebuildSearchIndex() }
+    catch (e) { rethrowIpcError('search:rebuildIndex', e) }
+  })
+
   // IO — Export
   ipcMain.handle('io:exportPageMarkdown', (_, pageId: string) => {
     try { return io.exportPageMarkdown(pageId) }

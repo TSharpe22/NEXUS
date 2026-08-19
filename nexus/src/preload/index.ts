@@ -21,6 +21,10 @@ const api: NexusAPI = {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
     syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),
   },
+  search: {
+    pages: (query, limit) => ipcRenderer.invoke('search:pages', query, limit),
+    rebuildIndex: () => ipcRenderer.invoke('search:rebuildIndex'),
+  },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),
     exportPageJSON: (pageId) => ipcRenderer.invoke('io:exportPageJSON', pageId),

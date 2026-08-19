@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { Command } from 'cmdk'
-import Fuse from 'fuse.js'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../stores/app-store'
 import { shortcutLabel } from '../utils/shortcuts'
 import { PageIcon } from '../blocks/icons'
+import { SearchHighlight } from './SearchHighlight'
+import { useSearch } from '../hooks/use-search'
 
 export function CommandPalette() {
   const {
@@ -33,16 +34,24 @@ export function CommandPalette() {
     if (!commandPaletteOpen) setQuery('')
   }, [commandPaletteOpen])
 
-  // Fuzzy-filtered pages — must be called unconditionally (hooks rule)
-  const filteredPages = useMemo(() => {
-    if (!query.trim()) return pages
-    const fuse = new Fuse(pages, {
-      keys: ['title'],
-      threshold: 0.4,
-      ignoreLocation: true,
-    })
-    return fuse.search(query).map((result) => result.item)
-  }, [pages, query])
+  // Full-text search over titles and block content. Hooks must run
+  // unconditionally, so this sits above the early return below.
+  const { results: searchResults } = useSearch(query, 20)
+
+  const pageItems = useMemo(() => {
+    if (!query.trim()) {
+      return pages.slice(0, 20).map((page) => ({
+        page,
+        titleMarked: null as string | null,
+        bodySnippet: null as string | null,
+      }))
+    }
+    return searchResults.map((r) => ({
+      page: r.page,
+      titleMarked: r.titleMarked,
+      bodySnippet: r.bodySnippet,
+    }))
+  }, [pages, query, searchResults])
 
   // Early return AFTER all hooks
   if (!commandPaletteOpen) return null
@@ -115,6 +124,27 @@ export function CommandPalette() {
               <kbd className="ml-auto text-[10px] text-[var(--nx-text-tertiary)] bg-[var(--nx-bg-active)] px-1.5 py-0.5 rounded font-mono">
                 {shortcutLabel('\\')}
               </kbd>
+            </Command.Item>
+
+            <Command.Item
+              onSelect={async () => {
+                setCommandPaletteOpen(false)
+                try {
+                  const n = await window.api.search.rebuildIndex()
+                  toast.success(`Search index rebuilt — ${n} page(s)`)
+                } catch {
+                  toast.error('Could not rebuild the search index')
+                }
+              }}
+              className={itemClass}
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 2v6h-6" />
+                <path d="M3 12a9 9 0 0115-6.7L21 8" />
+                <path d="M3 22v-6h6" />
+                <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+              </svg>
+              <span>Rebuild Search Index</span>
             </Command.Item>
 
             <Command.Item
@@ -232,22 +262,45 @@ export function CommandPalette() {
           </Command.Group>
 
           {/* Pages */}
-          {filteredPages.length > 0 && (
+          {pageItems.length > 0 && (
             <Command.Group heading="Pages" className={headingClass}>
-              {filteredPages.map((page) => (
+              {pageItems.map(({ page, titleMarked, bodySnippet }) => (
                 <Command.Item
+                  // Page id keeps the value unique, so two pages sharing a
+                  // title can never collapse into one entry or open the wrong
+                  // page. Including the raw query in keywords stops cmdk's own
+                  // filter from discarding body-only matches, which have
+                  // already been ranked by FTS.
                   key={page.id}
-                  value={page.title || 'Untitled'}
+                  value={page.id}
+                  keywords={[page.title || 'Untitled', query]}
                   onSelect={() => {
                     selectPage(page.id)
                     setCommandPaletteOpen(false)
                   }}
-                  className={itemClass}
+                  className={`${itemClass} ${bodySnippet ? 'items-start' : ''}`}
                 >
-                  <span className="text-[var(--nx-text-tertiary)] shrink-0">
+                  <span
+                    className={`text-[var(--nx-text-tertiary)] shrink-0 ${
+                      bodySnippet ? 'mt-[3px]' : ''
+                    }`}
+                  >
                     <PageIcon iconKey={page.icon} size={14} />
                   </span>
-                  <span className="truncate">{page.title || 'Untitled'}</span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block truncate">
+                      {titleMarked ? (
+                        <SearchHighlight text={titleMarked} />
+                      ) : (
+                        page.title || 'Untitled'
+                      )}
+                    </span>
+                    {bodySnippet && (
+                      <span className="mt-[3px] block text-[11px] leading-[1.45] text-[var(--nx-text-tertiary)] line-clamp-2">
+                        <SearchHighlight text={bodySnippet} />
+                      </span>
+                    )}
+                  </span>
                 </Command.Item>
               ))}
             </Command.Group>
