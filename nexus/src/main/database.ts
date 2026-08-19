@@ -41,6 +41,24 @@ function columnExists(table: string, column: string): boolean {
   return cols.some((c) => c.name === column)
 }
 
+/**
+ * Add a column if the table predates it.
+ *
+ * `CREATE TABLE IF NOT EXISTS` silently does nothing when the table already
+ * exists, even if its columns no longer match the DDL above — so a vault
+ * created by an earlier version of Nexus keeps its original shape forever.
+ * Anything that then referenced the newer column (an index, a query) failed at
+ * startup with "no such column". Every column added after the first release is
+ * backfilled here, before any index can depend on it.
+ *
+ * `ddl` must carry a constant default: SQLite rejects ALTER TABLE ADD COLUMN
+ * with a non-constant default such as datetime('now').
+ */
+function ensureColumn(table: string, column: string, ddl: string): void {
+  if (columnExists(table, column)) return
+  db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`)
+}
+
 function runMigrations(): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS types (
@@ -65,10 +83,6 @@ function runMigrations(): void {
       updated_at    TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(type_id);
-    CREATE INDEX IF NOT EXISTS idx_pages_archived ON pages(is_archived);
-    CREATE INDEX IF NOT EXISTS idx_pages_deleted ON pages(is_deleted);
-
     CREATE TABLE IF NOT EXISTS blocks (
       id              TEXT PRIMARY KEY,
       page_id         TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -79,10 +93,6 @@ function runMigrations(): void {
       created_at      TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
     );
-
-    CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id);
-    CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_block_id);
-    CREATE INDEX IF NOT EXISTS idx_blocks_order ON blocks(page_id, sort_order);
 
     CREATE TABLE IF NOT EXISTS property_definitions (
       id            TEXT PRIMARY KEY,
@@ -107,9 +117,6 @@ function runMigrations(): void {
       UNIQUE(page_id, property_def_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_propvals_page ON property_values(page_id);
-    CREATE INDEX IF NOT EXISTS idx_propvals_def ON property_values(property_def_id);
-
     CREATE TABLE IF NOT EXISTS links (
       id              TEXT PRIMARY KEY,
       source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
@@ -119,29 +126,32 @@ function runMigrations(): void {
       UNIQUE(source_page_id, target_page_id)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_page_id);
-    CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_page_id);
   `)
 
-  // Phase 03 migration: page_width column (TEXT, stores legacy preset names or numeric px values)
-  if (!columnExists('pages', 'page_width')) {
-    db.exec(`ALTER TABLE pages ADD COLUMN page_width TEXT NOT NULL DEFAULT '720'`)
-  }
+  // ---- Column backfill --------------------------------------------------
+  // Runs before any index below, so an older vault gains the column first.
+
+  // Present in the original schema, but a vault from an early build may
+  // predate them. Backfilled defensively — the indexes depend on them.
+  ensureColumn('pages', 'icon', 'TEXT')
+  ensureColumn('pages', 'cover', 'TEXT')
+  ensureColumn('pages', 'is_archived', 'INTEGER NOT NULL DEFAULT 0')
+  ensureColumn('pages', 'is_deleted', 'INTEGER NOT NULL DEFAULT 0')
+
+  // Phase 03: page_width (TEXT, stores legacy preset names or numeric px values)
+  ensureColumn('pages', 'page_width', `TEXT NOT NULL DEFAULT '720'`)
 
   // Sidebar hierarchy. ON DELETE SET NULL rather than CASCADE: permanently
   // deleting one page must never silently destroy the subtree beneath it —
   // orphaned children are promoted to the root instead.
-  if (!columnExists('pages', 'parent_page_id')) {
-    db.exec(
-      `ALTER TABLE pages ADD COLUMN parent_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
-    )
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id)')
+  ensureColumn('pages', 'parent_page_id', 'TEXT REFERENCES pages(id) ON DELETE SET NULL')
+  ensureColumn('pages', 'is_favorite', 'INTEGER NOT NULL DEFAULT 0')
 
   // Manual ordering within a parent. Existing vaults are seeded from their
   // current recency order so the sidebar looks unchanged after upgrading.
-  if (!columnExists('pages', 'sort_order')) {
-    db.exec('ALTER TABLE pages ADD COLUMN sort_order REAL NOT NULL DEFAULT 0')
+  const seedSortOrder = !columnExists('pages', 'sort_order')
+  ensureColumn('pages', 'sort_order', 'REAL NOT NULL DEFAULT 0')
+  if (seedSortOrder) {
     const rows = db.prepare('SELECT id FROM pages ORDER BY updated_at DESC').all() as
       { id: string }[]
     const seed = db.prepare('UPDATE pages SET sort_order = ? WHERE id = ?')
@@ -151,9 +161,27 @@ function runMigrations(): void {
     trx()
   }
 
-  if (!columnExists('pages', 'is_favorite')) {
-    db.exec('ALTER TABLE pages ADD COLUMN is_favorite INTEGER NOT NULL DEFAULT 0')
-  }
+  ensureColumn('blocks', 'parent_block_id', 'TEXT REFERENCES blocks(id) ON DELETE CASCADE')
+  ensureColumn('blocks', 'sort_order', 'REAL NOT NULL DEFAULT 0')
+
+  // ---- Indexes ----------------------------------------------------------
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_pages_type ON pages(type_id);
+    CREATE INDEX IF NOT EXISTS idx_pages_archived ON pages(is_archived);
+    CREATE INDEX IF NOT EXISTS idx_pages_deleted ON pages(is_deleted);
+    CREATE INDEX IF NOT EXISTS idx_pages_parent ON pages(parent_page_id);
+
+    CREATE INDEX IF NOT EXISTS idx_blocks_page ON blocks(page_id);
+    CREATE INDEX IF NOT EXISTS idx_blocks_parent ON blocks(parent_block_id);
+    CREATE INDEX IF NOT EXISTS idx_blocks_order ON blocks(page_id, sort_order);
+
+    CREATE INDEX IF NOT EXISTS idx_propvals_page ON property_values(page_id);
+    CREATE INDEX IF NOT EXISTS idx_propvals_def ON property_values(property_def_id);
+
+    CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_page_id);
+    CREATE INDEX IF NOT EXISTS idx_links_target ON links(target_page_id);
+  `)
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS settings (
