@@ -20,6 +20,14 @@ const PROPERTY_TYPES: { value: PropertyType; label: string }[] = [
   { value: 'relation', label: 'Relation' }
 ]
 
+/**
+ * Which definition is being dragged. Chromium blanks `dataTransfer.getData()`
+ * during dragover, so a row can't read the payload while deciding whether to
+ * accept it — the folder tree keeps a module-level handle for the same reason,
+ * and one window can only be dragging one thing at a time.
+ */
+let draggedDefinitionId: string | null = null
+
 function valueOf(prop: Property | undefined): string | number | null {
   if (!prop) return null
   if (prop.type === 'date') return prop.value_date
@@ -88,6 +96,47 @@ export function PropertiesPanel({ page }: Props) {
     await refresh()
   }
 
+  /**
+   * `reorderPropertyDefinitions` has been in repo.ts the whole time with no
+   * handler, no preload binding and no UI, so the order a type's properties
+   * were created in was the order they stayed in forever.
+   */
+  const reorder = async (draggedId: string, targetId: string) => {
+    if (draggedId === targetId) return
+    const ids = definitions.map((d) => d.id)
+    const from = ids.indexOf(draggedId)
+    const to = ids.indexOf(targetId)
+    if (from < 0 || to < 0) return
+
+    ids.splice(to, 0, ids.splice(from, 1)[0])
+    // Applied locally first: waiting on the round trip made the row visibly
+    // snap back before landing in its new place.
+    const byId = new Map(definitions.map((d) => [d.id, d]))
+    setDefinitions(ids.map((id) => byId.get(id)!).filter(Boolean))
+
+    try {
+      await window.api.types.reorderProperties(page.type_id, ids)
+    } catch (e) {
+      console.error('[nexus] failed to reorder properties', e)
+      toast.error('Could not reorder properties')
+      await refresh()
+    }
+  }
+
+  /** Renaming is display-only — the key values are stored against is left
+   *  alone, so a rename never strands what pages already hold. */
+  const rename = async (def: PropertyDefinition, name: string) => {
+    const clean = name.trim()
+    if (!clean || clean === def.name) return
+    try {
+      await window.api.types.renameProperty(def.id, clean)
+      await refresh()
+    } catch (e) {
+      console.error('[nexus] failed to rename property', e)
+      toast.error(`Could not rename "${def.name}"`)
+    }
+  }
+
   const removeProperty = async (def: PropertyDefinition) => {
     const typeLabel = types.find((t) => t.id === page.type_id)?.name ?? 'this type'
     if (
@@ -138,6 +187,8 @@ export function PropertiesPanel({ page }: Props) {
           pageId={page.id}
           value={values[def.key]}
           onSave={(v) => save(def, v)}
+          onRename={(name) => rename(def, name)}
+          onReorder={(draggedId) => reorder(draggedId, def.id)}
           onRemove={() => removeProperty(def)}
         />
       ))}
@@ -189,15 +240,21 @@ function PropertyRow({
   pageId,
   value,
   onSave,
+  onRename,
+  onReorder,
   onRemove
 }: {
   def: PropertyDefinition
   pageId: string
   value: Property | undefined
   onSave: (value: string | number | null) => void
+  onRename: (name: string) => void
+  onReorder: (draggedDefinitionId: string) => void
   onRemove: () => void
 }) {
   const current = valueOf(value)
+  const [renaming, setRenaming] = useState(false)
+  const [dropTarget, setDropTarget] = useState(false)
 
   const field = (() => {
     if (def.property_type === 'multi_select') {
@@ -235,10 +292,67 @@ function PropertyRow({
   })()
 
   return (
-    <div className="nx-properties__row">
-      <span className="nx-properties__row-label" title={def.name}>
-        {def.name}
+    <div
+      className={`nx-properties__row ${dropTarget ? 'is-drop-target' : ''}`}
+      onDragOver={(e) => {
+        if (!draggedDefinitionId || draggedDefinitionId === def.id) return
+        e.preventDefault()
+        e.dataTransfer.dropEffect = 'move'
+        setDropTarget(true)
+      }}
+      onDragLeave={() => setDropTarget(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDropTarget(false)
+        if (draggedDefinitionId) onReorder(draggedDefinitionId)
+      }}
+    >
+      <span
+        className="nx-properties__grip"
+        draggable
+        title="Drag to reorder"
+        aria-label={`Reorder ${def.name}`}
+        onDragStart={(e) => {
+          draggedDefinitionId = def.id
+          e.dataTransfer.effectAllowed = 'move'
+          // Chromium won't start a drag with an empty payload.
+          e.dataTransfer.setData('text/plain', def.name)
+        }}
+        onDragEnd={() => {
+          draggedDefinitionId = null
+        }}
+      >
+        ⋮⋮
       </span>
+
+      {renaming ? (
+        <input
+          className="nx-input nx-properties__rename"
+          autoFocus
+          defaultValue={def.name}
+          aria-label={`Rename ${def.name}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              onRename(e.currentTarget.value)
+              setRenaming(false)
+            }
+            if (e.key === 'Escape') setRenaming(false)
+          }}
+          onBlur={(e) => {
+            onRename(e.currentTarget.value)
+            setRenaming(false)
+          }}
+        />
+      ) : (
+        <button
+          className="nx-properties__row-label"
+          title={`${def.name} — click to rename`}
+          onClick={() => setRenaming(true)}
+        >
+          {def.name}
+        </button>
+      )}
+
       <span className="nx-properties__row-field">{field}</span>
       <button className="nx-properties__remove" onClick={onRemove} title={`Remove ${def.name}`} aria-label={`Remove ${def.name}`}>
         ×

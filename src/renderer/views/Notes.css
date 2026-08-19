@@ -224,19 +224,61 @@
 
 .nx-properties__row {
   display: grid;
-  grid-template-columns: 132px 1fr auto;
+  grid-template-columns: 14px 132px 1fr auto;
   align-items: center;
-  gap: var(--nx-space-3);
+  gap: var(--nx-space-2) var(--nx-space-3);
   padding: 3px 0;
   border-radius: var(--nx-radius-sm);
 }
 
-.nx-properties__row-label {
+/* The row a drop would land on. A hairline rather than a fill, so the row
+   underneath stays readable while you aim. */
+.nx-properties__row.is-drop-target {
+  box-shadow: inset 0 -2px 0 var(--nx-accent);
+}
+
+.nx-properties__grip {
   color: var(--nx-text-dim);
+  cursor: grab;
+  font-size: 9px;
+  letter-spacing: -2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--nx-motion);
+  user-select: none;
+}
+
+.nx-properties__row:hover .nx-properties__grip {
+  opacity: 0.7;
+}
+
+.nx-properties__grip:active {
+  cursor: grabbing;
+}
+
+/* A button rather than a span: clicking the name is how you rename it. */
+.nx-properties__row-label {
+  background: none;
+  border: none;
+  padding: 0;
+  text-align: left;
+  color: var(--nx-text-dim);
+  cursor: text;
+  font-family: var(--nx-font-sans);
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  transition: color var(--nx-motion);
+}
+
+.nx-properties__row-label:hover {
+  color: var(--nx-text);
+}
+
+.nx-properties__rename {
+  font-size: 12.5px;
+  width: 100%;
 }
 
 .nx-properties__row-field {

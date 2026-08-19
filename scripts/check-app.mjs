@@ -428,6 +428,63 @@ await sleep(300)
 check('select value survives cancelling', (await propValue('status')) === 'active')
 await page.screenshot({ path: SHOT + '/06b-properties.png' })
 
+// ------------------------------------------------- renaming and reordering
+log('\n— property definitions —')
+const labels = () =>
+  page.evaluate(() => [...document.querySelectorAll('.nx-properties__row-label')].map((e) => e.textContent.trim()))
+const defsOfNote = () => page.evaluate(() => window.api.types.getPropertyDefinitions('note'))
+
+check('property names are rename controls', (await labels()).includes('Status'), JSON.stringify(await labels()))
+
+// `renamePropertyDefinition` was wired all the way through preload and had no
+// UI at all. The key is deliberately left alone, so the value survives.
+await page.evaluate(() => {
+  const label = [...document.querySelectorAll('.nx-properties__row-label')].find((e) => e.textContent.trim() === 'Status')
+  label.click()
+})
+await sleep(300)
+await page.evaluate(() => {
+  const input = document.querySelector('.nx-properties__rename')
+  input.focus()
+  input.select()
+})
+await page.keyboard.type('Stage', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(700)
+const renamed = (await defsOfNote()).find((d) => d.key === 'status')
+check('property renamed', renamed?.name === 'Stage', JSON.stringify(renamed))
+check('the key is left alone so stored values survive', renamed?.key === 'status')
+check('the value is still there', (await propValue('status')) === 'active')
+
+// `reorderPropertyDefinitions` existed in repo.ts with no handler, no preload
+// binding and no UI, so creation order was permanent.
+const orderBefore = (await defsOfNote()).map((d) => d.key)
+check('definitions start in creation order', JSON.stringify(orderBefore) === JSON.stringify(['difficulty', 'status']), JSON.stringify(orderBefore))
+
+const dragged = await page.evaluate(() => {
+  const rows = [...document.querySelectorAll('.nx-properties__row')]
+  const source = rows.find((r) => r.textContent.includes('Stage'))
+  const target = rows.find((r) => r.textContent.includes('Difficulty'))
+  if (!source || !target) return 'MISSING'
+  // Same approach as the folder-tree drag: Chromium won't synthesise a real
+  // HTML5 drag from script, but the handlers are ordinary listeners.
+  const dt = new DataTransfer()
+  const fire = (el, type) => el.dispatchEvent(new DragEvent(type, { dataTransfer: dt, bubbles: true, cancelable: true }))
+  fire(source.querySelector('.nx-properties__grip'), 'dragstart')
+  fire(target, 'dragover')
+  fire(target, 'drop')
+  return 'OK'
+})
+check('dragged one property onto another', dragged === 'OK', dragged)
+await sleep(800)
+check(
+  'the new order is persisted',
+  JSON.stringify((await defsOfNote()).map((d) => d.key)) === JSON.stringify(['status', 'difficulty']),
+  JSON.stringify((await defsOfNote()).map((d) => d.key))
+)
+check('the panel shows the new order', JSON.stringify(await labels()) === JSON.stringify(['Stage', 'Difficulty']), JSON.stringify(await labels()))
+
+
 // ---------------------------------------------------------------- links
 log('\n— second page and [[ links —')
 const before = await page.evaluate(() => window.api.pages.getAll().then((p) => p.length))
@@ -761,6 +818,11 @@ check('frontmatter present', md.startsWith('---\n'), md.slice(0, 40))
 check('body carried over', md.includes('Rate depends on temperature'))
 check('tags in frontmatter', md.includes('tags: ["kinetics"]'), md.split('---')[1]?.trim().slice(0, 160))
 check('properties in frontmatter', md.includes('difficulty:'), md.split('---')[1]?.trim().slice(0, 160))
+check(
+  'frontmatter follows the type\'s property order',
+  md.indexOf('status:') < md.indexOf('difficulty:'),
+  md.split('---')[1]?.trim().slice(0, 240)
+)
 // The [[ link was made on the second page, so that is the file to look in.
 const linker = readFileSync(join(mirrorDir, files.find((f) => f.includes('Catalysis'))), 'utf-8')
 check('wiki-link preserved as [[Title]]', linker.includes('[[Reaction kinetics]]'),

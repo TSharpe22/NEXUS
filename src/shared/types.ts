@@ -242,6 +242,8 @@ export interface NexusAPI {
     defineProperty(typeId: string, name: string, propertyType: PropertyType): Promise<PropertyDefinition>
     renameProperty(definitionId: string, name: string): Promise<PropertyDefinition>
     removeProperty(definitionId: string): Promise<void>
+    /** Rewrites `sort_order` to match the given order of definition ids. */
+    reorderProperties(typeId: string, orderedIds: string[]): Promise<void>
   }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>

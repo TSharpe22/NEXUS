@@ -376,6 +376,16 @@ export function registerIpcHandlers(): void {
       mirror.scheduleSync()
     }
   })
+  ipcMain.handle('types:reorderProperties', (_, typeId: string, orderedIds: string[]) => {
+    try {
+      return repo.reorderPropertyDefinitions(typeId, orderedIds)
+    } catch (e) {
+      rethrow('types:reorderProperties', e)
+    } finally {
+      mirror.scheduleSync()
+    }
+  })
+
   ipcMain.handle('types:removeProperty', (_, definitionId: string) => {
     try {
       return repo.removePropertyDefinition(definitionId)
