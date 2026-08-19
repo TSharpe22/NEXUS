@@ -195,10 +195,14 @@
 
 /* ---------------- properties ---------------- */
 
+/* Sits between the tag chips and the document body, so a typed page's data is
+   the first thing under the title instead of something you scroll past the
+   whole note to reach. Hairlines above and below separate it from both. */
 .nx-properties {
-  margin-top: var(--nx-space-6);
-  padding-top: var(--nx-space-4);
+  margin: 0 0 var(--nx-space-5);
+  padding: var(--nx-space-3) 0 var(--nx-space-4);
   border-top: 1px solid var(--nx-border);
+  border-bottom: 1px solid var(--nx-border);
   display: flex;
   flex-direction: column;
   gap: var(--nx-space-1);
@@ -239,8 +243,12 @@
   min-width: 0;
 }
 
+/* Capped rather than full-bleed: property values are short, and a text box
+   running the width of the reading column dwarfed the chip controls next to
+   it. */
 .nx-properties__row-field .nx-input {
   width: 100%;
+  max-width: 340px;
 }
 
 .nx-properties__remove {
@@ -288,6 +296,27 @@
 .nx-properties__add-btn:hover {
   color: var(--nx-accent);
   border-color: var(--nx-accent);
+}
+
+.nx-properties__select {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-1);
+}
+
+.nx-properties__select-empty {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-sans);
+  font-size: 12.5px;
+  transition: color var(--nx-motion);
+}
+
+.nx-properties__select-empty:hover {
+  color: var(--nx-accent);
 }
 
 .nx-properties__tags {

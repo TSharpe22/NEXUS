@@ -289,6 +289,145 @@ check(
   )
 )
 
+const props = () => page.evaluate(() => window.api.pages.getAll().then((p) => window.api.properties.getForPage(p[0].id)))
+const propValue = async (key) => (await props()).find((p) => p.key === key)?.value_text ?? null
+const focusRow = (name) =>
+  page.evaluate((n) => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes(n))
+    if (!row) return 'ROW_NOT_FOUND'
+    const input = row.querySelector('input')
+    input.focus()
+    input.select?.()
+    return 'OK'
+  }, name)
+
+// The panel is the first thing under the title now, not a footer you scroll
+// the whole document to reach.
+check(
+  'properties render above the document body',
+  await page.evaluate(() => {
+    const panel = document.querySelector('.nx-properties')
+    const body = document.querySelector('.bn-editor')
+    if (!panel || !body) return false
+    // DOCUMENT_POSITION_FOLLOWING: the body comes after the panel.
+    return (panel.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+  })
+)
+
+// Enter used to do nothing at all — the value only committed on blur, so
+// typing one and pressing Enter looked like the app had dropped it.
+check('property row focused', (await focusRow('Difficulty')) === 'OK')
+await page.keyboard.type('medium', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('Enter commits a property value', (await propValue('difficulty')) === 'medium')
+
+// ...and Escape puts the field back rather than committing the edit.
+await focusRow('Difficulty')
+await page.keyboard.type('scrapped', { delay: 20 })
+await page.keyboard.press('Escape')
+await sleep(500)
+check('Escape reverts the draft', (await propValue('difficulty')) === 'medium')
+check(
+  'the field shows the stored value again',
+  (await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Difficulty'))
+    return row.querySelector('input').value
+  })) === 'medium'
+)
+
+// Blurring a field you never touched used to write, and every write logs —
+// which buried the Activity feed under rows recording no change at all.
+const propEvents = () =>
+  page.evaluate(() =>
+    window.api.activity.getRecent(300).then((rows) => rows.filter((r) => r.message.includes('difficulty')).length)
+  )
+const eventsBefore = await propEvents()
+await focusRow('Difficulty')
+await page.evaluate(() => document.querySelector('.nx-editor__title').focus())
+await sleep(600)
+check('an untouched field logs nothing', (await propEvents()) === eventsBefore, `before ${eventsBefore}`)
+
+// A second definition whose name slugifies onto an existing key used to
+// silently retype the first one, stranding every stored value.
+check(
+  'a duplicate property name is refused',
+  await page.evaluate(() =>
+    window.api.types.defineProperty('note', 'Difficulty', 'number').then(
+      () => false,
+      () => true
+    )
+  )
+)
+
+// ---------------------------------------------------------------- select
+log('\n— select properties —')
+check('add-property control reopens', (await clickText('+ Add property')) === 'OK')
+await sleep(300)
+await page.evaluate(() => document.querySelector('.nx-properties__add-form .nx-input').focus())
+await page.keyboard.type('Status', { delay: 20 })
+await page.selectOption('.nx-properties__add-form .nx-select', 'select')
+await clickText('Add')
+await sleep(600)
+check(
+  'select definition created',
+  (await page.evaluate(() => window.api.types.getPropertyDefinitions('note'))).some(
+    (d) => d.key === 'status' && d.property_type === 'select'
+  )
+)
+
+// A select fell through to a plain text box before, so there was no list at
+// all. Empty is a control you click, not a text field.
+const openSelect = () =>
+  page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Status'))
+    if (!row) return 'ROW_NOT_FOUND'
+    const trigger = row.querySelector('.nx-properties__select-empty, .nx-tag-chip__label')
+    if (!trigger) return 'TRIGGER_NOT_FOUND'
+    trigger.click()
+    return 'OK'
+  })
+check('select opens an editor, not a text input', (await openSelect()) === 'OK')
+await sleep(300)
+await page.keyboard.type('active', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(600)
+check('select value saved', (await propValue('status')) === 'active')
+check(
+  'the chosen value shows as a chip',
+  (await page.evaluate(() => {
+    const row = [...document.querySelectorAll('.nx-properties__row')].find((r) => r.textContent.includes('Status'))
+    return row.querySelector('.nx-tag-chip .nx-tag-chip__label')?.textContent.trim()
+  })) === 'active'
+)
+
+// The regression guard for the real blocker: getKnownPropertyValues dropped
+// every value that wasn't a JSON array, so the option list came back empty
+// and a "select" had nothing to select from.
+check(
+  'known values include plain (non-array) values',
+  (await page.evaluate(() => window.api.properties.knownValues('status'))).includes('active'),
+  JSON.stringify(await page.evaluate(() => window.api.properties.knownValues('status')))
+)
+check(
+  'a plain text property lists its values too',
+  (await page.evaluate(() => window.api.properties.knownValues('difficulty'))).includes('medium')
+)
+
+// Reopening offers what is already in use, which is what makes it a list.
+check('select reopens on the chip', (await openSelect()) === 'OK')
+await sleep(400)
+check(
+  'the option list is populated from values already in use',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-properties__tag-menu .nx-tagbar__option')].map((b) => b.textContent.trim())
+  )).includes('active')
+)
+await page.keyboard.press('Escape')
+await sleep(300)
+check('select value survives cancelling', (await propValue('status')) === 'active')
+await page.screenshot({ path: SHOT + '/06b-properties.png' })
+
 // ---------------------------------------------------------------- links
 log('\n— second page and [[ links —')
 const before = await page.evaluate(() => window.api.pages.getAll().then((p) => p.length))

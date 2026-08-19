@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useCreateBlockNote, SuggestionMenuController } from '@blocknote/react'
 import { filterSuggestionItems } from '@blocknote/core'
 import { BlockNoteView } from '@blocknote/ariakit'
@@ -13,6 +13,12 @@ import './Editor.css'
 
 interface EditorProps {
   page: Page
+  /**
+   * Rendered between the tag chips and the document body. A typed page's
+   * properties belong above what you scroll through, not under it — but the
+   * title and tags live in here, so the slot has to as well.
+   */
+  children?: ReactNode
 }
 
 function parseInitialContent(content: string) {
@@ -31,7 +37,7 @@ function parseInitialContent(content: string) {
  * Keyed by page.id in Notes.tsx so a fresh editor instance mounts per page —
  * simpler than trying to imperatively swap BlockNote's document in place.
  */
-export function Editor({ page }: EditorProps) {
+export function Editor({ page, children }: EditorProps) {
   const [title, setTitle] = useState(page.title)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const editorRootRef = useRef<HTMLDivElement>(null)
@@ -190,6 +196,8 @@ export function Editor({ page }: EditorProps) {
       />
 
       <TagBar pageId={page.id} />
+
+      {children}
 
       <BlockNoteView
         editor={editor}

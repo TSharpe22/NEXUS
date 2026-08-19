@@ -222,12 +222,13 @@ export interface NexusAPI {
   }
   properties: {
     getForPage(pageId: string): Promise<Property[]>
+    /** Resolves with the row as stored, so the caller needn't guess the column. */
     set(
       pageId: string,
       key: string,
       type: PropertyType,
       value: string | number | null
-    ): Promise<void>
+    ): Promise<Property>
     /** Distinct values already recorded for this property key. */
     knownValues(key: string): Promise<string[]>
     remove(pageId: string, key: string): Promise<void>

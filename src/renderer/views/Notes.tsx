@@ -275,8 +275,9 @@ export function Notes() {
                   <button onClick={() => restorePage(activePage.id)}>Restore it</button>
                 </div>
               )}
-              <Editor key={activePage.id} page={activePage} />
-              <PropertiesPanel page={activePage} />
+              <Editor key={activePage.id} page={activePage}>
+                <PropertiesPanel page={activePage} />
+              </Editor>
               <BacklinksPanel pageId={activePage.id} />
             </div>
           </div>

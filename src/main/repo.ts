@@ -451,10 +451,18 @@ export function defineProperty(typeId: string, name: string, propertyType: Prope
   ).m
   const id = uuidv4()
 
+  // Two names that slugify to the same key used to overwrite each other's
+  // definition: adding "Status" as a number after "Status" as text flipped
+  // `property_type` while every stored value stayed in `value_text`, so all of
+  // them read back empty. Refuse instead and let the caller say so.
+  const clash = db
+    .prepare('SELECT name FROM property_definitions WHERE type_id = ? AND key = ?')
+    .get(typeId, key) as { name: string } | undefined
+  if (clash) throw new Error(`A property named "${clash.name}" already exists on this type`)
+
   db.prepare(
     `INSERT INTO property_definitions (id, type_id, key, name, property_type, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT(type_id, key) DO UPDATE SET name = excluded.name, property_type = excluded.property_type`
+     VALUES (?, ?, ?, ?, ?, ?)`
   ).run(id, typeId, key, name, propertyType, (maxOrder ?? -1) + 1)
 
   return db.prepare('SELECT * FROM property_definitions WHERE type_id = ? AND key = ?').get(typeId, key) as PropertyDefinition
@@ -504,17 +512,35 @@ export function getPropertiesForPage(pageId: string): Property[] {
   return getDb().prepare('SELECT * FROM properties WHERE page_id = ?').all(pageId) as Property[]
 }
 
+/** Writes the value and returns the row as stored, so the caller never has to
+ *  guess which of the sparse columns it landed in. */
 export function setProperty(
   pageId: string,
   key: string,
   type: PropertyType,
   value: string | number | null
-): void {
+): Property {
   const db = getDb()
   const id = uuidv4()
   const valueText = type === 'date' ? null : typeof value === 'string' ? value : null
   const valueNumber = typeof value === 'number' ? value : null
   const valueDate = type === 'date' && typeof value === 'string' ? value : null
+
+  const read = db.prepare('SELECT * FROM properties WHERE page_id = ? AND key = ?')
+  const existing = read.get(pageId, key) as Property | undefined
+
+  // Blurring a field you never touched still fired a write, and every write
+  // logs — so opening a typed page and tabbing through it buried the Activity
+  // feed under `set "…"` rows that recorded no actual change.
+  if (
+    existing &&
+    existing.type === type &&
+    existing.value_text === valueText &&
+    existing.value_number === valueNumber &&
+    existing.value_date === valueDate
+  ) {
+    return existing
+  }
 
   db.prepare(
     `INSERT INTO properties (id, page_id, key, type, value_text, value_number, value_date)
@@ -525,6 +551,8 @@ export function setProperty(
   ).run(id, pageId, key, type, valueText, valueNumber, valueDate)
 
   logActivity(pageId, 'property', `set "${key}"`)
+
+  return read.get(pageId, key) as Property
 }
 
 /**
@@ -556,8 +584,14 @@ export function getKnownPropertyValues(key: string): string[] {
     } catch {
       // Not JSON — a plain select/text value, which counts as one value.
     }
-    if (Array.isArray(parsed)) for (const item of parsed) if (typeof item === 'string') bump(item)
-    else bump(row.v)
+    // Braces matter here: without them the `else` binds to the inner `if`, so
+    // the plain-value branch only ran for a non-string array element and every
+    // ordinary select/text value was silently dropped.
+    if (Array.isArray(parsed)) {
+      for (const item of parsed) if (typeof item === 'string') bump(item)
+    } else {
+      bump(row.v)
+    }
   }
 
   // Most-used first: the value you reach for again is usually the common one.
