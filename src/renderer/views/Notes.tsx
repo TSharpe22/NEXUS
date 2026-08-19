@@ -10,6 +10,7 @@ import { Editor } from '../editor/Editor'
 import { PropertiesPanel } from './PropertiesPanel'
 import { BacklinksPanel } from './BacklinksPanel'
 import { relativeTime } from '../hooks/use-relative-time'
+import { journalDateLabel } from '@shared/journal-date'
 import { FolderTree } from './FolderTree'
 import { TagFilter } from './TagFilter'
 import './Notes.css'
@@ -30,7 +31,8 @@ export function Notes() {
     emptyTrash,
     folders,
     activeTagFilter,
-    createFolder
+    createFolder,
+    openTodayEntry
   } = useAppStore()
 
   const [showTrash, setShowTrash] = useState(false)
@@ -107,6 +109,10 @@ export function Notes() {
 
   const filtering = query.trim().length > 0 || activeTagFilter.length > 0
 
+  // The same helper the entry's title is built from, so the button and the
+  // page it opens can never disagree about today's date.
+  const todayLabel = useMemo(() => journalDateLabel(), [])
+
   const handleCreateType = async () => {
     const name = newTypeName.trim()
     if (!name) return
@@ -151,6 +157,24 @@ export function Notes() {
     <div className="nx-notes">
       <aside className="nx-notes__list">
         <div className="nx-notes__list-top">
+          {!showTrash && (
+            <button
+              className="nx-notes__today"
+              onClick={async () => {
+                try {
+                  await openTodayEntry()
+                } catch (e) {
+                  console.error('[nexus] could not open today\'s entry', e)
+                  toast.error("Could not open today's entry")
+                }
+              }}
+              title="Open today's journal entry, creating it from the Journal template if it does not exist yet"
+            >
+              <span className="nx-notes__today-label">Today&rsquo;s entry</span>
+              <span className="nx-notes__today-date">{todayLabel}</span>
+            </button>
+          )}
+
           <input
             className="nx-input nx-notes__search"
             placeholder={showTrash ? 'Search trash' : 'Search pages'}

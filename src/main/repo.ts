@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
+import { journalEntryTitle, localDateISO } from '@shared/journal-date'
 import { statSync } from 'fs'
 import type {
   Page,
@@ -28,16 +29,83 @@ const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
 // Pages
 // ============================================================
 
-export function createPage(typeId: string = 'note'): Page {
+/**
+ * The value a property holds, whichever of the sparse columns it lives in.
+ *
+ * Every copier needs this, and each one had written its own version that
+ * forgot `value_relation` — so duplicating a page, or creating one from a
+ * template, silently dropped its relations while copying everything else.
+ * Mirrors the column routing in `setProperty`, which is the only thing that
+ * decides where a value goes.
+ */
+function propertyValue(prop: Property): string | number | null {
+  if (prop.type === 'date') return prop.value_date
+  if (prop.type === 'relation') return prop.value_relation
+  return prop.value_text ?? prop.value_number
+}
+
+export function createPage(typeId: string = 'note', folderId: string | null = null): Page {
   const db = getDb()
   const id = uuidv4()
   const ts = now()
+
+  // A type can name one page as its template; a new page of that type starts
+  // from a copy of it. Blank when the type has none, or when the template page
+  // has since been deleted.
+  const template = getTypeTemplate(typeId)
+  const content = template?.content ?? '[]'
+
   db.prepare(
-    `INSERT INTO pages (id, type_id, title, content, created_at, updated_at) VALUES (?, ?, '', '[]', ?, ?)`
-  ).run(id, typeId, ts, ts)
+    `INSERT INTO pages (id, type_id, title, content, folder_id, created_at, updated_at)
+     VALUES (?, ?, '', ?, ?, ?, ?)`
+  ).run(id, typeId, content, folderId, ts, ts)
+
+  // Property *values* come across too, so a template can carry defaults —
+  // a Journal entry's mood left blank, a Trade Log's account pre-filled.
+  if (template) {
+    for (const prop of getPropertiesForPage(template.id)) {
+      const value = propertyValue(prop)
+      if (value !== null && value !== undefined && value !== '') {
+        setProperty(id, prop.key, prop.type, value)
+      }
+    }
+  }
+
   reindexPage(id)
-  logActivity(id, 'created', 'page created')
+  logActivity(id, 'created', template ? 'page created from template' : 'page created')
   return getPageById(id)!
+}
+
+// ============================================================
+// Templates
+// ============================================================
+
+/** The page a type's new pages start from, or null. */
+export function getTypeTemplate(typeId: string): Page | null {
+  const row = getDb()
+    .prepare(
+      `SELECT p.* FROM types t
+       JOIN pages p ON p.id = t.template_page_id
+       WHERE t.id = ? AND p.is_deleted = 0`
+    )
+    .get(typeId) as Page | undefined
+  return row ?? null
+}
+
+/**
+ * Point a type at a template page, or clear it with null.
+ *
+ * The template is deliberately a page OF the type it templates, which is what
+ * lets a per-type picker list candidates. Nothing recurses: creating a page
+ * copies the template's content and property values, it never creates from the
+ * new page in turn.
+ */
+export function setTypeTemplate(typeId: string, pageId: string | null): void {
+  if (pageId) {
+    const page = getPageById(pageId)
+    if (!page) throw new Error(`Page not found: ${pageId}`)
+  }
+  getDb().prepare('UPDATE types SET template_page_id = ? WHERE id = ?').run(pageId, typeId)
 }
 
 export function getAllPages(): Page[] {
@@ -155,8 +223,7 @@ export function duplicatePage(id: string): Page {
   )
 
   for (const prop of getPropertiesForPage(id)) {
-    const value = prop.type === 'date' ? prop.value_date : (prop.value_text ?? prop.value_number)
-    setProperty(newId, prop.key, prop.type, value)
+    setProperty(newId, prop.key, prop.type, propertyValue(prop))
   }
 
   // A copy lands beside the original, in the same folder and with the same tags.
@@ -167,6 +234,120 @@ export function duplicatePage(id: string): Page {
 
   reindexPage(newId)
   return getPageById(newId)!
+}
+
+// ============================================================
+// Journal
+// ============================================================
+
+const JOURNAL_TYPE_NAME = 'Journal'
+const JOURNAL_FOLDER_NAME = 'Journal'
+const JOURNAL_DATE_KEY = 'date'
+const TEMPLATES_FOLDER_NAME = 'Templates'
+
+function findFolderByName(name: string): Folder | null {
+  const row = getDb()
+    .prepare('SELECT * FROM folders WHERE name = ? AND parent_folder_id IS NULL')
+    .get(name) as Folder | undefined
+  return row ?? null
+}
+
+/** A paragraph/heading block in the shape BlockNote itself round-trips. */
+function block(type: string, text: string, level?: number): Record<string, unknown> {
+  const props: Record<string, unknown> = {
+    textColor: 'default',
+    backgroundColor: 'default',
+    textAlignment: 'left'
+  }
+  if (level !== undefined) props.level = level
+  return {
+    id: uuidv4(),
+    type,
+    props,
+    content: text ? [{ type: 'text', text, styles: {} }] : [],
+    children: []
+  }
+}
+
+/**
+ * Ensure the Journal type, its folder, its date property and a starter
+ * template all exist. Lazy — nothing is created until the first entry is
+ * asked for, so a vault that never journals stays clean.
+ */
+function ensureJournalSetup(): { typeId: string; folderId: string } {
+  const db = getDb()
+
+  let type = db.prepare('SELECT * FROM types WHERE name = ?').get(JOURNAL_TYPE_NAME) as
+    | TypeDef
+    | undefined
+  if (!type) type = createType(JOURNAL_TYPE_NAME)
+
+  if (!getPropertyDefinitions(type.id).some((d) => d.key === JOURNAL_DATE_KEY)) {
+    defineProperty(type.id, 'Date', 'date')
+  }
+
+  const folder = findFolderByName(JOURNAL_FOLDER_NAME) ?? createFolder(JOURNAL_FOLDER_NAME, null)
+
+  // A starter template, so the feature is visible rather than theoretical.
+  // It is an ordinary page — rewrite it, or point the type elsewhere.
+  if (!getTypeTemplate(type.id)) {
+    const templatesFolder =
+      findFolderByName(TEMPLATES_FOLDER_NAME) ?? createFolder(TEMPLATES_FOLDER_NAME, null)
+    const templateId = uuidv4()
+    const ts = now()
+    // The template is a page OF the type it templates, so a per-type picker can
+    // list it. It lives in Templates rather than Journal, and carries no date
+    // property, so it is never mistaken for an entry.
+    db.prepare(
+      `INSERT INTO pages (id, type_id, title, content, folder_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      templateId,
+      type.id,
+      'Journal template',
+      JSON.stringify([
+        block('heading', 'Today', 2),
+        block('paragraph', ''),
+        block('heading', 'Done', 2),
+        block('paragraph', ''),
+        block('heading', 'Notes', 2),
+        block('paragraph', '')
+      ]),
+      templatesFolder.id,
+      ts,
+      ts
+    )
+    reindexPage(templateId)
+    setTypeTemplate(type.id, templateId)
+  }
+
+  return { typeId: type.id, folderId: folder.id }
+}
+
+/**
+ * Today's journal entry, created from the Journal type's template if it does
+ * not exist yet. Matching is on the entry's `date` property rather than its
+ * title, so renaming an entry never produces a duplicate for that day.
+ */
+export function getOrCreateTodayEntry(): Page {
+  const { typeId, folderId } = ensureJournalSetup()
+  const today = localDateISO()
+
+  const existing = getDb()
+    .prepare(
+      `SELECT p.* FROM pages p
+       JOIN properties pr ON pr.page_id = p.id
+       WHERE p.type_id = ? AND p.is_deleted = 0
+         AND pr.key = ? AND pr.value_date = ?
+       LIMIT 1`
+    )
+    .get(typeId, JOURNAL_DATE_KEY, today) as Page | undefined
+  if (existing) return existing
+
+  const page = createPage(typeId, folderId)
+  updatePage(page.id, { title: journalEntryTitle() })
+  setProperty(page.id, JOURNAL_DATE_KEY, 'date', today)
+  return getPageById(page.id)!
 }
 
 // ============================================================

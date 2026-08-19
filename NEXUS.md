@@ -112,7 +112,13 @@ substitutes for the other.
 - `types` — user-created, not predetermined. The only seeded row is a base
   "Note" type with no properties — everything else (Directive, Book, Trade
   Log, whatever) is created from the Notes page-creation flow or wherever
-  a type picker appears. A type has no schema of its own beyond a name.
+  a type picker appears. A type has no schema of its own beyond a name, plus
+  `template_page_id`: one page whose body and property values a new page of
+  that type starts from. The template is deliberately an ordinary page *of*
+  that type, which is what lets a per-type picker list candidates; nothing
+  recurses, because creating a page copies the template rather than creating
+  from the new page in turn. `ON DELETE SET NULL`, so deleting a template
+  leaves the type intact and simply un-templated.
 - `property_definitions` — `type_id, key, name, property_type, sort_order`.
   A type's actual schema. Rows are added by the user via "+ Add property"
   on a page (Notes) — the moment you define a property on one page of a
@@ -150,6 +156,15 @@ run on each startup — there is nothing to re-repair once a file has been
 through it. The header comment on `SCHEMA_VERSION` is the log of what each
 version did; keep it current when bumping.
 
+`user_version` 7 adds `types.template_page_id`. It was built as 6 on its own
+branch while 6 had already shipped as the relation repair, which is the one
+mistake this scheme cannot absorb: a version number meaning two different
+things to two databases is not recoverable afterwards. Renumbering it to 7 was
+enough only because the step is additive and idempotent (`columnExists`), so a
+file already stamped 6 by the earlier build still picks the column up —
+`check:migration` covers exactly that file. **Before claiming a version
+number, check what is already on `main`.**
+
 ### Data access
 
 `src/main/repo.ts` holds all reads/writes as plain functions, called by
@@ -168,8 +183,15 @@ Five sections, each a thin view over the same page/property model:
   vault (pan, zoom, drag a node, click to open), vault stats, recent
   activity, and an entries table (name / type / properties / modified)
   across all pages.
-- **Notes** — the page tree and the block editor. Creating a page picks (or
-  creates) a type inline; the list is a folder tree (drag a page or a folder
+- **Notes** — the page tree and the block editor. A "Today's entry" button at
+  the top of the list opens today's journal entry, creating it from the
+  Journal type's template if it does not exist yet. Everything it needs — the
+  Journal type, its folder, its `date` property, a starter template — is made
+  lazily on first use, so a vault that never journals stays clean. The entry
+  is matched on that `date` property rather than on its title, so renaming an
+  entry never produces a second one for the same day, and the date is taken in
+  local time (writing at 11pm would otherwise file under tomorrow).
+  Creating a page picks (or creates) a type inline; the list is a folder tree (drag a page or a folder
   onto a folder to move it, expansion persists across restarts), filterable
   by the tag chips above it and by search — searching also matches folder
   names, and forces open any folder holding a match so nothing hides behind
@@ -191,8 +213,9 @@ Five sections, each a thin view over the same page/property model:
   since a property added today is empty on every page that predates it. The
   filter box matches what the cells show rather than only the title, so a
   relation's target or one of a page's tags finds its row. Both reset when the
-  type changes. Types can be renamed and deleted here; deleting a type
-  re-homes its pages onto Note rather than deleting them.
+  type changes. Types can be renamed and deleted here, and a type's template is
+  picked here from among its own pages; deleting a type re-homes its pages onto
+  Note rather than deleting them.
 - **Activity** — chronological feed from `activity_log`. Consecutive content
   saves on one page coalesce into a single "edited" entry (see
   `EDIT_COALESCE_MINUTES` in `repo.ts`) so typing doesn't bury every other
