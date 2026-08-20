@@ -2,6 +2,7 @@
   "name": "nexus",
   "version": "0.1.0",
   "description": "Local-first personal knowledge management",
+  "author": "TSharpe22",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -12,7 +13,9 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "check:app": "electron-vite build && xvfb-run -a node scripts/check-app.mjs",
     "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:app",
-    "check:backup": "node scripts/check-backup.mjs"
+    "check:backup": "node scripts/check-backup.mjs",
+    "dist": "electron-vite build && electron-builder --linux",
+    "dist:dir": "electron-vite build && electron-builder --linux dir"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.24.2",

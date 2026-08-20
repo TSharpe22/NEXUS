@@ -257,6 +257,18 @@ Migration backups are a different thing and stay where they are, next to the
 database as `nexus.db.backup-<timestamp>`. They are rare, they mark a
 one-way change, and nothing rotates them away.
 
+### Packaging
+
+`npm run dist` builds a Linux AppImage and `.deb` into `dist/`, via
+`electron-builder.yml`. `npm run dist:dir` stops at an unpacked directory,
+which is faster when you only want to check the app starts.
+
+`better-sqlite3` ships a native `.node` binding, and `dlopen` cannot read one
+out of an asar archive — hence `asarUnpack`. `package.json` is in `files`
+because Electron reads the application name from it, and that name is what
+puts the vault in `~/.config/nexus` rather than in a directory shared with
+every other unpackaged Electron app.
+
 ### The vault mirror
 
 `src/main/mirror.ts` writes the whole vault out as a Markdown tree, one file

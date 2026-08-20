@@ -1,0 +1,53 @@
+appId: dev.tsharpe.nexus
+productName: Nexus
+copyright: Copyright © TSharpe22
+
+directories:
+  output: dist
+  buildResources: build
+
+# `out/` is what electron-vite builds; package.json comes along because
+# Electron reads the app name from it, which is what puts the vault in
+# ~/.config/nexus rather than a generic Electron directory.
+files:
+  - out/**
+  - package.json
+
+# better-sqlite3 ships a native .node binding. dlopen cannot read it from
+# inside an asar archive, so it has to stay unpacked on disk.
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**'
+
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Office
+  synopsis: Local-first personal knowledge management
+  description: >-
+    Notes, typed properties, tasks and habits in one local SQLite vault.
+    No cloud, no telemetry, no network calls.
+  icon: build/icon.png
+  # Flat key/values, not nested under `entry` — electron-builder 25 writes this
+  # map straight into the .desktop file, so a nested object lands in it as the
+  # literal line `entry=[object Object]`.
+  desktop:
+    Name: Nexus
+    Comment: Local-first personal knowledge management
+    Categories: Office;Utility;
+    Keywords: notes;knowledge;journal;tasks;habits;
+
+deb:
+  # A .deb needs a maintainer in `Name <email>` form. Deliberately the public
+  # GitHub noreply address rather than a personal one — this string ends up in
+  # the package's control file, which is world-readable once installed.
+  maintainer: TSharpe22 <tsharpe22@users.noreply.github.com>
+  depends:
+    - libgtk-3-0
+    - libnotify4
+    - libnss3
+    - libxss1
+    - libxtst6
+    - xdg-utils
+    - libatspi2.0-0
+    - libsecret-1-0
