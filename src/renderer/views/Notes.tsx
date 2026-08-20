@@ -26,6 +26,7 @@ export function Notes() {
     pageContent,
     createPage,
     duplicatePage,
+    setPagePinned,
     trashPage,
     restorePage,
     deletePageForever,
@@ -298,6 +299,7 @@ export function Notes() {
               query={query}
               snippets={searchSnippets}
               typeName={typeName}
+              onTogglePin={(page) => setPagePinned(page.id, !page.is_pinned)}
               onDuplicate={(page) => duplicatePage(page.id)}
               onTrash={(page) => trashPage(page.id)}
             />

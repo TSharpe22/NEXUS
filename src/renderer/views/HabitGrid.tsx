@@ -19,7 +19,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
 const WEEKDAY_LABELS = ['Mon', '', 'Wed', '', 'Fri', '', 'Sun']
 
 /** The longest run of consecutive done days, and the run ending today. */
-function streaks(days: HabitDay[], today: string): { longest: number; current: number } {
+export function streaks(days: HabitDay[], today: string): { longest: number; current: number } {
   const done = new Set(days.filter((d) => d.done).map((d) => d.date))
   let longest = 0
   let run = 0

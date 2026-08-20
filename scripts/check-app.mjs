@@ -1207,6 +1207,16 @@ const box = await page.evaluate(() => {
   return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
 })
 check('nodes have real screen positions', !!box && box.x > 0 && box.y > 0, JSON.stringify(box))
+
+// Home shows today's journal entry, and showing a thing must never make it.
+// No entry — and no Journal type at all — exists at this point in the run, and
+// rendering the dashboard has to leave it that way. `journal.peek()` is the
+// read that makes that possible; `journal.today()` would create one.
+check("rendering Home does not create today's entry",
+  (await page.evaluate(() => window.api.journal.peek())) === null)
+check('and it offers to start one rather than showing a blank',
+  /No entry for today yet/.test(await page.evaluate(() => document.querySelector('.nx-home')?.innerText ?? '')))
+
 await page.screenshot({ path: SHOT + '/06-home-graph.png' })
 if (box) {
   await page.mouse.click(box.x, box.y)
@@ -1450,6 +1460,222 @@ const afterRename = await page.evaluate(() => window.api.pages.getAll())
 check('a renamed entry is still found for today',
   afterRename.filter((p) => p.type_id === journalType.id && p.title !== 'Journal template').length === 1,
   JSON.stringify(afterRename.filter((p) => p.type_id === journalType.id).map((p) => p.title)))
+
+// ---------------------------------------------------------------- home
+log('\n— home: capture —')
+await nav('Home')
+await sleep(1000)
+
+const homeText = () => page.evaluate(() => document.querySelector('.nx-home')?.innerText ?? '')
+const panelText = (title) =>
+  page.evaluate((t) => {
+    const panel = [...document.querySelectorAll('.nx-home .nx-panel')].find(
+      (el) => el.querySelector('.nx-panel__title')?.textContent.trim() === t
+    )
+    return panel?.innerText ?? ''
+  }, title)
+const captureAs = (label) =>
+  page.evaluate((label) => {
+    const btn = [...document.querySelectorAll('.nx-home__capture .nx-button')].find(
+      (b) => b.textContent.trim() === label
+    )
+    if (!btn) return 'NOT_FOUND'
+    btn.click()
+    return 'OK'
+  }, label)
+const captureLine = async (text) => {
+  await page.fill('.nx-home__capture-input', text)
+  await page.evaluate(() => document.querySelector('.nx-home__capture .nx-button--primary').click())
+  await sleep(1400)
+}
+
+check('capture defaults to a page of its own',
+  (await page.evaluate(() =>
+    document.querySelector('.nx-home__capture .nx-button--selected')?.textContent.trim()
+  )) === 'New page')
+
+await captureLine('Ideas for the mirror format')
+const allAfterCapture = await page.evaluate(() => window.api.pages.getAll())
+const capturedPage = allAfterCapture.find((p) => p.title === 'Ideas for the mirror format')
+check('a captured line becomes a page titled with it', !!capturedPage)
+check('a one-line capture leaves the body empty rather than repeating the title',
+  capturedPage && JSON.parse(capturedPage.content).length === 0,
+  JSON.stringify(capturedPage?.content))
+check('the box clears, so a capture cannot be made twice',
+  (await page.evaluate(() => document.querySelector('.nx-home__capture-input').value)) === '')
+check('capturing does not navigate away from Home',
+  await page.evaluate(() => !!document.querySelector('.nx-home')))
+
+// A task capture is an ordinary checkbox block in today's entry, which means
+// the projector already there does the work — including the @date token.
+await captureAs('Task')
+await captureLine(`ring the dentist @${TOMORROW}`)
+const entryAfterTask = await page.evaluate(() => window.api.journal.peek())
+check('a task capture goes into today\'s entry', !!entryAfterTask)
+const entryTasks = await page.evaluate((id) => window.api.tasks.forPage(id), entryAfterTask?.id)
+const dentist = entryTasks.find((t) => t.text === 'ring the dentist')
+check('the captured task is projected without opening the page', !!dentist, JSON.stringify(entryTasks))
+// The entry's own `date` property says today, so a block-level date winning
+// here is what proves the token was parsed rather than inherited.
+check('an @date typed into the capture box is parsed like one typed into the page',
+  dentist?.dueDate === TOMORROW && dentist?.dueDateSource === 'block', JSON.stringify(dentist))
+
+await captureAs("Today's entry")
+await captureLine('the amber reads warmer at night')
+const entryAfterProse = await page.evaluate(() => window.api.journal.peek())
+const entryBody = JSON.stringify(JSON.parse(entryAfterProse.content))
+check('a journal capture lands in the entry body', entryBody.includes('the amber reads warmer at night'))
+check('and appends rather than replacing what was already there',
+  entryBody.includes('ring the dentist'), entryBody.slice(0, 200))
+
+log('\n— home: today\'s tasks —')
+// No @token: this one is dated by the entry it sits in, which is the other
+// half of how a task gets a date.
+await captureAs('Task')
+await captureLine('water the plants')
+await sleep(900)
+check('a task dated by its page shows under today', /water the plants/.test(await panelText('Today')))
+
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-home__task')].find((r) =>
+    r.innerText.includes('water the plants')
+  )
+  row?.querySelector('.nx-home__check').click()
+})
+await sleep(1400)
+const entryId = entryAfterProse.id
+const ticked = await page.evaluate((id) => window.api.tasks.forPage(id), entryId)
+check('ticking it on Home marks it done',
+  ticked.find((t) => t.text === 'water the plants')?.isDone === true, JSON.stringify(ticked))
+check('the write went into the block, not just the projected row',
+  await page.evaluate(async (id) => {
+    const p = await window.api.pages.getById(id)
+    return JSON.parse(p.content).some(
+      (b) => b.type === 'checkListItem' && b.props?.checked === true
+    )
+  }, entryId))
+
+// Leave and come back: a write that only lived in memory would look right
+// until now.
+await nav('Notes')
+await sleep(700)
+await nav('Home')
+await sleep(1100)
+const afterReturn = await page.evaluate((id) => window.api.tasks.forPage(id), entryId)
+check('and it is still done after leaving Home and returning',
+  afterReturn.find((t) => t.text === 'water the plants')?.isDone === true)
+check('Home shows the entry once it exists, rather than offering to start one',
+  !/No entry for today yet/.test(await panelText('Today')))
+
+log('\n— home: pinning —')
+check('an empty pin list says how to fill it', /Hover a page in Notes/.test(await panelText('Pinned')))
+
+const beforePin = (await page.evaluate((id) => window.api.pages.getById(id), capturedPage.id)).updated_at
+await nav('Notes')
+await sleep(800)
+const pinClicked = await page.evaluate((title) => {
+  const row = [...document.querySelectorAll('.nx-tree-row--page')].find((r) =>
+    r.innerText.includes(title)
+  )
+  if (!row) return 'NO_ROW'
+  const btn = [...row.querySelectorAll('button')].find((b) => b.textContent.trim() === 'Pin')
+  if (!btn) return 'NO_BUTTON'
+  btn.click()
+  return 'OK'
+}, 'Ideas for the mirror format')
+check('a page can be pinned from the Notes list', pinClicked === 'OK', pinClicked)
+await sleep(900)
+
+const pinnedRow = await page.evaluate((id) => window.api.pages.getById(id), capturedPage.id)
+check('the pin is stored', pinnedRow.is_pinned === 1)
+check('and stamped with when it was made', !!pinnedRow.pinned_at, String(pinnedRow.pinned_at))
+// The stale panel is meant to notice neglect. If pinning counted as an edit it
+// would reset that clock, and it would also shuffle the page to the top of
+// every recency-ordered list in the app.
+check('pinning is not an edit — updated_at is untouched',
+  pinnedRow.updated_at === beforePin, `${beforePin} vs ${pinnedRow.updated_at}`)
+check('the row now offers to unpin', await page.evaluate((title) => {
+  const row = [...document.querySelectorAll('.nx-tree-row--page')].find((r) =>
+    r.innerText.includes(title)
+  )
+  return [...(row?.querySelectorAll('button') ?? [])].some((b) => b.textContent.trim() === 'Unpin')
+}, 'Ideas for the mirror format'))
+
+await nav('Home')
+await sleep(1000)
+check('a pinned page shows on Home',
+  /Ideas for the mirror format/.test(await panelText('Pinned')))
+
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-home__row')].find((r) =>
+    r.innerText.includes('Ideas for the mirror format')
+  )
+  row?.querySelector('.nx-home__row-x').click()
+})
+await sleep(1000)
+const unpinned = await page.evaluate((id) => window.api.pages.getById(id), capturedPage.id)
+check('unpinning from Home clears both columns',
+  unpinned.is_pinned === 0 && unpinned.pinned_at === null, JSON.stringify(unpinned.pinned_at))
+check('and the panel goes back to saying how to fill it',
+  /Nothing pinned/.test(await panelText('Pinned')))
+
+log('\n— home: habits and staleness —')
+// The tracker section deleted its own Habit fixture on the way out, so this
+// builds a fresh one — and dates it today, since the tracker's March pages
+// would fall outside a three-week strip anyway.
+const homeHabit = await page.evaluate(async () => {
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  const type = await window.api.types.create('Habit', null)
+  await window.api.types.defineProperty(type.id, 'Day', 'date')
+  await window.api.types.defineProperty(type.id, 'Done', 'boolean')
+  const p = await window.api.pages.create(type.id)
+  await window.api.pages.update(p.id, { title: 'Run today' })
+  await window.api.properties.set(p.id, 'day', 'date', today)
+  await window.api.properties.set(p.id, 'done', 'boolean', 'true')
+  return { typeId: type.id, pageId: p.id }
+})
+await nav('Notes')
+await sleep(500)
+await nav('Home')
+await sleep(1400)
+
+check('a habit draws a three-week strip',
+  (await page.evaluate(() => document.querySelectorAll('.nx-home__habit-strip')[0]?.children.length)) === 21)
+check('the day just marked reads as done',
+  await page.evaluate(() => {
+    const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
+    return !!strip?.lastElementChild?.className.includes('--done')
+  }))
+check('and the streak counts it', /1d/.test(await panelText('Habits')))
+
+check('a page touched today is not called stale',
+  !/Ideas for the mirror format/.test(await panelText('Stale')))
+check('an empty stale list says so rather than showing nothing',
+  /Nothing has gone quiet/.test(await panelText('Stale')))
+
+check('the vault panel counts the open tasks', /tasks open/.test(await panelText('Vault')))
+check('Home fits its window without scrolling',
+  await page.evaluate(() => {
+    const content = document.querySelector('.nx-content')
+    return content.scrollHeight <= content.clientHeight + 1
+  }),
+  await page.evaluate(() => {
+    const c = document.querySelector('.nx-content')
+    return `${c.scrollHeight} vs ${c.clientHeight}`
+  }))
+
+await page.screenshot({ path: SHOT + '/15-home.png' })
+check('no uncaught renderer errors on Home', errors.length === 0, errors.join(' | '))
+
+// The habit fixture goes the way the tracker's did, so the sections below see
+// the vault they were written against.
+await page.evaluate(async (fixture) => {
+  await window.api.pages.hardDelete(fixture.pageId)
+  await window.api.types.remove(fixture.typeId)
+}, homeHabit)
+await sleep(400)
 
 // ---------------------------------------------------------------- vault mirror
 log('\n— vault mirror —')

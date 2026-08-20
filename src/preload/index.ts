@@ -4,6 +4,7 @@ import type { NexusAPI } from '../shared/types'
 const api: NexusAPI = {
   journal: {
     today: () => ipcRenderer.invoke('journal:today'),
+    peek: () => ipcRenderer.invoke('journal:peek'),
   },
   mirror: {
     getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
@@ -30,7 +31,11 @@ const api: NexusAPI = {
     getDeleted: () => ipcRenderer.invoke('pages:getDeleted'),
     emptyTrash: () => ipcRenderer.invoke('pages:emptyTrash'),
     duplicate: (id) => ipcRenderer.invoke('pages:duplicate', id),
-    move: (id, folderId) => ipcRenderer.invoke('pages:move', id, folderId)
+    move: (id, folderId) => ipcRenderer.invoke('pages:move', id, folderId),
+    setPinned: (id, pinned) => ipcRenderer.invoke('pages:setPinned', id, pinned)
+  },
+  capture: {
+    line: (text, target) => ipcRenderer.invoke('capture:line', text, target)
   },
   folders: {
     list: () => ipcRenderer.invoke('folders:list'),

@@ -156,6 +156,30 @@ export function setCheckedInDocument(blocks: unknown[], blockId: string, checked
   return { blocks: mapBlocks(blocks), found }
 }
 
+/**
+ * The opening prose of a document, for a preview line.
+ *
+ * Built on the same walker as every other projection rather than a second
+ * parse of the JSON — which is the reason this file exists. Blocks are joined
+ * with a separator instead of a space so a heading does not run into the
+ * paragraph under it.
+ */
+export function documentPreview(content: string | null, limit = 240): string {
+  const parts: string[] = []
+  walk(parseDocument(content), (_block, text) => {
+    const trimmed = text.trim()
+    if (trimmed) parts.push(trimmed)
+  })
+
+  const joined = parts.join(' · ')
+  if (joined.length <= limit) return joined
+  // Cut at a word boundary where one is in reach, so a preview never ends
+  // mid-word.
+  const cut = joined.slice(0, limit)
+  const space = cut.lastIndexOf(' ')
+  return `${(space > limit - 30 ? cut.slice(0, space) : cut).trimEnd()}…`
+}
+
 /** Every distinct pageMention target in a document, with the text around it. */
 export function extractLinkTargets(blocks: unknown[]): LinkTarget[] {
   const targets = new Map<string, string | null>()

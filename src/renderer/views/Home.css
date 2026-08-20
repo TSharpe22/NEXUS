@@ -1,47 +1,436 @@
+/* ----------------------------------------------------------------
+   Home — the day on one screen.
+
+   Laid out to fit the window without scrolling: the page is a column of
+   fixed-height bands with one flexible row, and each panel scrolls its own
+   list rather than pushing the page taller. Below 1100px that stops being
+   possible and the grids collapse, at which point the page scrolls like any
+   other view.
+   ---------------------------------------------------------------- */
+
 .nx-home {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: var(--nx-space-5);
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-3);
+  height: 100%;
+  min-height: 0;
 }
 
-/* On a narrow window the side rail drops under the main column rather than
-   squeezing the graph into a sliver. */
-@media (max-width: 1080px) {
+/* Panels here are flex columns so a list inside can take the leftover height
+   and scroll, instead of the panel growing past the row it sits in. */
+.nx-home .nx-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.nx-home__day {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+  flex-shrink: 0;
+}
+
+.nx-home__day-name {
+  font-family: var(--nx-font-sans);
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.nx-home__empty-actions {
+  display: flex;
+  gap: var(--nx-space-2);
+}
+
+/* ---- Capture ---- */
+
+.nx-home__capture {
+  flex-shrink: 0;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-3) var(--nx-space-4);
+}
+
+.nx-home__capture-row {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+}
+
+.nx-home__capture-input {
+  flex-grow: 1;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.nx-home__capture-hint {
+  margin-left: auto;
+  color: var(--nx-text-dim);
+  white-space: nowrap;
+}
+
+/* ---- The two grids ---- */
+
+.nx-home__grid {
+  display: grid;
+  gap: var(--nx-space-5);
+  min-height: 0;
+}
+
+/* Proportional rather than fixed side columns: with `1fr 360px 300px`, a
+   1280-wide window left Today narrower than either panel beside it, which is
+   backwards for the one thing the screen is about. The minimums are what each
+   panel needs to stay readable — 21 habit cells, a title and a type name. */
+.nx-home__grid--top {
+  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr) minmax(230px, 0.85fr);
+  flex: 1 1 auto;
+  margin-top: var(--nx-space-2);
+}
+
+.nx-home__grid--bottom {
+  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr) minmax(200px, 0.75fr);
+  flex: 0 0 250px;
+}
+
+/* One column under the width where three still read. The page scrolls from
+   here down — a dashboard that fits one screen is the goal, not a rule worth
+   crushing panels for. */
+@media (max-width: 1100px) {
   .nx-home {
+    height: auto;
+  }
+
+  .nx-home__grid--top,
+  .nx-home__grid--bottom {
     grid-template-columns: minmax(0, 1fr);
+    flex: 0 0 auto;
   }
 }
 
-.nx-home__main,
-.nx-home__side {
+/* ---- Today ---- */
+
+.nx-home__entry {
   display: flex;
   flex-direction: column;
-  gap: var(--nx-space-5);
+  gap: var(--nx-space-1);
+  width: 100%;
+  max-width: 100%;
+  /* Both of these, or the nowrap preview inside sets the button's content
+     width and the line runs out past the card instead of ellipsing. */
   min-width: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: var(--nx-surface-sunken);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  padding: 10px var(--nx-space-3);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  text-align: left;
+  transition: border-color var(--nx-motion);
 }
 
-.nx-home__more {
-  width: 100%;
+button.nx-home__entry:hover {
+  border-color: var(--nx-accent);
+}
+
+.nx-home__entry--absent {
+  align-items: flex-start;
+  gap: var(--nx-space-2);
+  cursor: default;
+}
+
+/* Stacked, and allowed to wrap: side by side with the button this truncated
+   to "No entry for t…" the moment the column got narrow. */
+.nx-home__entry-absent-text {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.nx-home__entry-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nx-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.nx-home__entry-title {
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-home__entry-open {
+  margin-left: auto;
+  color: var(--nx-accent);
+  flex-shrink: 0;
+}
+
+.nx-home__entry-preview {
+  color: var(--nx-text-muted);
+  font-size: 13px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-home__section {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nx-space-2);
+  margin: var(--nx-space-4) 0 var(--nx-space-1);
+  flex-shrink: 0;
+}
+
+.nx-home__task {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  padding: 4px var(--nx-space-1);
+  border-radius: var(--nx-radius-sm);
+}
+
+.nx-home__task:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-home__task--done .nx-home__task-text {
+  color: var(--nx-text-dim);
+  text-decoration: line-through;
+}
+
+.nx-home__check {
+  display: inline-flex;
+  align-items: center;
   background: none;
   border: none;
-  border-top: 1px solid var(--nx-row-line);
-  color: var(--nx-text-dim);
+  padding: 0;
   cursor: pointer;
-  font-family: var(--nx-font-mono);
-  font-size: 11px;
-  padding: var(--nx-space-3);
+  flex-shrink: 0;
+}
+
+.nx-home__task-text {
+  flex-grow: 1;
+  min-width: 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-home__task-src {
+  flex-shrink: 0;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--nx-text-dim);
+}
+
+.nx-home__task-src:hover {
+  color: var(--nx-accent);
+}
+
+.nx-home__overdue {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: var(--nx-space-2);
+  padding: 6px var(--nx-space-3);
+  border: 1px solid rgba(217, 96, 79, 0.35);
+  background: var(--nx-critical-tint);
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  text-align: left;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-home__overdue:hover {
+  border-color: var(--nx-critical);
+}
+
+.nx-home__overdue-count {
+  font-size: 12.5px;
+  flex-shrink: 0;
+}
+
+.nx-home__overdue-list {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--nx-text-dim);
+}
+
+/* ---- Shared list rows ---- */
+
+.nx-home__list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.nx-home__list--grow {
+  flex-grow: 1;
+}
+
+.nx-home__row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--nx-radius-sm);
+}
+
+.nx-home__row:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-home__row-open {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  flex-grow: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 4px var(--nx-space-1);
+  color: var(--nx-text);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
   text-align: left;
 }
 
-.nx-home__more:hover {
+.nx-home__row-title {
+  flex-grow: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-home__row-meta {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--nx-text-dim);
+}
+
+.nx-home__row-x {
+  flex-shrink: 0;
+  width: 18px;
+  background: none;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity var(--nx-motion), color var(--nx-motion);
+}
+
+.nx-home__row:hover .nx-home__row-x {
+  opacity: 1;
+}
+
+.nx-home__row-x:hover {
+  color: var(--nx-critical);
+}
+
+/* ---- Habits ---- */
+
+.nx-home__habits {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-4);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.nx-home__habit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.nx-home__habit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--nx-space-2);
+}
+
+.nx-home__habit-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-home__streak--live {
   color: var(--nx-accent);
 }
+
+.nx-home__habit-strip {
+  display: grid;
+  grid-template-columns: repeat(21, minmax(0, 1fr));
+  gap: 3px;
+}
+
+/* Three states rather than two: a day with no entry is a different claim
+   from a day whose entry says it did not happen. */
+.nx-home__habit-day {
+  aspect-ratio: 1 / 1;
+  padding: 0;
+  border: 1px solid var(--nx-row-line);
+  border-radius: 2px;
+  background: var(--nx-surface-sunken);
+  cursor: pointer;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-home__habit-day:disabled {
+  cursor: default;
+}
+
+.nx-home__habit-day--done {
+  background: var(--nx-accent);
+  border-color: var(--nx-accent);
+}
+
+.nx-home__habit-day--missed {
+  background: var(--nx-surface-sunken);
+  border-color: var(--nx-border-2);
+}
+
+.nx-home__habit-day:not(:disabled):hover {
+  border-color: var(--nx-text-muted);
+}
+
+/* ---- Vault ---- */
 
 .nx-home__stats {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--nx-space-4) var(--nx-space-3);
+  align-content: start;
 }
 
 .nx-home__stat {
@@ -58,38 +447,29 @@
   line-height: 1.2;
 }
 
-.nx-home__activity {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
+/* ---- Small print ---- */
 
-.nx-home__activity-row {
-  display: flex;
-  align-items: baseline;
-  gap: var(--nx-space-2);
-  width: 100%;
+.nx-home__link {
   background: none;
   border: none;
-  border-radius: var(--nx-radius-sm);
-  color: var(--nx-text-muted);
+  padding: 0;
   cursor: pointer;
-  font-family: var(--nx-font-sans);
-  font-size: 12.5px;
-  padding: 4px var(--nx-space-2);
-  text-align: left;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 11.5px;
+  transition: color var(--nx-motion);
 }
 
-.nx-home__activity-row:hover:not(:disabled) {
-  background: var(--nx-row-hover);
-  color: var(--nx-text);
+.nx-home__link:hover {
+  color: var(--nx-accent);
 }
 
-.nx-home__activity-row:disabled {
-  cursor: default;
+.nx-home__hint {
+  color: var(--nx-text-dim);
+  line-height: 1.6;
 }
 
-.nx-home__activity-when {
-  flex-shrink: 0;
-  font-size: 11px;
+.nx-home__code {
+  font-family: var(--nx-font-mono);
+  color: var(--nx-text-muted);
 }

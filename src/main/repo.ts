@@ -27,7 +27,8 @@ import type {
   TrackerTask,
   DatedPage,
   HabitCandidate,
-  HabitDay
+  HabitDay,
+  CaptureTarget
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -142,7 +143,7 @@ export function getPageLocations(): PageLocation[] {
 
 /** Columns of `pages` except the document body, as one reusable list. */
 const LIST_COLUMNS =
-  'id, type_id, title, icon, page_width, folder_id, is_deleted, created_at, updated_at'
+  'id, type_id, title, icon, page_width, folder_id, is_deleted, is_pinned, pinned_at, created_at, updated_at'
 
 /**
  * Every live page without its body, newest first — what the sidebar, the
@@ -288,6 +289,123 @@ export function duplicatePage(id: string): Page {
 }
 
 // ============================================================
+// Pinning
+//
+// A pin is a flag on one page, on the same axis as `folder_id` — hence two
+// columns rather than a `pins` table. It is also the first thing on `pages`
+// that no projection can rebuild: `page_fts`, `tasks` and `links` are all
+// derived from documents and can be dropped and refilled, while a pin exists
+// only because the user made it.
+// ============================================================
+
+export function setPagePinned(id: string, pinned: boolean): void {
+  const db = getDb()
+  // `updated_at` is left alone deliberately. Pinning is not an edit to the
+  // page, and touching it would push the page to the top of every
+  // recency-ordered list in the app and out of Home's stale panel.
+  db.prepare('UPDATE pages SET is_pinned = ?, pinned_at = ? WHERE id = ?').run(
+    pinned ? 1 : 0,
+    pinned ? now() : null,
+    id
+  )
+  logActivity(id, pinned ? 'pinned' : 'unpinned', pinned ? 'pinned' : 'unpinned')
+}
+
+/**
+ * There is no `getPinnedPages` or `getStalePages` here on purpose. Both are a
+ * filter over `getPageList()`, which the renderer's store already holds and
+ * already refreshes on every mutation — a second read path would only be a
+ * second thing to keep in step. See `Home.tsx`.
+ */
+
+// ============================================================
+// Quick capture
+// ============================================================
+
+/**
+ * Long enough for a real sentence, short enough that the Notes list stays
+ * readable. Past it the whole capture also goes into the body, so trimming
+ * the title never loses what was typed.
+ */
+const MAX_CAPTURE_TITLE = 120
+
+function captureTitle(text: string): { title: string; overflow: boolean } {
+  const firstLine = text.split('\n')[0].trim()
+  if (firstLine.length <= MAX_CAPTURE_TITLE) {
+    return { title: firstLine, overflow: text.trim() !== firstLine }
+  }
+  // Cut at a word boundary where there is one in reach, so a trimmed title
+  // does not end mid-word.
+  const cut = firstLine.slice(0, MAX_CAPTURE_TITLE)
+  const space = cut.lastIndexOf(' ')
+  return { title: (space > MAX_CAPTURE_TITLE - 24 ? cut.slice(0, space) : cut).trim(), overflow: true }
+}
+
+/** Append blocks to a page's document, through `updatePage` so it projects. */
+function appendBlocks(pageId: string, blocks: Record<string, unknown>[]): Page {
+  const page = getPageById(pageId)
+  if (!page) throw new Error(`Page not found: ${pageId}`)
+
+  const document = parseDocument(page.content)
+
+  // BlockNote keeps a trailing empty paragraph at the end of a document as the
+  // cursor's landing spot. Writing after it leaves a blank line between every
+  // captured item, so the capture takes its place instead.
+  const last = document[document.length - 1] as { type?: string; content?: unknown[] } | undefined
+  if (last && last.type === 'paragraph' && Array.isArray(last.content) && last.content.length === 0) {
+    document.pop()
+  }
+
+  updatePage(pageId, { content: JSON.stringify([...document, ...blocks]) })
+  return getPageById(pageId)!
+}
+
+/**
+ * Capture one line without leaving Home.
+ *
+ * Everything goes through `createPage`/`updatePage` rather than writing rows
+ * directly, so the search index, the link graph and the task projection are
+ * all current the moment the capture lands — the same rule that keeps
+ * imported pages from having no backlinks.
+ *
+ * A `task` capture is an ordinary `checkListItem` in today's entry, which
+ * means it is indexed by the existing projector: an `@2026-08-22` typed into
+ * the capture box is parsed into a due date exactly as it would be if it had
+ * been typed into the page.
+ */
+export function capture(rawText: string, target: CaptureTarget = 'page'): Page {
+  const text = rawText.trim()
+  if (!text) throw new Error('Nothing to capture')
+
+  if (target === 'page') {
+    const { title, overflow } = captureTitle(text)
+    const page = createPage()
+    // The full text goes into the body only when the title could not hold it,
+    // so an ordinary one-line capture does not produce a page that says the
+    // same thing twice. Written in one `updatePage` so the page is projected
+    // and logged once rather than twice.
+    updatePage(page.id, {
+      title,
+      ...(overflow
+        ? { content: JSON.stringify(text.split('\n').map((line) => block('paragraph', line))) }
+        : {})
+    })
+    return getPageById(page.id)!
+  }
+
+  const entry = getOrCreateTodayEntry()
+  if (target === 'task') return appendBlocks(entry.id, [checkListItem(text)])
+  return appendBlocks(entry.id, text.split('\n').map((line) => block('paragraph', line)))
+}
+
+/** An unticked checkbox block, in the shape `extractTasks` reads. */
+function checkListItem(text: string): Record<string, unknown> {
+  const item = block('checkListItem', text)
+  item.props = { ...(item.props as Record<string, unknown>), checked: false }
+  return item
+}
+
+// ============================================================
 // Journal
 // ============================================================
 
@@ -380,19 +498,44 @@ function ensureJournalSetup(): { typeId: string; folderId: string } {
  * not exist yet. Matching is on the entry's `date` property rather than its
  * title, so renaming an entry never produces a duplicate for that day.
  */
+function findEntryFor(typeId: string, date: string): Page | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT p.* FROM pages p
+         JOIN properties pr ON pr.page_id = p.id
+         WHERE p.type_id = ? AND p.is_deleted = 0
+           AND pr.key = ? AND pr.value_date = ?
+         LIMIT 1`
+      )
+      .get(typeId, JOURNAL_DATE_KEY, date) as Page) ?? null
+  )
+}
+
+/**
+ * Today's journal entry if it exists, without creating anything.
+ *
+ * Home shows the entry, and showing a thing must never make it: calling
+ * `getOrCreateTodayEntry` to render a dashboard would mean an entry — and, on
+ * a vault that has never journalled, the whole Journal type, its folder, its
+ * date property and a template — springs into being every day the app is
+ * merely opened. So this deliberately does not call `ensureJournalSetup`: no
+ * Journal type means no entry, and that is the answer, not a reason to build
+ * one.
+ */
+export function getTodayEntry(): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(JOURNAL_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  if (!type) return null
+  return findEntryFor(type.id, localDateISO())
+}
+
 export function getOrCreateTodayEntry(): Page {
   const { typeId, folderId } = ensureJournalSetup()
   const today = localDateISO()
 
-  const existing = getDb()
-    .prepare(
-      `SELECT p.* FROM pages p
-       JOIN properties pr ON pr.page_id = p.id
-       WHERE p.type_id = ? AND p.is_deleted = 0
-         AND pr.key = ? AND pr.value_date = ?
-       LIMIT 1`
-    )
-    .get(typeId, JOURNAL_DATE_KEY, today) as Page | undefined
+  const existing = findEntryFor(typeId, today)
   if (existing) return existing
 
   const page = createPage(typeId, folderId)
@@ -1477,9 +1620,23 @@ export function getStorageStats(): StorageStats {
     dbSizeBytes = 0
   }
 
+  // Joined back to `pages` rather than counted straight off `tasks`: the
+  // projection keeps rows for a trashed page until something reprojects it,
+  // and a count that includes the trash is a count of nothing anyone can see.
+  const openTaskCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM tasks t
+           JOIN pages p ON p.id = t.page_id AND p.is_deleted = 0
+          WHERE t.is_done = 0`
+      )
+      .get() as { c: number }
+  ).c
+
   return {
     pageCount,
     dbSizeBytes,
+    openTaskCount,
     withPropertiesPercent: pageCount === 0 ? 0 : Math.round((taggedCount / pageCount) * 100)
   }
 }

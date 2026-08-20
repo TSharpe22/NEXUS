@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
+import type { CaptureTarget, Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
 
 export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
@@ -28,10 +28,19 @@ export const VIEW_ORDER = Object.keys(VIEW_META) as View[]
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
+/** Tracker's three modes. Habits is not a date range, which is why it sits alongside one. */
+export type TrackerMode = 'week' | 'quarter' | 'habits'
+
 interface AppState {
   activeView: View
   activePageId: string | null
   tableTypeId: string | null
+  /**
+   * Which of Tracker's three modes is showing. In the store rather than in
+   * `Tracker` so Home's habit panel can land on Habits — a link that dumps you
+   * on Week and leaves you to find the tab is not a link.
+   */
+  trackerMode: TrackerMode
 
   /**
    * Pages, trash and types live here rather than in each view. Every entry
@@ -81,6 +90,7 @@ interface AppState {
   /** Navigate to a page from anywhere: switches to Notes and selects it. */
   openPage: (id: string) => void
   setTableTypeId: (id: string | null) => void
+  setTrackerMode: (mode: TrackerMode) => void
   setSaveStatus: (status: SaveStatus) => void
 
   refresh: () => Promise<void>
@@ -88,6 +98,13 @@ interface AppState {
   /** Open today's journal entry, creating it from the template if needed. */
   openTodayEntry: () => Promise<Page>
   duplicatePage: (id: string) => Promise<Page>
+  /** Pin a page to Home, or unpin it. */
+  setPagePinned: (id: string, pinned: boolean) => Promise<void>
+  /**
+   * Capture one line from Home. Resolves with the page it landed on, without
+   * navigating — capture is meant to cost nothing but the typing.
+   */
+  capture: (text: string, target: CaptureTarget) => Promise<Page>
   trashPage: (id: string) => Promise<void>
   restorePage: (id: string) => Promise<void>
   deletePageForever: (id: string) => Promise<void>
@@ -137,6 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeView: 'home',
   activePageId: null,
   tableTypeId: null,
+  trackerMode: 'week',
 
   pages: [],
   trashed: [],
@@ -177,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ pageContent: { ...state.pageContent, [id]: page.content } }))
   },
   setTableTypeId: (id) => set({ tableTypeId: id }),
+  setTrackerMode: (mode) => set({ trackerMode: mode }),
   setSaveStatus: (status) => set({ saveStatus: status }),
 
   refresh: async () => {
@@ -234,6 +253,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       pageContent: { ...state.pageContent, [copy.id]: copy.content }
     }))
     return copy
+  },
+
+  setPagePinned: async (id, pinned) => {
+    await window.api.pages.setPinned(id, pinned)
+    await get().refresh()
+  },
+
+  capture: async (text, target) => {
+    const page = await window.api.capture.line(text, target)
+    // A journal or task capture appends to a document the main process just
+    // rewrote. `pageContent` is a cache the renderer owns and never drops, so
+    // a body cached from earlier in the session is now behind — and handing
+    // that stale document back to the editor is precisely how a page saves
+    // over what was written into it elsewhere.
+    set((state) => ({ pageContent: { ...state.pageContent, [page.id]: page.content } }))
+    await get().refresh()
+    return page
   },
 
   trashPage: async (id) => {

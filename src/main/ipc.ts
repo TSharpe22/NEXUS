@@ -5,7 +5,7 @@ import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
 import { getDataDir, getBackupInfo } from './database'
-import type { PropertyType } from '../shared/types'
+import type { PropertyType, CaptureTarget } from '../shared/types'
 
 function rethrow(channel: string, error: unknown): never {
   console.error(channel, error)
@@ -33,6 +33,13 @@ export function registerIpcHandlers(): void {
       return page
     } catch (e) {
       rethrow('journal:today', e)
+    }
+  })
+  ipcMain.handle('journal:peek', () => {
+    try {
+      return repo.getTodayEntry()
+    } catch (e) {
+      rethrow('journal:peek', e)
     }
   })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
@@ -176,6 +183,31 @@ export function registerIpcHandlers(): void {
       return page
     } catch (e) {
       rethrow('pages:duplicate', e)
+    }
+  })
+  // No `mirror.scheduleSync` here. A pin is not part of what the mirror
+  // writes — it appears in no frontmatter field — and pinning deliberately
+  // leaves `updated_at` alone, so there is nothing on disk that went stale.
+  //
+  // There is no read channel to match: `pages:list` already carries
+  // `is_pinned` and `pinned_at`, so Home reads both from the one page list
+  // the store holds rather than fetching its own copy.
+  ipcMain.handle('pages:setPinned', (_, id: string, pinned: boolean) => {
+    try {
+      return repo.setPagePinned(id, pinned)
+    } catch (e) {
+      rethrow('pages:setPinned', e)
+    }
+  })
+  ipcMain.handle('capture:line', (_, text: string, target: CaptureTarget) => {
+    try {
+      const page = repo.capture(text, target)
+      // A capture writes a document, so the mirror does have work to do —
+      // named, since exactly one page changed.
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('capture:line', e)
     }
   })
   ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
