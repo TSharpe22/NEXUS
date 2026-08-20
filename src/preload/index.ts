@@ -49,6 +49,15 @@ const api: NexusAPI = {
   capture: {
     line: (text, target) => ipcRenderer.invoke('capture:line', text, target)
   },
+  prefs: {
+    get: () => ipcRenderer.invoke('prefs:get'),
+    setDayStartHour: (hour) => ipcRenderer.invoke('prefs:setDayStartHour', hour),
+    setTaskSection: (name) => ipcRenderer.invoke('prefs:setTaskSection', name)
+  },
+  inbox: {
+    get: () => ipcRenderer.invoke('inbox:get'),
+    open: () => ipcRenderer.invoke('inbox:open')
+  },
   folders: {
     list: () => ipcRenderer.invoke('folders:list'),
     create: (name, parentFolderId) => ipcRenderer.invoke('folders:create', name, parentFolderId),
@@ -101,7 +110,8 @@ const api: NexusAPI = {
     undated: (limit) => ipcRenderer.invoke('tasks:undated', limit),
     forPage: (pageId) => ipcRenderer.invoke('tasks:forPage', pageId),
     datedPages: (from, to) => ipcRenderer.invoke('tasks:datedPages', from, to),
-    setDone: (pageId, blockId, done) => ipcRenderer.invoke('tasks:setDone', pageId, blockId, done)
+    setDone: (pageId, blockId, done) => ipcRenderer.invoke('tasks:setDone', pageId, blockId, done),
+    setDue: (pageId, blockId, due) => ipcRenderer.invoke('tasks:setDue', pageId, blockId, due)
   },
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
@@ -114,7 +124,8 @@ const api: NexusAPI = {
     getGraphPreview: () => ipcRenderer.invoke('stats:getGraphPreview'),
     getGraph: () => ipcRenderer.invoke('stats:getGraph'),
     getDataDir: () => ipcRenderer.invoke('stats:getDataDir'),
-    getBackups: () => ipcRenderer.invoke('stats:getBackups')
+    getBackups: () => ipcRenderer.invoke('stats:getBackups'),
+    restoreBackup: (snapshotPath) => ipcRenderer.invoke('backups:restore', snapshotPath)
   },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),

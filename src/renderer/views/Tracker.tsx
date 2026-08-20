@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TrackerTask, DatedPage } from '@shared/types'
-import { rangeFor, eachDay, dayLabel, monthLabel, isToday, type RangeKind } from '@shared/date-range'
-import { localDateISO } from '@shared/journal-date'
-import { useAppStore, type TrackerMode } from '../store/app-store'
+import { rangeFor, eachDay, dayLabel, monthLabel, fromISO, type RangeKind } from '@shared/date-range'
+import { useAppStore, useToday, type TrackerMode } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { EmptyState } from '../design/EmptyState'
 import { Icon } from '../design/Icon'
+import { DueDate } from '../design/DueDate'
 import { HabitGrid } from './HabitGrid'
 import './Tracker.css'
 
@@ -48,10 +48,12 @@ function bucketByDay(dates: string[], tasks: TrackerTask[], pages: DatedPage[]):
 function TaskRow({
   task,
   onToggle,
+  onReschedule,
   onOpen
 }: {
   task: TrackerTask
   onToggle: (task: TrackerTask) => void
+  onReschedule: (task: TrackerTask, due: string | null) => Promise<void>
   onOpen: (pageId: string) => void
 }) {
   return (
@@ -70,6 +72,7 @@ function TaskRow({
         />
       </button>
       <span className="nx-tracker__task-text">{task.text || 'Untitled task'}</span>
+      <DueDate task={task} onChange={(due) => onReschedule(task, due)} />
       <button className="nx-tracker__source nx-type-data" onClick={() => onOpen(task.pageId)}>
         {task.pageTitle || 'Untitled'}
       </button>
@@ -111,8 +114,10 @@ export function Tracker() {
 
   // Recomputed per render rather than held in state: the window is derived
   // from today, and a cached one would go stale over midnight.
-  const range = useMemo(() => rangeFor(kind, offset), [kind, offset])
-  const today = localDateISO()
+  const today = useToday()
+  // The window is anchored to the logical day too, so the week does not turn
+  // over at midnight while you are still working in it.
+  const range = useMemo(() => rangeFor(kind, offset, fromISO(today)), [kind, offset, today])
 
   const load = useCallback(async () => {
     if (mode === 'habits') {
@@ -159,6 +164,24 @@ export function Tracker() {
       await load()
     } catch (e) {
       console.error('[nexus] could not update the task', e)
+      setError(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  /**
+   * Move a task to another day from wherever it is showing.
+   *
+   * Same contract as `toggle`: the write goes into the block, and the page it
+   * hands back replaces the store's copy so the editor cannot later save a
+   * pre-reschedule document over it.
+   */
+  const reschedule = async (task: TrackerTask, due: string | null) => {
+    try {
+      const page = await window.api.tasks.setDue(task.pageId, task.blockId, due)
+      patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+      await load()
+    } catch (e) {
+      console.error('[nexus] could not reschedule the task', e)
       setError(e instanceof Error ? e.message : String(e))
     }
   }
@@ -238,7 +261,13 @@ export function Tracker() {
         {isCurrent && overdue.length > 0 && (
           <Panel title={`Overdue · ${overdue.length}`} className="nx-tracker__overdue">
             {overdue.map((task) => (
-              <TaskRow key={`${task.pageId}:${task.blockId}`} task={task} onToggle={toggle} onOpen={openPage} />
+              <TaskRow
+                key={`${task.pageId}:${task.blockId}`}
+                task={task}
+                onToggle={toggle}
+                onReschedule={reschedule}
+                onOpen={openPage}
+              />
             ))}
           </Panel>
         )}
@@ -257,10 +286,10 @@ export function Tracker() {
               return (
                 <div key={bucket.date}>
                   {showMonth && <div className="nx-tracker__month nx-type-label">{monthLabel(bucket.date)}</div>}
-                  <div className={`nx-tracker__day ${isToday(bucket.date) ? 'nx-tracker__day--today' : ''}`}>
+                  <div className={`nx-tracker__day ${bucket.date === today ? 'nx-tracker__day--today' : ''}`}>
                     <div className="nx-tracker__day-label nx-type-data">
                       {dayLabel(bucket.date)}
-                      {isToday(bucket.date) && <span className="nx-tracker__today">today</span>}
+                      {bucket.date === today && <span className="nx-tracker__today">today</span>}
                     </div>
                     <div className="nx-tracker__day-body">
                       {bucket.tasks.length + bucket.pages.length === 0 ? (
@@ -272,6 +301,7 @@ export function Tracker() {
                               key={`${task.pageId}:${task.blockId}`}
                               task={task}
                               onToggle={toggle}
+                              onReschedule={reschedule}
                               onOpen={openPage}
                             />
                           ))}
@@ -293,7 +323,13 @@ export function Tracker() {
         {isCurrent && undated.length > 0 && (
           <Panel title={`No date · ${undated.length}`}>
             {undated.map((task) => (
-              <TaskRow key={`${task.pageId}:${task.blockId}`} task={task} onToggle={toggle} onOpen={openPage} />
+              <TaskRow
+                key={`${task.pageId}:${task.blockId}`}
+                task={task}
+                onToggle={toggle}
+                onReschedule={reschedule}
+                onOpen={openPage}
+              />
             ))}
           </Panel>
         )}

@@ -157,6 +157,75 @@ export function setCheckedInDocument(blocks: unknown[], blockId: string, checked
 }
 
 /**
+ * Rewrite the `@YYYY-MM-DD` on one checkbox block.
+ *
+ * The token in the text is the due date — there is nowhere else to put one —
+ * so rescheduling a task means editing its block, not its projected row. Pass
+ * null to clear it, which hands the task back to its page's `date` property if
+ * that page has one.
+ *
+ * Only the first text node is touched, and the token is appended to it rather
+ * than to the block, so styling and any inline mentions on the rest of the
+ * line survive being rescheduled.
+ */
+export function setDueInDocument(
+  blocks: unknown[],
+  blockId: string,
+  dueDate: string | null
+): { blocks: unknown[]; found: boolean } {
+  let found = false
+
+  const rewrite = (content: unknown): unknown => {
+    if (!Array.isArray(content)) return content
+    const nodes = content.map((n) => (n && typeof n === 'object' ? { ...(n as object) } : n))
+
+    // Strip any existing token, wherever in the line it sits.
+    let stripped = false
+    for (const node of nodes) {
+      const n = node as { type?: string; text?: unknown }
+      if (typeof n.text !== 'string') continue
+      const next = n.text.replace(DUE_DATE, '').replace(/\s{2,}/g, ' ')
+      if (next !== n.text) stripped = true
+      n.text = next
+    }
+    if (stripped) {
+      // Trim the trailing space the removed token left behind.
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i] as { text?: unknown }
+        if (typeof n.text === 'string') {
+          n.text = n.text.replace(/\s+$/, '')
+          break
+        }
+      }
+    }
+
+    if (!dueDate) return nodes
+
+    const lastText = [...nodes].reverse().find((n) => typeof (n as { text?: unknown }).text === 'string') as
+      | { text: string }
+      | undefined
+    if (lastText) lastText.text = `${lastText.text.replace(/\s+$/, '')} @${dueDate}`.trim()
+    else nodes.push({ type: 'text', text: `@${dueDate}`, styles: {} })
+    return nodes
+  }
+
+  const mapBlocks = (items: unknown[]): unknown[] =>
+    items.map((item) => {
+      if (!item || typeof item !== 'object') return item
+      const b = item as DocumentNode
+      const next: DocumentNode = { ...b }
+      if (b.id === blockId && b.type === 'checkListItem') {
+        found = true
+        next.content = rewrite(b.content)
+      }
+      if (Array.isArray(b.children)) next.children = mapBlocks(b.children)
+      return next
+    })
+
+  return { blocks: mapBlocks(blocks), found }
+}
+
+/**
  * The opening prose of a document, for a preview line.
  *
  * Built on the same walker as every other projection rather than a second

@@ -89,6 +89,36 @@ those two. `repo.getHabitCandidates()` is the whole of the "is this a habit"
 logic — a type offering both. Anything that would need a table here is a sign
 the model has gone wrong rather than that the grid needs more.
 
+**A day starts when you say it does, not at midnight.** `day.startHour`
+(default 4am, in Settings) is the single number that decides what "today"
+means, and `src/shared/day.ts` is the only place that decides it. Everything
+that used to call `localDateISO()` for the current date now goes through
+`logicalDate`/`logicalDateISO`, or through the store's `useToday()` in the
+renderer. Three things depend on it and they must never disagree: which entry
+the journal opens, when an open task counts as overdue, and which row the
+tracker marks as today. Before this, all three used calendar midnight — so a
+task written at 11pm was overdue by 1am, and "Today's entry" at 1am made a
+*second* page for a day that had barely started. It is deliberately one
+setting rather than one per view, because the bug was the views disagreeing
+with the person using them; three settings would only let them disagree with
+each other too.
+
+**The inbox is a page, not a table.** One ordinary page, pointed at by the
+`inbox.pageId` setting, holding checkbox blocks like any other page. That
+means a captured task is already in `tasks`, already searchable, already
+mirrored, and can be moved into a real note by cut and paste — none of which
+would be true of a `todos` table. It is made on first use and remade if it is
+deleted for good, and it shows up in the tracker's "No date" panel for free,
+because its tasks genuinely have no date.
+
+**Where a captured task lands is a heading, not a position.**
+`journal.taskSection` (default "Tasks") names a heading in the entry;
+`appendBlocks` files the task at the end of that heading's run, before the next
+heading of the same level or higher. Move the heading in your Journal template
+and captures follow it. An entry without that heading takes the task at the
+end, which is what every entry written before the setting existed does. The
+starter template carries the heading for exactly this reason.
+
 **Folders are their own axis too.** A page sits in at most one folder — that
 is what makes the Notes list a tree you can navigate — while tags stay
 many-to-many. Location and topic are different questions and neither
@@ -222,6 +252,22 @@ file already stamped 6 by the earlier build still picks the column up —
 `check:migration` covers exactly that file. **Before claiming a version
 number, check what is already on `main`.**
 
+### Shutdown, and one Nexus per vault
+
+`app.requestSingleInstanceLock()` — a second launch focuses the window that
+already exists rather than opening its own against the same file. WAL keeps the
+file intact under two processes; it cannot keep two renderers, each holding its
+own never-evicted `pageContent`, from saving over each other.
+
+A window's `close` is held back once while `flushRenderer` asks the renderer
+for its pending writes and waits (`src/main/flush.ts`, 2s cap so a hung
+renderer cannot make the app unquittable), and the database closes on
+`will-quit` rather than `before-quit`. Both halves matter: `before-quit` fires
+*ahead* of the windows closing, so closing the database there meant the flush a
+window sends on its way out arrived at a closed handle and was rejected —
+silently, into a renderer already being torn down. An edit typed inside the
+600ms autosave debounce did not survive quitting, by either route.
+
 ### Data access
 
 **Every projection is written in the main process.** `repo.updatePage` is the
@@ -299,6 +345,19 @@ Three things about it are load-bearing and easy to undo by accident:
 - **Every snapshot name carries a counter, including the first.** Age is read
   off name order, and adding the counter only on a collision sorts `-002`
   *before* the bare name, because `-` sorts under `.`.
+
+A snapshot can be put back from Settings. Restoring keeps the vault it
+replaces as `nexus.db.pre-restore-<timestamp>` — destructive, but not one-way —
+removes the `-wal`/`-shm` belonging to the replaced file, reopens through
+`applySchema` (the snapshot may predate the current schema), and **reloads the
+window** rather than relaunching the app. The reload is load-bearing twice
+over: the renderer's `pageContent` cache is never evicted while it runs, so a
+restore has to end with a renderer that never saw the old vault; and
+`app.relaunch()` would race the single-instance lock, where the replacement
+process can be refused the lock the exiting one has not yet released and quit
+— leaving no Nexus running at all, immediately after a destructive action. The
+renderer is flushed first, so an autosave still in its debounce cannot land in
+the restored vault.
 
 Migration backups are a different thing and stay where they are, next to the
 database as `nexus.db.backup-<timestamp>`. They are rare, they mark a
@@ -458,10 +517,19 @@ Six sections, each a thin view over the same page/property model:
   panels sit outside the window because a date-scoped view would otherwise
   swallow their contents: *Overdue* (open tasks whose date has passed) and
   *No date* (open tasks with no date on the block or its page). Both show only
-  while you're looking at the current window. Which mode is showing lives in
+  while you're looking at the current window. An overdue task whose day falls
+  inside the week on screen appears in both, which is deliberate: overdue is a
+  status, not only a position, and the panel is what saves you scanning seven
+  rows for a stale checkbox. Which mode is showing lives in
   the store rather than in the view, so Home's habit panel can link straight
   to Habits — a link that lands on Week and leaves you to find the tab is not
-  a link.
+  a link. A task can be rescheduled from any row it appears on (`DueDate`,
+  `tasks:setDue`): the write goes into the block's `@YYYY-MM-DD`, never into
+  the projected row, and clearing it hands the task back to its page's date.
+  There is no notion of assigning something to a *week* — a week is a bucket of
+  seven days showing everything dated in range, not a list you curated. That
+  gap is known, and deliberately left open until there is enough real use to
+  say what belongs on such a list.
 
 - **Activity** — chronological feed from `activity_log`. Consecutive content
   saves on one page coalesce into a single "edited" entry (see

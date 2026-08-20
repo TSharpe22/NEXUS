@@ -1,7 +1,14 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
-import { journalEntryTitle, localDateISO } from '@shared/journal-date'
-import { extractLinkTargets, extractTasks, parseDocument, setCheckedInDocument } from '@shared/document'
+import { journalEntryTitle } from '@shared/journal-date'
+import { DEFAULT_DAY_START_HOUR, logicalDate, logicalDateISO, normaliseDayStartHour } from '@shared/day'
+import {
+  extractLinkTargets,
+  extractTasks,
+  parseDocument,
+  setCheckedInDocument,
+  setDueInDocument
+} from '@shared/document'
 import { statSync } from 'fs'
 import type {
   Page,
@@ -341,8 +348,20 @@ function captureTitle(text: string): { title: string; overflow: boolean } {
   return { title: (space > MAX_CAPTURE_TITLE - 24 ? cut.slice(0, space) : cut).trim(), overflow: true }
 }
 
-/** Append blocks to a page's document, through `updatePage` so it projects. */
-function appendBlocks(pageId: string, blocks: Record<string, unknown>[]): Page {
+/**
+ * Append blocks to a page's document, through `updatePage` so it projects.
+ *
+ * `section` names a heading to file under. The blocks go at the end of that
+ * heading's run — after everything already under it, before the next heading —
+ * so a capture joins the bottom of the list rather than jumping the queue. A
+ * page without that heading takes the blocks at the end of the document, which
+ * is what every entry written before the setting existed does.
+ */
+function appendBlocks(
+  pageId: string,
+  blocks: Record<string, unknown>[],
+  section?: string
+): Page {
   const page = getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
 
@@ -356,8 +375,106 @@ function appendBlocks(pageId: string, blocks: Record<string, unknown>[]): Page {
     document.pop()
   }
 
-  updatePage(pageId, { content: JSON.stringify([...document, ...blocks]) })
+  const at = section ? sectionEnd(document, section) : -1
+  const next =
+    at < 0 ? [...document, ...blocks] : [...document.slice(0, at), ...blocks, ...document.slice(at)]
+
+  updatePage(pageId, { content: JSON.stringify(next) })
   return getPageById(pageId)!
+}
+
+/**
+ * The index to insert at so a block lands at the end of `section`'s run, or
+ * -1 when the document has no such heading.
+ *
+ * A section ends at the next heading of the same level or higher — a
+ * sub-heading underneath it is still part of it. Trailing blank paragraphs are
+ * stepped back over, so a capture does not land below the gap the template
+ * left for typing.
+ */
+function sectionEnd(document: unknown[], section: string): number {
+  const name = section.trim().toLowerCase()
+  if (!name) return -1
+
+  const headingAt = (i: number): { level: number } | null => {
+    const b = document[i] as { type?: string; props?: { level?: number } } | undefined
+    return b?.type === 'heading' ? { level: Number(b.props?.level ?? 1) } : null
+  }
+  const textAt = (i: number): string => {
+    const b = document[i] as { content?: unknown[] } | undefined
+    if (!Array.isArray(b?.content)) return ''
+    return b.content
+      .map((n) => (n && typeof n === 'object' && 'text' in n ? String((n as { text: unknown }).text) : ''))
+      .join('')
+      .trim()
+      .toLowerCase()
+  }
+
+  let start = -1
+  let level = 1
+  for (let i = 0; i < document.length; i++) {
+    const heading = headingAt(i)
+    if (heading && textAt(i) === name) {
+      start = i
+      level = heading.level
+      break
+    }
+  }
+  if (start < 0) return -1
+
+  let end = document.length
+  for (let i = start + 1; i < document.length; i++) {
+    const heading = headingAt(i)
+    if (heading && heading.level <= level) {
+      end = i
+      break
+    }
+  }
+
+  // Back over the blank paragraphs a template leaves for writing into, so the
+  // capture sits with the section's content rather than after its gap.
+  while (end - 1 > start) {
+    const b = document[end - 1] as { type?: string; content?: unknown[] } | undefined
+    if (b?.type === 'paragraph' && Array.isArray(b.content) && b.content.length === 0) end--
+    else break
+  }
+  return end
+}
+
+// ============================================================
+// Inbox — one page that holds what has no home yet.
+//
+// A page, not a table: a captured task is a checkbox block like any other, so
+// it is already in `tasks`, already searchable, already mirrorable, and can be
+// moved into a real note by cut and paste. The only thing that makes it the
+// inbox is a setting pointing at it.
+// ============================================================
+
+const INBOX_TITLE = 'Inbox'
+
+/** The inbox page, made on first use. Re-made if it was trashed for good. */
+export function getOrCreateInbox(): Page {
+  const existingId = getSetting(SETTING_INBOX_PAGE)
+  if (existingId) {
+    const page = getPageById(existingId)
+    if (page && !page.is_deleted) return page
+  }
+
+  const page = createPage()
+  updatePage(page.id, {
+    title: INBOX_TITLE,
+    content: JSON.stringify([block('paragraph', '')])
+  })
+  setSetting(SETTING_INBOX_PAGE, page.id)
+  return getPageById(page.id)!
+}
+
+/** The inbox if there is one, without making it. */
+export function getInbox(): Page | null {
+  const id = getSetting(SETTING_INBOX_PAGE)
+  if (!id) return null
+  const page = getPageById(id)
+  return page && !page.is_deleted ? page : null
 }
 
 /**
@@ -393,8 +510,16 @@ export function capture(rawText: string, target: CaptureTarget = 'page'): Page {
     return getPageById(page.id)!
   }
 
+  if (target === 'inbox') {
+    // The inbox holds tasks, so a capture into it is a checkbox — the same
+    // block a task capture makes, just somewhere with no date attached to it.
+    return appendBlocks(getOrCreateInbox().id, [checkListItem(text)])
+  }
+
   const entry = getOrCreateTodayEntry()
-  if (target === 'task') return appendBlocks(entry.id, [checkListItem(text)])
+  // A task is filed under the entry's task heading; prose goes at the end,
+  // where a thought written mid-day belongs.
+  if (target === 'task') return appendBlocks(entry.id, [checkListItem(text)], getTaskSection())
   return appendBlocks(entry.id, text.split('\n').map((line) => block('paragraph', line)))
 }
 
@@ -404,6 +529,50 @@ function checkListItem(text: string): Record<string, unknown> {
   item.props = { ...(item.props as Record<string, unknown>), checked: false }
   return item
 }
+
+// ============================================================
+// Preferences
+// ============================================================
+
+const SETTING_DAY_START = 'day.startHour'
+const SETTING_TASK_SECTION = 'journal.taskSection'
+const SETTING_INBOX_PAGE = 'inbox.pageId'
+
+/**
+ * The hour a day starts. See `shared/day.ts` — this is the one number that
+ * decides which journal entry "today" means, when a task is overdue, and
+ * which row the tracker marks.
+ */
+export function getDayStartHour(): number {
+  const stored = getSetting(SETTING_DAY_START)
+  return stored === null ? DEFAULT_DAY_START_HOUR : normaliseDayStartHour(stored)
+}
+
+export function setDayStartHour(hour: number): number {
+  const clean = normaliseDayStartHour(hour)
+  setSetting(SETTING_DAY_START, String(clean))
+  return clean
+}
+
+/**
+ * The heading a captured task is filed under in the journal entry.
+ *
+ * A name rather than a position, so where tasks land is decided by where you
+ * put that heading in your own template — move it, and captures follow. An
+ * entry without the heading takes the task at the end, which is what an entry
+ * written before the setting existed does.
+ */
+export function getTaskSection(): string {
+  return getSetting(SETTING_TASK_SECTION) ?? DEFAULT_TASK_SECTION
+}
+
+export function setTaskSection(name: string): string {
+  const clean = name.trim() || DEFAULT_TASK_SECTION
+  setSetting(SETTING_TASK_SECTION, clean)
+  return clean
+}
+
+export const DEFAULT_TASK_SECTION = 'Tasks'
 
 // ============================================================
 // Journal
@@ -474,8 +643,11 @@ function ensureJournalSetup(): { typeId: string; folderId: string } {
       templateId,
       type.id,
       'Journal template',
+      // The task heading is in the starter template because captures file
+      // under it by name — a template without it would send every captured
+      // task to the bottom of the page and make the setting look broken.
       JSON.stringify([
-        block('heading', 'Today', 2),
+        block('heading', getTaskSection(), 2),
         block('paragraph', ''),
         block('heading', 'Done', 2),
         block('paragraph', ''),
@@ -528,18 +700,23 @@ export function getTodayEntry(): Page | null {
     | { id: string }
     | undefined
   if (!type) return null
-  return findEntryFor(type.id, localDateISO())
+  return findEntryFor(type.id, logicalDateISO(getDayStartHour()))
 }
 
 export function getOrCreateTodayEntry(): Page {
   const { typeId, folderId } = ensureJournalSetup()
-  const today = localDateISO()
+  // The logical day, not the calendar one: at 1am this is still yesterday's
+  // entry, which is the one that has been written in all evening.
+  const startHour = getDayStartHour()
+  const today = logicalDateISO(startHour)
 
   const existing = findEntryFor(typeId, today)
   if (existing) return existing
 
   const page = createPage(typeId, folderId)
-  updatePage(page.id, { title: journalEntryTitle() })
+  // Titled for the day it belongs to, not the wall clock — an entry opened at
+  // 1am must not be called tomorrow.
+  updatePage(page.id, { title: journalEntryTitle(logicalDate(startHour)) })
   setProperty(page.id, JOURNAL_DATE_KEY, 'date', today)
   return getPageById(page.id)!
 }
@@ -1028,6 +1205,29 @@ export function setTaskDone(pageId: string, blockId: string, done: boolean): Pag
   if (!page) throw new Error(`Page not found: ${pageId}`)
 
   const { blocks, found } = setCheckedInDocument(parseDocument(page.content), blockId, done)
+  if (!found) throw new Error(`No checkbox block ${blockId} on page ${pageId}`)
+
+  updatePage(pageId, { content: JSON.stringify(blocks) })
+  return getPageById(pageId)!
+}
+
+/**
+ * Reschedule a task without opening its page.
+ *
+ * Same contract as `setTaskDone`: the write goes into the block, because the
+ * block is the source of truth and a row written on its own is reverted by the
+ * next reprojection. Passing null clears the task's own date, which hands it
+ * back to its page's — a todo in a journal entry goes back to being due that
+ * day rather than becoming undated.
+ */
+export function setTaskDue(pageId: string, blockId: string, dueDate: string | null): Page {
+  const page = getPageById(pageId)
+  if (!page) throw new Error(`Page not found: ${pageId}`)
+  if (dueDate !== null && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    throw new Error(`Not a date: ${dueDate}`)
+  }
+
+  const { blocks, found } = setDueInDocument(parseDocument(page.content), blockId, dueDate)
   if (!found) throw new Error(`No checkbox block ${blockId} on page ${pageId}`)
 
   updatePage(pageId, { content: JSON.stringify(blocks) })

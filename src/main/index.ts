@@ -1,50 +1,12 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
 import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex } from './repo'
 import { flushPending as flushMirror } from './mirror'
+import { flushRenderer } from './flush'
 
 let mainWindow: BrowserWindow | null = null
-
-/**
- * How long a window gets to write out what it has pending before it is closed
- * anyway. Long enough for an autosave round trip, short enough that a hung or
- * crashed renderer cannot leave the app unquittable.
- */
-const FLUSH_TIMEOUT_MS = 2000
-
-/**
- * Ask a renderer to run its pending autosaves, and wait for it.
- *
- * The editor debounces saves by 600ms, so at any moment the newest keystrokes
- * may exist only in the renderer. Its `beforeunload` handler does flush them,
- * but `pages:update` is an async `invoke` — so the write has to be waited for
- * on this side, by something that is still holding the window open. Anything
- * that closes the window first is racing the last edit the user typed.
- */
-function flushRenderer(win: BrowserWindow): Promise<void> {
-  const contents = win.webContents
-  if (contents.isDestroyed() || contents.isCrashed()) return Promise.resolve()
-
-  return new Promise<void>((resolve) => {
-    let settled = false
-    const finish = (): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      ipcMain.removeListener('app:flushed', onFlushed)
-      resolve()
-    }
-    const onFlushed = (event: Electron.IpcMainEvent): void => {
-      if (event.sender === contents) finish()
-    }
-    const timer = setTimeout(finish, FLUSH_TIMEOUT_MS)
-
-    ipcMain.on('app:flushed', onFlushed)
-    contents.send('app:flush')
-  })
-}
 
 function createWindow(): void {
   const win = new BrowserWindow({

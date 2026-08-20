@@ -784,3 +784,36 @@
   padding: var(--nx-space-4) 0;
   opacity: 0.6;
 }
+
+/* The Inbox button sits under Today's entry and is deliberately quieter than
+   it: the entry is where the day happens, the inbox is a holding pen. */
+.nx-notes__inbox {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 11px;
+  border: 1px solid var(--nx-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.nx-notes__inbox:hover {
+  background: var(--nx-row-hover);
+  border-color: var(--nx-border-2);
+  color: var(--nx-text);
+}
+
+.nx-notes__inbox-label {
+  font-family: var(--nx-font-sans);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.nx-notes__inbox-count {
+  color: var(--nx-accent);
+}

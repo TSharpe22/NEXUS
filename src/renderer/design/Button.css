@@ -38,6 +38,16 @@
   border-color: var(--nx-border-2);
 }
 
+.nx-button--ghost:active:not(:disabled),
+.nx-button--quiet:active:not(:disabled),
+.nx-button--critical:active:not(:disabled) {
+  background: var(--nx-surface-raised);
+}
+
+.nx-button--selected:active:not(:disabled) {
+  background: var(--nx-accent-tint-soft);
+}
+
 /* Used for the selected item in a row of toggles (the type picker). */
 .nx-button--selected {
   background: var(--nx-accent-tint);

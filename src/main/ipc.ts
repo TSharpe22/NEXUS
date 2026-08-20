@@ -4,7 +4,9 @@ import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
-import { getDataDir, getBackupInfo } from './database'
+import { getDataDir, getBackupInfo, getDbPath, closeDatabase, initDatabase } from './database'
+import { restoreBackup } from './backup'
+import { flushAllRenderers } from './flush'
 import type { PropertyType, CaptureTarget } from '../shared/types'
 
 /**
@@ -221,6 +223,47 @@ export function registerIpcHandlers(): void {
       rethrow('pages:setPinned', e)
     }
   })
+  // ---- Preferences ----
+  ipcMain.handle('prefs:get', () => {
+    try {
+      return { dayStartHour: repo.getDayStartHour(), taskSection: repo.getTaskSection() }
+    } catch (e) {
+      rethrow('prefs:get', e)
+    }
+  })
+  ipcMain.handle('prefs:setDayStartHour', (_, hour: number) => {
+    try {
+      return repo.setDayStartHour(Number(hour))
+    } catch (e) {
+      rethrow('prefs:setDayStartHour', e)
+    }
+  })
+  ipcMain.handle('prefs:setTaskSection', (_, name: string) => {
+    try {
+      return repo.setTaskSection(String(name))
+    } catch (e) {
+      rethrow('prefs:setTaskSection', e)
+    }
+  })
+
+  // ---- Inbox ----
+  ipcMain.handle('inbox:get', () => {
+    try {
+      return repo.getInbox()
+    } catch (e) {
+      rethrow('inbox:get', e)
+    }
+  })
+  ipcMain.handle('inbox:open', () => {
+    try {
+      const page = repo.getOrCreateInbox()
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('inbox:open', e)
+    }
+  })
+
   ipcMain.handle('capture:line', (_, text: string, target: CaptureTarget) => {
     try {
       const page = repo.capture(text, target)
@@ -557,6 +600,17 @@ export function registerIpcHandlers(): void {
       rethrow('tasks:datedPages', e)
     }
   })
+  ipcMain.handle('tasks:setDue', (_, pageId: string, blockId: string, due: string | null) => {
+    try {
+      const result = repo.setTaskDue(pageId, blockId, due ?? null)
+      // Rescheduling rewrites the page's body, so the mirror is stale until it
+      // re-runs — named, since exactly one page changed.
+      mirror.scheduleSync(pageId)
+      return result
+    } catch (e) {
+      rethrow('tasks:setDue', e)
+    }
+  })
   ipcMain.handle('tasks:setDone', (_, pageId: string, blockId: string, done: boolean) => {
     try {
       const result = repo.setTaskDone(pageId, blockId, Boolean(done))
@@ -674,6 +728,46 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('dialog:showSelectFolder', async () => {
     const result = await openDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : result.filePaths?.[0] || null
+  })
+
+  /**
+   * Put a snapshot back, then reload the window onto it.
+   *
+   * A reload rather than `app.relaunch()`, for two reasons. The renderer owns
+   * a cache of page bodies that nothing evicts while it runs, so a restore has
+   * to end with a renderer that never saw the old vault — and a reload builds
+   * one from scratch, which is all that was actually needed. Relaunching would
+   * also race the single-instance lock: the replacement process can ask for it
+   * before the exiting one has let go, be refused, and quit — leaving the user
+   * with no Nexus at all, immediately after a destructive action. Reloading
+   * cannot fail that way because no second process is ever involved.
+   *
+   * The renderer is flushed first: an autosave still sitting in its debounce
+   * belongs to the vault being replaced, and letting it land afterwards would
+   * write a page from the old vault into the restored one.
+   */
+  ipcMain.handle('backups:restore', async (_, snapshotPath: string) => {
+    try {
+      await flushAllRenderers()
+      mirror.flushPending()
+      closeDatabase()
+
+      const keptAt = restoreBackup(getDbPath(), snapshotPath)
+
+      // The snapshot may predate the current schema, so this is a full open —
+      // migration included — not just a reconnect. No launch snapshot: the
+      // file was just put back, and copying it aside again would push a real
+      // one out of the rotation.
+      initDatabase(false)
+      repo.ensureSearchIndex()
+      repo.ensureTaskIndex()
+      repo.ensureLinkIndex()
+
+      for (const win of BrowserWindow.getAllWindows()) win.webContents.reload()
+      return { keptAt }
+    } catch (e) {
+      rethrow('backups:restore', e)
+    }
   })
 
   ipcMain.handle('fs:readFile', (_, filePath: string) => {

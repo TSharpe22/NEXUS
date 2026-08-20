@@ -190,6 +190,8 @@ export interface BackupInfo {
   count: number
   /** Path of the newest snapshot, or null when none has been taken yet. */
   latest: string | null
+  /** Every snapshot on disk, newest first. */
+  all: string[]
 }
 
 export interface PageLocation {
@@ -213,7 +215,15 @@ export type PageListItem = Omit<Page, 'content'>
  * is worth a page, and a page can be typed, tagged and linked afterwards,
  * which a line inside a journal entry cannot.
  */
-export type CaptureTarget = 'page' | 'journal' | 'task'
+export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox'
+
+/** The handful of things that are settings rather than data. */
+export interface Preferences {
+  /** Hour 0–23 at which a new day begins. See `shared/day.ts`. */
+  dayStartHour: number
+  /** Heading in the journal entry that captured tasks are filed under. */
+  taskSection: string
+}
 
 export interface PageSummary extends PageListItem {
   properties: Property[]
@@ -328,9 +338,27 @@ export interface NexusAPI {
   capture: {
     /**
      * Capture one line from Home. Resolves with the page it landed on — the
-     * new page itself for 'page', today's journal entry for the other two.
+     * new page itself for 'page', the inbox for 'inbox', today's journal entry
+     * for the rest.
      */
     line(text: string, target: CaptureTarget): Promise<Page>
+  }
+  prefs: {
+    get(): Promise<Preferences>
+    /**
+     * The hour a day rolls over, 0–23. Decides which entry "today" opens, when
+     * a task is overdue, and which row the tracker marks. Resolves with the
+     * value as stored, clamped.
+     */
+    setDayStartHour(hour: number): Promise<number>
+    /** The heading captured tasks are filed under in the journal entry. */
+    setTaskSection(name: string): Promise<string>
+  }
+  inbox: {
+    /** The inbox page if it exists, without making one. */
+    get(): Promise<Page | null>
+    /** The inbox page, made on first use. */
+    open(): Promise<Page>
   }
   folders: {
     list(): Promise<Folder[]>
@@ -416,6 +444,13 @@ export interface NexusAPI {
      * stored so the caller can refresh the copy the editor remounts from.
      */
     setDone(pageId: string, blockId: string, done: boolean): Promise<Page>
+    /**
+     * Move a task to a date, or to null to clear its own date and hand it back
+     * to its page's. Resolves with the page as stored — the write goes into
+     * the block, so the caller has to refresh the copy the editor remounts
+     * from.
+     */
+    setDue(pageId: string, blockId: string, due: string | null): Promise<Page>
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
@@ -426,6 +461,13 @@ export interface NexusAPI {
     getGraph(): Promise<GraphData>
     getDataDir(): Promise<string>
     getBackups(): Promise<BackupInfo>
+    /**
+     * Put a snapshot back and reload onto it. The vault being replaced is kept
+     * alongside the database as `nexus.db.pre-restore-<timestamp>`, so this is
+     * destructive but not one-way. Resolves with that path just before the
+     * window reloads.
+     */
+    restoreBackup(snapshotPath: string): Promise<{ keptAt: string | null }>
   }
   shell: {
     /** Resolves to null on success, or a message describing why it did not open. */

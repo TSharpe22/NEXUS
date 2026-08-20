@@ -8,15 +8,15 @@ import type {
   StorageStats,
   TrackerTask
 } from '@shared/types'
-import { STALE_DAYS, dayOfYear, isOlderThan, isoWeek } from '@shared/date-range'
+import { STALE_DAYS, dayOfYear, fromISO, isOlderThan, isoWeek } from '@shared/date-range'
 import { documentPreview } from '@shared/document'
-import { localDateISO } from '@shared/journal-date'
-import { useAppStore } from '../store/app-store'
+import { useAppStore, useToday } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
 import { ErrorState } from '../design/ErrorState'
 import { Icon } from '../design/Icon'
+import { DueDate } from '../design/DueDate'
 import { GraphView } from './GraphView'
 import { HabitStrips, STRIP_DAYS } from './HabitStrips'
 import { relativeTime } from '../hooks/use-relative-time'
@@ -46,8 +46,16 @@ function formatBytes(bytes: number): string {
 const CAPTURE_TARGETS: { value: CaptureTarget; label: string; hint: string }[] = [
   { value: 'page', label: 'New page', hint: 'A page of its own, ready to type or link' },
   { value: 'journal', label: "Today's entry", hint: "Appended to today's journal entry" },
-  { value: 'task', label: 'Task', hint: "A checkbox in today's entry — @2026-08-22 sets a due date" }
+  { value: 'task', label: 'Task', hint: "A checkbox under today's entry's task heading — @2026-08-22 sets a due date" },
+  { value: 'inbox', label: 'Inbox', hint: 'A checkbox on the Inbox page — no date, no home yet' }
 ]
+
+const CAPTURED_MESSAGE: Record<CaptureTarget, string> = {
+  page: 'Captured as a new page',
+  journal: "Added to today's entry",
+  task: "Added to today's entry",
+  inbox: 'Added to the Inbox'
+}
 
 /** How many rows each of the short side panels shows before it stops. */
 const SIDE_ROWS = 7
@@ -62,9 +70,10 @@ const GRAPH_HEIGHT = 210
 // Pieces
 // ------------------------------------------------------------------
 
-function TaskRow({ task, onToggle, onOpen }: {
+function TaskRow({ task, onToggle, onReschedule, onOpen }: {
   task: TrackerTask
   onToggle: (task: TrackerTask) => void
+  onReschedule: (task: TrackerTask, due: string | null) => Promise<void>
   onOpen: (pageId: string) => void
 }) {
   return (
@@ -83,6 +92,7 @@ function TaskRow({ task, onToggle, onOpen }: {
         />
       </button>
       <span className="nx-home__task-text">{task.text || 'Untitled task'}</span>
+      <DueDate task={task} onChange={(due) => onReschedule(task, due)} />
       <button className="nx-home__task-src nx-type-data" onClick={() => onOpen(task.pageId)}>
         {task.pageTitle || 'Untitled'}
       </button>
@@ -145,7 +155,9 @@ export function Home() {
   const [reloadKey, setReloadKey] = useState(0)
   const reload = useCallback(() => setReloadKey((n) => n + 1), [])
 
-  const today = localDateISO()
+  // The logical day, not the calendar one — at 1am this is still yesterday,
+  // which is the day the entry and the tasks on screen belong to.
+  const today = useToday()
 
   const loadDay = useCallback(async () => {
     try {
@@ -214,6 +226,16 @@ export function Home() {
       // The write went into the block, so the renderer's cached body for that
       // page is now behind. Handing a stale document back to the editor is how
       // a page saves over what was changed elsewhere.
+      patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+      reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const reschedule = async (task: TrackerTask, due: string | null) => {
+    try {
+      const page = await window.api.tasks.setDue(task.pageId, task.blockId, due)
       patchPage(page.id, { content: page.content, updated_at: page.updated_at })
       reload()
     } catch (e) {
@@ -316,6 +338,7 @@ export function Home() {
                   key={`${task.pageId}:${task.blockId}`}
                   task={task}
                   onToggle={toggleTask}
+                  onReschedule={reschedule}
                   onOpen={openPage}
                 />
               ))
@@ -441,9 +464,11 @@ function Stat({ value, label }: { value: string; label: string }) {
 // ------------------------------------------------------------------
 
 function DayHeader() {
-  // Recomputed per render rather than held in state: a date cached at mount
+  // The logical day, so the header agrees with everything under it: at 1am
+  // this still reads yesterday, which is the entry the panel below is showing.
+  // Recomputed per render rather than held in state — a date cached at mount
   // is wrong for anyone who leaves the app open overnight.
-  const now = new Date()
+  const now = fromISO(useToday())
   const { day, total } = dayOfYear(now)
   const quarter = Math.floor(now.getMonth() / 3) + 1
 
@@ -480,7 +505,7 @@ function CaptureBar({ onCapture, onCaptured, openPage }: {
       setText('')
       onCaptured()
       if (andOpen) openPage(page.id)
-      else toast.success(target === 'page' ? 'Captured as a new page' : "Added to today's entry")
+      else toast.success(CAPTURED_MESSAGE[target])
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {

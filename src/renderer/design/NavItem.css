@@ -30,6 +30,10 @@
   color: var(--nx-text);
 }
 
+.nx-nav-item:active {
+  background: var(--nx-surface-raised);
+}
+
 .nx-nav-item--selected {
   background: var(--nx-accent-tint-soft);
   color: var(--nx-text);

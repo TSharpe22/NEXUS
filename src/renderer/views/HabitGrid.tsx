@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { HabitCandidate, HabitDay } from '@shared/types'
 import { addDays, eachDay, fromISO, startOfWeek, dayLabel } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
+import { useToday } from '../store/app-store'
 import { EmptyState } from '../design/EmptyState'
 
 /**
@@ -95,7 +96,7 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
     return weeks
   }, [from, to])
 
-  const today = localDateISO()
+  const today = useToday()
   const doneCount = days.filter((d) => d.done).length
   const recorded = days.length
   const { longest, current } = useMemo(() => streaks(days, today), [days, today])

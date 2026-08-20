@@ -3,6 +3,7 @@ import type { HabitCandidate, HabitDay } from '@shared/types'
 import { addDays, eachDay, fromISO } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
 import { streaks } from './HabitGrid'
+import { useToday } from '../store/app-store'
 
 /**
  * Habits on Home: the last three weeks of each, and the streak running now.
@@ -61,10 +62,10 @@ interface Props {
 
 export function HabitStrips({ onOpen }: Props) {
   const [strips, setStrips] = useState<Strip[] | null>(null)
+  const today = useToday()
 
   useEffect(() => {
     let cancelled = false
-    const today = localDateISO()
     const from = localDateISO(addDays(fromISO(today), -(HISTORY_DAYS - 1)))
 
     void window.api.habits
@@ -96,7 +97,7 @@ export function HabitStrips({ onOpen }: Props) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [today])
 
   if (strips === null) return <div className="nx-type-data">Loading…</div>
 

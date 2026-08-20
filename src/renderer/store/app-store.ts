@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import type { CaptureTarget, Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
+import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
+import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 
 export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
@@ -79,7 +80,18 @@ interface AppState {
 
   saveStatus: SaveStatus
 
+  /**
+   * Settings, not data. Loaded once at boot and kept here so every view asks
+   * the same question of the same answer — the bug being fixed was three views
+   * disagreeing about what day it is.
+   */
+  prefs: Preferences
+
   setActiveView: (view: View) => void
+  setDayStartHour: (hour: number) => Promise<void>
+  setTaskSection: (name: string) => Promise<void>
+  /** Open the inbox page, making it on first use. */
+  openInbox: () => Promise<Page>
   setActivePageId: (id: string | null) => void
   /**
    * Pull a page's body into `pageContent` if it is not already there. Every
@@ -174,7 +186,31 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveStatus: 'idle',
 
+  prefs: { dayStartHour: DEFAULT_DAY_START_HOUR, taskSection: 'Tasks' },
+
   setActiveView: (view) => set({ activeView: view }),
+
+  setDayStartHour: async (hour) => {
+    const stored = await window.api.prefs.setDayStartHour(hour)
+    set((state) => ({ prefs: { ...state.prefs, dayStartHour: stored } }))
+  },
+
+  setTaskSection: async (name) => {
+    const stored = await window.api.prefs.setTaskSection(name)
+    set((state) => ({ prefs: { ...state.prefs, taskSection: stored } }))
+  },
+
+  openInbox: async () => {
+    const page = await window.api.inbox.open()
+    await get().refresh()
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: page.id,
+      pageContent: { ...state.pageContent, [page.id]: page.content }
+    }))
+    void get().loadPageTags(page.id)
+    return page
+  },
   setActivePageId: (id) => {
     set({ activePageId: id, activePageTags: [] })
     if (id) {
@@ -217,12 +253,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   refresh: async () => {
-    const [pages, trashed, types, folders, tags] = await Promise.all([
+    const [pages, trashed, types, folders, tags, prefs] = await Promise.all([
       window.api.pages.list(),
       window.api.pages.listDeleted(),
       window.api.types.list(),
       window.api.folders.list(),
-      window.api.tags.list()
+      window.api.tags.list(),
+      window.api.prefs.get()
     ])
     set((state) => ({
       pages,
@@ -230,6 +267,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       types,
       folders,
       tags,
+      prefs,
       loaded: true,
       // Drop filters pointing at tags that no longer exist.
       activeTagFilter: state.activeTagFilter.filter((id) => tags.some((t) => t.id === id))
@@ -448,4 +486,21 @@ export function usePageById(id: string | null): PageListItem | null {
     if (!id) return null
     return s.pages.find((p) => p.id === id) ?? s.trashed.find((p) => p.id === id) ?? null
   })
+}
+
+
+/**
+ * What day it is, according to the day-start hour.
+ *
+ * Every view used `localDateISO()` directly, which is calendar midnight —
+ * so at 1am the tracker, the journal button and the overdue rule all silently
+ * disagreed with the person still working. This is the one answer they share.
+ */
+export function useToday(): string {
+  return useAppStore((s) => logicalDateISO(s.prefs.dayStartHour))
+}
+
+/** The same, for code outside a component. */
+export function today(): string {
+  return logicalDateISO(useAppStore.getState().prefs.dayStartHour)
 }

@@ -3,6 +3,8 @@ import toast from 'react-hot-toast'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
+import { confirmDialog } from '../design/Confirm'
+import { dayStartLabel } from '@shared/day'
 import { relativeTime } from '../hooks/use-relative-time'
 import type { MirrorConfig, BackupInfo } from '@shared/types'
 import './Settings.css'
@@ -22,6 +24,15 @@ export function Settings() {
   const [backups, setBackups] = useState<BackupInfo | null>(null)
   const [mirror, setMirror] = useState<MirrorConfig | null>(null)
   const [syncing, setSyncing] = useState(false)
+  const [showRestore, setShowRestore] = useState(false)
+  const prefs = useAppStore((s) => s.prefs)
+  const setDayStartHour = useAppStore((s) => s.setDayStartHour)
+  const setTaskSection = useAppStore((s) => s.setTaskSection)
+  const [sectionDraft, setSectionDraft] = useState(prefs.taskSection)
+
+  // The stored value is the truth; the draft only exists while it is being
+  // typed, and has to catch up when the store loads or changes underneath.
+  useEffect(() => setSectionDraft(prefs.taskSection), [prefs.taskSection])
 
   useEffect(() => {
     window.api.stats.getDataDir().then(setDataDir)
@@ -66,6 +77,40 @@ export function Settings() {
     } finally {
       setSyncing(false)
     }
+  }
+
+  /**
+   * Put a snapshot back. Confirmed hard, because it replaces the live vault —
+   * though not irreversibly: the current one is kept next to the database, and
+   * the confirmation says so rather than making the user take it on trust.
+   */
+  const restore = async (path: string) => {
+    const name = path.split(/[/\\]/).pop() ?? path
+    const ok = await confirmDialog({
+      title: 'Restore this snapshot?',
+      message:
+        `Everything in the vault will be replaced by ${name}. The current vault is kept ` +
+        'alongside the database as nexus.db.pre-restore-… so this can be undone.',
+      confirmLabel: 'Restore',
+      danger: true
+    })
+    if (!ok) return
+    try {
+      await window.api.stats.restoreBackup(path)
+      // The window reloads itself from the restored vault, so there is nothing
+      // to update here — and nothing of this component survives to do it.
+    } catch (e) {
+      console.error('[nexus] restore failed', e)
+      toast.error('Could not restore that snapshot')
+    }
+  }
+
+  /** `nexus-2026-08-20T02-53-49-424Z-001.db` → something a person can read. */
+  const snapshotLabel = (path: string): string => {
+    const name = path.split(/[/\\]/).pop() ?? path
+    const stamp = name.replace(/^nexus-/, '').replace(/-\d{3}\.db$/, '')
+    const parsed = new Date(stamp.replace(/-(\d{2})-(\d{2})-(\d{3})Z$/, ':$1:$2.$3Z').replace(/T(\d{2})-/, 'T$1:'))
+    return Number.isNaN(parsed.getTime()) ? name : parsed.toLocaleString()
   }
 
   const reveal = async (target: string) => {
@@ -138,14 +183,40 @@ export function Settings() {
               <div className="nx-type-data nx-settings__path">Newest: {backups.latest}</div>
             )}
           </div>
-          <Button
-            variant="ghost"
-            onClick={() => backups && reveal(backups.folder)}
-            disabled={!backups || backups.count === 0}
-          >
-            Open
-          </Button>
+          <div className="nx-settings__actions">
+            <Button
+              variant="ghost"
+              onClick={() => setShowRestore((v) => !v)}
+              disabled={!backups || backups.count === 0}
+            >
+              {showRestore ? 'Cancel' : 'Restore…'}
+            </Button>
+            <Button
+              variant="ghost"
+              onClick={() => backups && reveal(backups.folder)}
+              disabled={!backups || backups.count === 0}
+            >
+              Open
+            </Button>
+          </div>
         </div>
+
+        {showRestore && backups && (
+          <div className="nx-settings__restore">
+            <div className="nx-type-data nx-settings__restore-note">
+              Restoring replaces the whole vault with the snapshot and restarts Nexus. The vault
+              being replaced is kept next to the database, so nothing here is one-way.
+            </div>
+            {backups.all.map((path) => (
+              <div className="nx-settings__restore-row" key={path}>
+                <span className="nx-type-data">{snapshotLabel(path)}</span>
+                <Button variant="ghost" onClick={() => void restore(path)}>
+                  Restore
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="nx-settings__row">
           <div>
             <div className="nx-type-body">Export all pages as Markdown</div>
@@ -163,6 +234,53 @@ export function Settings() {
           <Button variant="ghost" onClick={importFiles}>
             Import
           </Button>
+        </div>
+      </Panel>
+
+      <Panel title="Day">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">A day starts at</div>
+            <div className="nx-type-data">
+              Before {dayStartLabel(prefs.dayStartHour)} it is still the day before — so writing at
+              1am goes in the entry you have been in all evening, a task made at 11pm is not
+              overdue by midnight, and the tracker keeps its marker where you left it.
+            </div>
+          </div>
+          <select
+            className="nx-input nx-settings__select"
+            value={prefs.dayStartHour}
+            onChange={(e) => void setDayStartHour(Number(e.target.value))}
+          >
+            {Array.from({ length: 24 }, (_, h) => (
+              <option key={h} value={h}>
+                {dayStartLabel(h)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Captured tasks go under</div>
+            <div className="nx-type-data">
+              A heading in today&rsquo;s entry. Move that heading in your Journal template and
+              captures follow it; an entry without one takes the task at the end.
+            </div>
+          </div>
+          <input
+            className="nx-input nx-settings__select"
+            value={sectionDraft}
+            placeholder="Tasks"
+            onChange={(e) => setSectionDraft(e.target.value)}
+            onBlur={() => sectionDraft !== prefs.taskSection && void setTaskSection(sectionDraft)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.currentTarget.blur()
+              if (e.key === 'Escape') {
+                setSectionDraft(prefs.taskSection)
+                e.currentTarget.blur()
+              }
+            }}
+          />
         </div>
       </Panel>
 

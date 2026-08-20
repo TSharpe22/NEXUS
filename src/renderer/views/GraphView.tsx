@@ -8,6 +8,8 @@ interface Props {
   height?: number
 }
 
+const ZERO_DRIFT = { dx: 0, dy: 0 }
+
 interface Vec {
   x: number
   y: number
@@ -53,6 +55,29 @@ const REPULSION_CUTOFF = 320
 const MIN_SEPARATION_SQ = 12 * 12
 /** Belt and braces on the same problem: no node crosses more than this a tick. */
 const MAX_SPEED = 30
+/**
+ * How far the pointer may travel between press and release and still count as
+ * a click.
+ *
+ * A node carries both drag handlers and a click that opens its page, and a
+ * drag ends in a native click — so nudging a node and letting go navigated
+ * away from the graph you were arranging. Anything past this is a drag, and
+ * the click that follows it is swallowed.
+ */
+const CLICK_SLOP_PX = 4
+/**
+ * Idle drift: how far a settled node wanders, and how long one cycle takes.
+ *
+ * Purely for the look of the thing — a graph frozen mid-air reads as a
+ * screenshot. The amplitude is deliberately under half a node radius, so it
+ * never suggests the layout is still deciding, and it moves nothing that
+ * matters: positions are untouched, the offset is applied at paint time only,
+ * so hit-testing, dragging and the fit all still see a stationary graph.
+ */
+const DRIFT_PX = 2.2
+const DRIFT_PERIOD_MS = 7000
+/** Idle frames are painted at about this rate, not at 60fps. It is a breath. */
+const DRIFT_FRAME_MS = 45
 /**
  * Label every node up to this many; past it only the hubs get a standing
  * label, and everything else is named on hover. 1500 labels in a panel is not
@@ -108,6 +133,9 @@ export function GraphView({ graph, height = 420 }: Props) {
   const ticks = useRef(0)
   const frame = useRef<number | null>(null)
   const dragged = useRef<string | null>(null)
+  /** Where a node press started, and whether it has travelled far enough to be a drag. */
+  const pressOrigin = useRef<{ x: number; y: number } | null>(null)
+  const draggedFar = useRef(false)
 
   const [, forceRender] = useState(0)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -331,31 +359,91 @@ export function GraphView({ graph, height = 420 }: Props) {
   }, [nodes, edges])
 
   /**
+   * Idle drift — the graph breathing once it has settled.
+   *
+   * A separate loop from the simulation, and a much lazier one: no physics, no
+   * React, just the paint that is already there being handed a phase. It backs
+   * off entirely while the simulation is running (that is already motion),
+   * while a node is being dragged, and while the window is hidden — an app
+   * left open on another desktop should not be animating.
+   */
+  useEffect(() => {
+    if (nodes.length === 0) return
+    let raf: number | null = null
+    let last = 0
+
+    const tick = (now: number) => {
+      raf = requestAnimationFrame(tick)
+      // Only paint while the simulation is not, and not faster than a breath.
+      if (frame.current !== null || document.hidden) return
+      if (now - last < DRIFT_FRAME_MS) return
+      last = now
+      paintRef.current((now / DRIFT_PERIOD_MS) * Math.PI * 2)
+    }
+
+    raf = requestAnimationFrame(tick)
+    return () => {
+      if (raf !== null) cancelAnimationFrame(raf)
+    }
+  }, [nodes.length])
+
+  /**
    * Push the current positions onto the elements React has already rendered.
    *
    * Everything React decides — which nodes exist, what they are called, which
    * are dimmed — still goes through a render. This only moves them, which is
    * the part that happens every frame.
    */
-  const paint = useCallback(() => {
-    const map = positions.current
-    for (const [id, el] of nodeEls.current) {
-      const p = map.get(id)
-      if (p) el.setAttribute('transform', `translate(${p.x}, ${p.y})`)
-    }
-    const list = edgesRef.current
-    for (let i = 0; i < list.length; i++) {
-      const el = edgeEls.current[i]
-      if (!el) continue
-      const a = map.get(list[i].source)
-      const b = map.get(list[i].target)
-      if (!a || !b) continue
-      el.setAttribute('x1', String(a.x))
-      el.setAttribute('y1', String(a.y))
-      el.setAttribute('x2', String(b.x))
-      el.setAttribute('y2', String(b.y))
-    }
+  /**
+   * A node's idle offset — a slow circle, its phase fixed by the node's own id
+   * so neighbours never drift in step and the motion is the same every time
+   * the graph is drawn.
+   */
+  const driftFor = useCallback((id: string, t: number) => {
+    if (t === 0) return ZERO_DRIFT
+    // A cheap stable hash of the id: only needs to scatter phases, not to be
+    // uniform or unpredictable.
+    let h = 0
+    for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0
+    const phase = (h % 1000) / 1000 * Math.PI * 2
+    const angle = t + phase
+    // Different multipliers on the two axes, so a node traces a slow ellipse
+    // rather than a circle and the field never looks like it is rotating.
+    return { dx: Math.sin(angle) * DRIFT_PX, dy: Math.cos(angle * 0.77) * DRIFT_PX }
   }, [])
+
+  /**
+   * Push positions onto the elements React has already rendered.
+   *
+   * `t` is the drift phase in radians, or 0 while the simulation is running —
+   * a settling graph is already moving and does not need help.
+   */
+  const paint = useCallback(
+    (t = 0) => {
+      const map = positions.current
+      for (const [id, el] of nodeEls.current) {
+        const p = map.get(id)
+        if (!p) continue
+        const d = id === dragged.current ? ZERO_DRIFT : driftFor(id, t)
+        el.setAttribute('transform', `translate(${p.x + d.dx}, ${p.y + d.dy})`)
+      }
+      const list = edgesRef.current
+      for (let i = 0; i < list.length; i++) {
+        const el = edgeEls.current[i]
+        if (!el) continue
+        const a = map.get(list[i].source)
+        const b = map.get(list[i].target)
+        if (!a || !b) continue
+        const da = list[i].source === dragged.current ? ZERO_DRIFT : driftFor(list[i].source, t)
+        const db = list[i].target === dragged.current ? ZERO_DRIFT : driftFor(list[i].target, t)
+        el.setAttribute('x1', String(a.x + da.dx))
+        el.setAttribute('y1', String(a.y + da.dy))
+        el.setAttribute('x2', String(b.x + db.dx))
+        el.setAttribute('y2', String(b.y + db.dy))
+      }
+    },
+    [driftFor]
+  )
 
   // Both held in refs so the simulation effect doesn't restart on every render.
   const paintRef = useRef(paint)
@@ -435,6 +523,8 @@ export function GraphView({ graph, height = 420 }: Props) {
     e.stopPropagation()
     ;(e.target as Element).setPointerCapture(e.pointerId)
     dragged.current = id
+    pressOrigin.current = { x: e.clientX, y: e.clientY }
+    draggedFar.current = false
     userMovedView.current = true
     ticks.current = 0
     if (frame.current === null) {
@@ -444,6 +534,10 @@ export function GraphView({ graph, height = 420 }: Props) {
 
   const onPointerMoveNode = (e: React.PointerEvent, id: string) => {
     if (dragged.current !== id) return
+    const origin = pressOrigin.current
+    if (origin && Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > CLICK_SLOP_PX) {
+      draggedFar.current = true
+    }
     const world = toWorld(e.clientX, e.clientY)
     const p = positions.current.get(id)
     if (!p) return
@@ -574,6 +668,12 @@ export function GraphView({ graph, height = 420 }: Props) {
                   onPointerLeave={() => setHovered(null)}
                   onClick={(e) => {
                     e.stopPropagation()
+                    // A drag ends in a click. Only an intentional one opens
+                    // anything.
+                    if (draggedFar.current) {
+                      draggedFar.current = false
+                      return
+                    }
                     openPage(node.id)
                   }}
                 >

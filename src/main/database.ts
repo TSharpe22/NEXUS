@@ -7,7 +7,14 @@ import { rotateBackups, listBackups, backupsDir } from './backup'
 
 let db: Database.Database
 
-export function initDatabase(): void {
+/**
+ * Open the vault, migrate it, and take a launch snapshot.
+ *
+ * `snapshot` is false when reopening after a restore: the file that has just
+ * been put back does not need copying aside again, and doing so would push a
+ * real snapshot out of the rotation to make room for a duplicate of one.
+ */
+export function initDatabase(snapshot = true): void {
   const dataDir = join(app.getPath('userData'), 'data')
   if (!existsSync(dataDir)) {
     mkdirSync(dataDir, { recursive: true })
@@ -26,7 +33,7 @@ export function initDatabase(): void {
   // anything. Checkpointed first: under WAL the recent writes are still in
   // `nexus.db-wal`, so a plain copy of the main file alone is a stale vault.
   try {
-    if (hadVault) {
+    if (hadVault && snapshot) {
       db.pragma('wal_checkpoint(TRUNCATE)')
       const { created, pruned } = rotateBackups(dataDir, dbPath)
       if (created) {
@@ -71,13 +78,21 @@ export function getDataDir(): string {
   return join(app.getPath('userData'), 'data')
 }
 
-export function getBackupInfo(): { folder: string; count: number; latest: string | null } {
+export function getBackupInfo(): {
+  folder: string
+  count: number
+  latest: string | null
+  all: string[]
+} {
   const dataDir = getDataDir()
   const backups = listBackups(dataDir)
   return {
     folder: backupsDir(dataDir),
     count: backups.length,
-    latest: backups[0] ?? null
+    latest: backups[0] ?? null,
+    // The whole list, newest first — restoring means picking one, and picking
+    // needs something to pick from.
+    all: backups
   }
 }
 

@@ -1430,18 +1430,28 @@ check('entry filed in the Journal folder',
 
 const entryProps = await page.evaluate((id) => window.api.properties.getForPage(id), entry?.id)
 const dateProp = entryProps.find((p) => p.key === 'date')
-const today = await page.evaluate(() => {
+// The *logical* day, not the calendar one: a day starts at the configured
+// hour, so a suite run at 2am must expect yesterday's date here — which is
+// the whole point of the setting, and would otherwise be a nightly flake.
+const today = await page.evaluate(async () => {
+  const { dayStartHour } = await window.api.prefs.get()
   const d = new Date()
+  if (d.getHours() < dayStartHour) d.setDate(d.getDate() - 1)
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 })
-check('date property set to today, in local time', dateProp?.value_date === today,
+check('date property set to the logical day, in local time', dateProp?.value_date === today,
   `${dateProp?.value_date} vs ${today}`)
 
-check('template applied to the new entry', JSON.stringify(JSON.parse(entry.content)).includes('Today'),
+// The starter template's first heading is the task section, because captured
+// tasks are filed under it by name — a template without it would send every
+// captured task to the bottom of the entry.
+const taskSection = await page.evaluate(() => window.api.prefs.get().then((p) => p.taskSection))
+check('template applied to the new entry',
+  JSON.stringify(JSON.parse(entry.content)).includes(taskSection),
   JSON.stringify(entry.content).slice(0, 120))
 check('template body renders in the editor',
-  (await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? '')).includes('Today'))
+  (await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? '')).includes(taskSection))
 
 // Pressing it again must reopen the same entry, never make a second one.
 await page.evaluate(() => document.querySelector('.nx-notes__today').click())
@@ -1530,6 +1540,117 @@ check('the captured task is projected without opening the page', !!dentist, JSON
 // here is what proves the token was parsed rather than inherited.
 check('an @date typed into the capture box is parsed like one typed into the page',
   dentist?.dueDate === TOMORROW && dentist?.dueDateSource === 'block', JSON.stringify(dentist))
+
+// A captured task is filed under the entry's task heading, not dropped at the
+// bottom of the page — that heading is where you put it in your own template,
+// which is how you choose where captures land.
+const entryBlocks = JSON.parse(entryAfterTask.content)
+const sectionIndex = entryBlocks.findIndex(
+  (b) => b.type === 'heading' && (b.content ?? []).map((c) => c.text).join('').trim() === taskSection
+)
+const dentistIndex = entryBlocks.findIndex((b) =>
+  (b.content ?? []).map((c) => c.text).join('').includes('ring the dentist')
+)
+const nextHeading = entryBlocks.findIndex((b, i) => i > sectionIndex && b.type === 'heading')
+check('the captured task is filed under the task heading', sectionIndex >= 0 && dentistIndex > sectionIndex,
+  `heading at ${sectionIndex}, task at ${dentistIndex}`)
+check('and before the heading after it, rather than at the end of the page',
+  nextHeading < 0 || dentistIndex < nextHeading,
+  `task at ${dentistIndex}, next heading at ${nextHeading}`)
+
+// ---------------------------------------------------------------- day start
+// The one setting that decides what "today" means. Verified by moving it, not
+// by reading it back: the bug it fixes was three views computing the day for
+// themselves, so what matters is that the entry the app makes actually shifts.
+log('\n— a day starts when you say it does —')
+const nowHour = await page.evaluate(() => new Date().getHours())
+if (nowHour >= 23) {
+  log('  (skipped — cannot shift the day forward from inside the 23rd hour)')
+} else {
+  const expectedYesterday = await page.evaluate(() => {
+    const d = new Date()
+    d.setDate(d.getDate() - 1)
+    const pad = (n) => String(n).padStart(2, '0')
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  })
+  // 23 means "the day only starts at 11pm", so any earlier hour is yesterday.
+  await page.evaluate(() => window.api.prefs.setDayStartHour(23))
+  const shifted = await page.evaluate(() => window.api.journal.today())
+  const shiftedProps = await page.evaluate((id) => window.api.properties.getForPage(id), shifted.id)
+  check('moving the day-start hour moves which entry is "today"',
+    shiftedProps.find((p) => p.key === 'date')?.value_date === expectedYesterday,
+    `${shiftedProps.find((p) => p.key === 'date')?.value_date} vs ${expectedYesterday}`)
+  // "Entry — Wed 19 Aug 2026" for a logical day of 2026-08-19: the title has to
+  // name the day the entry is *for*, or an entry opened at 1am is called
+  // tomorrow.
+  check('and the entry is titled for the day it belongs to, not the wall clock',
+    shifted.title.includes(String(Number(expectedYesterday.slice(8, 10)))),
+    `${JSON.stringify(shifted.title)} for ${expectedYesterday}`)
+  check('a task written before the rollover is not overdue yet',
+    (await page.evaluate((d) => window.api.tasks.overdue(d), expectedYesterday)).every(
+      (t) => t.dueDate < expectedYesterday
+    ))
+
+  // Put it back and clean up, so nothing downstream inherits a shifted day.
+  await page.evaluate((id) => window.api.pages.hardDelete(id), shifted.id)
+  await page.evaluate(() => window.api.prefs.setDayStartHour(4))
+  check('the setting round-trips',
+    (await page.evaluate(() => window.api.prefs.get())).dayStartHour === 4)
+  check('an hour outside the clock is clamped rather than stored',
+    (await page.evaluate(() => window.api.prefs.setDayStartHour(99))) === 23)
+  await page.evaluate(() => window.api.prefs.setDayStartHour(4))
+}
+
+// ---------------------------------------------------------------- inbox
+log('\n— the inbox —')
+check('there is no inbox until something needs one',
+  (await page.evaluate(() => window.api.inbox.get())) === null)
+
+await captureAs('Inbox')
+await captureLine('look into the thing with the tapes')
+const inbox = await page.evaluate(() => window.api.inbox.get())
+check('capturing to the inbox makes it', !!inbox, JSON.stringify(inbox?.title))
+check('and it is an ordinary page, not a table', inbox?.title === 'Inbox')
+const inboxTasks = await page.evaluate((id) => window.api.tasks.forPage(id), inbox?.id)
+const taped = inboxTasks.find((t) => t.text === 'look into the thing with the tapes')
+check('an inbox capture is a checkbox, projected like any other', !!taped, JSON.stringify(inboxTasks))
+check('with no date, so it surfaces under "No date" rather than a day',
+  taped?.dueDate === null && taped?.dueDateSource === null, JSON.stringify(taped))
+
+await captureLine('second inbox thought')
+const inboxAgain = await page.evaluate(() => window.api.inbox.get())
+check('a second capture reuses the same inbox page', inboxAgain?.id === inbox?.id)
+check('and appends rather than replacing',
+  JSON.stringify(JSON.parse(inboxAgain.content)).includes('look into the thing with the tapes'))
+
+// ---------------------------------------------------------------- rescheduling
+log('\n— rescheduling a task without opening its page —')
+const moved = await page.evaluate(
+  ([pageId, blockId, date]) => window.api.tasks.setDue(pageId, blockId, date),
+  [inbox.id, taped.blockId, TOMORROW]
+)
+const afterMove = await page.evaluate((id) => window.api.tasks.forPage(id), inbox.id)
+const movedTask = afterMove.find((t) => t.blockId === taped.blockId)
+check('setting a date moves the task', movedTask?.dueDate === TOMORROW, JSON.stringify(movedTask))
+check('and the date is its own, not inherited', movedTask?.dueDateSource === 'block')
+check('the @token was written into the block, not just the row',
+  moved.content.includes(`@${TOMORROW}`), moved.content.slice(0, 200))
+check('and the task text is left alone', movedTask?.text === 'look into the thing with the tapes',
+  JSON.stringify(movedTask?.text))
+
+await page.evaluate(
+  ([pageId, blockId]) => window.api.tasks.setDue(pageId, blockId, null),
+  [inbox.id, taped.blockId]
+)
+const afterClear = await page.evaluate((id) => window.api.tasks.forPage(id), inbox.id)
+const clearedTask = afterClear.find((t) => t.blockId === taped.blockId)
+check('clearing the date removes the token', clearedTask?.dueDate === null, JSON.stringify(clearedTask))
+check('and still leaves the text intact', clearedTask?.text === 'look into the thing with the tapes',
+  JSON.stringify(clearedTask?.text))
+
+await nav('Home')
+await sleep(500)
+await captureAs("Today's entry")
 
 await captureAs("Today's entry")
 await captureLine('the amber reads warmer at night')

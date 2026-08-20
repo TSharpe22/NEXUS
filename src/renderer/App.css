@@ -1,7 +1,53 @@
+/* ------------------------------------------------------------------
+   Selection.
+
+   Chrome is not text. Without this, click-dragging a nav item, a table row
+   or a task row selects its label, and double-clicking selects a word —
+   which is most of why clicking around the app felt loose and clunky. No
+   desktop app lets you select its own furniture.
+
+   Content is the exception, and is opted back in explicitly below: the
+   document, the page title, and table cells you might reasonably want to
+   copy out of.
+   ------------------------------------------------------------------ */
 .nx-app {
   display: flex;
   height: 100%;
   background: var(--nx-bg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nx-app input,
+.nx-app textarea,
+.bn-editor,
+.nx-editor__title,
+.nx-table tbody td,
+.nx-selectable {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* ------------------------------------------------------------------
+   Pressed states.
+
+   DESIGN.md specifies these and nothing but the primary button had one, so
+   a click landed with no acknowledgement at all — the other half of why
+   this felt unresponsive. Everything clickable dips on press.
+   ------------------------------------------------------------------ */
+.nx-app button:active:not(:disabled),
+.nx-app [role='button']:active {
+  transform: translateY(0.5px);
+}
+
+.nx-nav-item:active,
+.nx-table-row--clickable:active,
+.nx-tree-row:active,
+.nx-home__row-open:active,
+.nx-home__entry:active,
+.nx-tracker__task:active,
+.nx-tracker__page:active {
+  background: var(--nx-surface-raised);
 }
 
 .nx-sidebar {
@@ -80,4 +126,75 @@
 .nx-content:has(.nx-notes) {
   overflow: hidden;
   padding: 0;
+}
+
+/* ------------------------------------------------------------------
+   Due date control on a task row.
+
+   Quiet until you go near it — a date is metadata on a line whose text is
+   the point, so it sits at mono/dim weight and only picks up the accent on
+   hover. An inherited date (the task has none of its own, and is using its
+   page's) is shown in italic, because rescheduling it means something
+   different: it gives the task a date instead of moving one.
+   ------------------------------------------------------------------ */
+.nx-due {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  transition: color var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-due:hover {
+  color: var(--nx-accent);
+  border-color: var(--nx-border-2);
+}
+
+.nx-due--inherited {
+  font-style: italic;
+}
+
+.nx-due--none {
+  opacity: 0.6;
+}
+
+.nx-due--editing {
+  border-color: var(--nx-border-2);
+  cursor: default;
+}
+
+.nx-due__input {
+  background: transparent;
+  border: none;
+  color: var(--nx-text);
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  padding: 0;
+}
+
+.nx-due__input::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);
+  cursor: pointer;
+}
+
+.nx-due__clear {
+  background: transparent;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.nx-due__clear:hover {
+  color: var(--nx-critical);
 }

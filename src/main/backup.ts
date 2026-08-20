@@ -52,6 +52,38 @@ export function listBackups(dataDir: string): string[] {
 }
 
 /**
+ * Put a snapshot back, keeping the vault it replaces.
+ *
+ * The current vault is copied to `nexus.db.pre-restore-<timestamp>` first and
+ * never rotated away — restoring the wrong snapshot must not be the thing that
+ * loses the work you were trying to get back. That file sits next to the
+ * database rather than in `backups/`, for the same reason migration backups
+ * do: it marks a one-way choice, and nothing should age it out.
+ *
+ * The write-ahead log belongs to the database being replaced, so `-wal` and
+ * `-shm` are removed: left behind, SQLite would replay them onto the restored
+ * file and hand back a mixture of two vaults. The caller owns closing the
+ * connection before calling this — the imports here are deliberately only
+ * `fs`, so the rotation and this can both be exercised outside Electron.
+ */
+export function restoreBackup(dbPath: string, snapshotPath: string): string | null {
+  if (!existsSync(snapshotPath)) throw new Error(`No such snapshot: ${snapshotPath}`)
+
+  let keptAt: string | null = null
+  if (existsSync(dbPath)) {
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+    keptAt = `${dbPath}.pre-restore-${stamp}`
+    copyFileSync(dbPath, keptAt)
+  }
+
+  copyFileSync(snapshotPath, dbPath)
+  for (const sidecar of [`${dbPath}-wal`, `${dbPath}-shm`]) {
+    if (existsSync(sidecar)) unlinkSync(sidecar)
+  }
+  return keptAt
+}
+
+/**
  * Copy the database aside, then drop the oldest snapshots beyond `KEEP_BACKUPS`.
  *
  * Skipped when the database has not been written since the newest snapshot was

@@ -39,8 +39,11 @@ export function Notes() {
   const emptyTrash = useAppStore((s) => s.emptyTrash)
   const createFolder = useAppStore((s) => s.createFolder)
   const openTodayEntry = useAppStore((s) => s.openTodayEntry)
+  const openInbox = useAppStore((s) => s.openInbox)
 
   const [showTrash, setShowTrash] = useState(false)
+  /** Open tasks sitting in the inbox, so the button says whether it is worth opening. */
+  const [inboxOpenCount, setInboxOpenCount] = useState(0)
   const [query, setQuery] = useState('')
   const [taggedPageIds, setTaggedPageIds] = useState<string[] | null>(null)
   const [newTypeName, setNewTypeName] = useState('')
@@ -69,6 +72,20 @@ export function Notes() {
   const isTrashed = !!activeEntry && trashed.some((p) => p.id === activeEntry.id)
 
   const typeName = (typeId: string) => types.find((t) => t.id === typeId)?.name ?? 'Note'
+
+  useEffect(() => {
+    let cancelled = false
+    void window.api.inbox
+      .get()
+      .then((page) => (page ? window.api.tasks.forPage(page.id) : []))
+      .then((tasks) => {
+        if (!cancelled) setInboxOpenCount(tasks.filter((t) => !t.isDone).length)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [pages])
 
   // Resolved in the main process so the page_tags join stays in SQL rather
   // than shipping every page's tags to the renderer to filter a list.
@@ -190,6 +207,28 @@ export function Notes() {
             >
               <span className="nx-notes__today-label">Today&rsquo;s entry</span>
               <span className="nx-notes__today-date">{todayLabel}</span>
+            </button>
+          )}
+
+          {/* The inbox is an ordinary page — this is just the one reliable way
+              back to it, since it is not pinned and does not live in a folder. */}
+          {!showTrash && (
+            <button
+              className="nx-notes__inbox"
+              onClick={async () => {
+                try {
+                  await openInbox()
+                } catch (e) {
+                  console.error('[nexus] could not open the inbox', e)
+                  toast.error('Could not open the Inbox')
+                }
+              }}
+              title="Open the Inbox — where captured tasks with no home yet are kept"
+            >
+              <span className="nx-notes__inbox-label">Inbox</span>
+              {inboxOpenCount > 0 && (
+                <span className="nx-notes__inbox-count nx-type-data">{inboxOpenCount}</span>
+              )}
             </button>
           )}
 
