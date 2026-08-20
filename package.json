@@ -15,7 +15,8 @@
     "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:app",
     "check:backup": "node scripts/check-backup.mjs",
     "dist": "electron-vite build && electron-builder --linux",
-    "dist:dir": "electron-vite build && electron-builder --linux dir"
+    "dist:dir": "electron-vite build && electron-builder --linux dir",
+    "update": "npm run dist && sudo dpkg -i dist/nexus_*_amd64.deb"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.24.2",

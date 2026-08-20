@@ -227,6 +227,19 @@ export function Settings() {
 
       <Panel title="About">
         <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Build</div>
+            <div className="nx-type-data">
+              Every build carries the same version number, so the commit is what tells
+              you which one you are running.
+            </div>
+          </div>
+          <span className="nx-type-data nx-settings__path">
+            {__NEXUS_BUILD__.version} · {__NEXUS_BUILD__.commit} ·{' '}
+            {new Date(__NEXUS_BUILD__.builtAt).toLocaleString()}
+          </span>
+        </div>
+        <div className="nx-settings__row">
           <span className="nx-type-body">Theme</span>
           <span className="nx-type-data">Dark</span>
         </div>

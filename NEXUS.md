@@ -293,7 +293,19 @@ one-way change, and nothing rotates them away.
 
 `npm run dist` builds a Linux AppImage and `.deb` into `dist/`, via
 `electron-builder.yml`. `npm run dist:dir` stops at an unpacked directory,
-which is faster when you only want to check the app starts.
+which is faster when you only want to check the app starts. `npm run update`
+builds and installs over the running one in a single step.
+
+Installing the `.deb` again replaces `/opt/Nexus`, which is what the desktop
+entry points at, so the menu icon picks the new build up — but only after the
+app is quit and reopened. A running Electron keeps the code it started with.
+
+**Every build carries the same `version`**, so it cannot tell you whether an
+install took. The commit can, and `electron.vite.config.ts` stamps it into the
+renderer as `__NEXUS_BUILD__` for Settings → About to show, with a `+local`
+suffix when the tree was dirty — a build from uncommitted work is not the
+commit it names. If the About panel shows the commit you just built, the
+install landed.
 
 `better-sqlite3` ships a native `.node` binding, and `dlopen` cannot read one
 out of an asar archive — hence `asarUnpack`. `package.json` is in `files`
