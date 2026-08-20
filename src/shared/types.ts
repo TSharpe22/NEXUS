@@ -160,6 +160,8 @@ export interface ActivityLogEntry {
 export interface StorageStats {
   pageCount: number
   dbSizeBytes: number
+  /** Unticked checkbox blocks across every live page. */
+  openTaskCount: number
   withPropertiesPercent: number
 }
 
@@ -266,6 +268,11 @@ export interface NexusAPI {
   journal: {
     /** Today's journal entry, created from the Journal template if absent. */
     today(): Promise<Page>
+    /**
+     * Today's entry if it exists, without creating it or the Journal type.
+     * Home reads this: showing the entry must not be what makes it.
+     */
+    peek(): Promise<Page | null>
   }
   mirror: {
     getConfig(): Promise<MirrorConfig>

@@ -125,3 +125,27 @@ export function isOlderThan(timestamp: string, days: number, now = new Date()): 
   if (Number.isNaN(parsed)) return false
   return now.getTime() - parsed >= days * 24 * 60 * 60 * 1000
 }
+
+/**
+ * ISO-8601 week number. Weeks start on Monday, and week 1 is the one holding
+ * the year's first Thursday — which is why this pivots on Thursdays rather
+ * than counting sevens from 1 January.
+ */
+export function isoWeek(d: Date): number {
+  const date = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  // Monday-based day index, then step to this week's Thursday: whichever year
+  // that Thursday lands in is the year that owns the week.
+  date.setDate(date.getDate() + 3 - ((date.getDay() + 6) % 7))
+  const firstThursday = new Date(date.getFullYear(), 0, 4)
+  firstThursday.setDate(firstThursday.getDate() + 3 - ((firstThursday.getDay() + 6) % 7))
+  return 1 + Math.round((date.getTime() - firstThursday.getTime()) / (7 * 24 * 60 * 60 * 1000))
+}
+
+/** Where today sits in its year: the day's number, and how long the year is. */
+export function dayOfYear(d: Date): { day: number; total: number } {
+  const start = new Date(d.getFullYear(), 0, 1)
+  const today = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const day = Math.round((today.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1
+  const total = (new Date(d.getFullYear(), 11, 31).getTime() - start.getTime()) / (24 * 60 * 60 * 1000) + 1
+  return { day, total }
+}

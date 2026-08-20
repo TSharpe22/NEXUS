@@ -498,19 +498,44 @@ function ensureJournalSetup(): { typeId: string; folderId: string } {
  * not exist yet. Matching is on the entry's `date` property rather than its
  * title, so renaming an entry never produces a duplicate for that day.
  */
+function findEntryFor(typeId: string, date: string): Page | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT p.* FROM pages p
+         JOIN properties pr ON pr.page_id = p.id
+         WHERE p.type_id = ? AND p.is_deleted = 0
+           AND pr.key = ? AND pr.value_date = ?
+         LIMIT 1`
+      )
+      .get(typeId, JOURNAL_DATE_KEY, date) as Page) ?? null
+  )
+}
+
+/**
+ * Today's journal entry if it exists, without creating anything.
+ *
+ * Home shows the entry, and showing a thing must never make it: calling
+ * `getOrCreateTodayEntry` to render a dashboard would mean an entry — and, on
+ * a vault that has never journalled, the whole Journal type, its folder, its
+ * date property and a template — springs into being every day the app is
+ * merely opened. So this deliberately does not call `ensureJournalSetup`: no
+ * Journal type means no entry, and that is the answer, not a reason to build
+ * one.
+ */
+export function getTodayEntry(): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(JOURNAL_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  if (!type) return null
+  return findEntryFor(type.id, localDateISO())
+}
+
 export function getOrCreateTodayEntry(): Page {
   const { typeId, folderId } = ensureJournalSetup()
   const today = localDateISO()
 
-  const existing = getDb()
-    .prepare(
-      `SELECT p.* FROM pages p
-       JOIN properties pr ON pr.page_id = p.id
-       WHERE p.type_id = ? AND p.is_deleted = 0
-         AND pr.key = ? AND pr.value_date = ?
-       LIMIT 1`
-    )
-    .get(typeId, JOURNAL_DATE_KEY, today) as Page | undefined
+  const existing = findEntryFor(typeId, today)
   if (existing) return existing
 
   const page = createPage(typeId, folderId)
@@ -1595,9 +1620,23 @@ export function getStorageStats(): StorageStats {
     dbSizeBytes = 0
   }
 
+  // Joined back to `pages` rather than counted straight off `tasks`: the
+  // projection keeps rows for a trashed page until something reprojects it,
+  // and a count that includes the trash is a count of nothing anyone can see.
+  const openTaskCount = (
+    db
+      .prepare(
+        `SELECT COUNT(*) AS c FROM tasks t
+           JOIN pages p ON p.id = t.page_id AND p.is_deleted = 0
+          WHERE t.is_done = 0`
+      )
+      .get() as { c: number }
+  ).c
+
   return {
     pageCount,
     dbSizeBytes,
+    openTaskCount,
     withPropertiesPercent: pageCount === 0 ? 0 : Math.round((taggedCount / pageCount) * 100)
   }
 }

@@ -35,6 +35,13 @@ export function registerIpcHandlers(): void {
       rethrow('journal:today', e)
     }
   })
+  ipcMain.handle('journal:peek', () => {
+    try {
+      return repo.getTodayEntry()
+    } catch (e) {
+      rethrow('journal:peek', e)
+    }
+  })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
     try {
       return repo.setTypeTemplate(typeId, pageId ?? null)

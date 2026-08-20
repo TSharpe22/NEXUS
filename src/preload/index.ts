@@ -4,6 +4,7 @@ import type { NexusAPI } from '../shared/types'
 const api: NexusAPI = {
   journal: {
     today: () => ipcRenderer.invoke('journal:today'),
+    peek: () => ipcRenderer.invoke('journal:peek'),
   },
   mirror: {
     getConfig: () => ipcRenderer.invoke('mirror:getConfig'),

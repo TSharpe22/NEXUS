@@ -28,10 +28,19 @@ export const VIEW_ORDER = Object.keys(VIEW_META) as View[]
 
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
+/** Tracker's three modes. Habits is not a date range, which is why it sits alongside one. */
+export type TrackerMode = 'week' | 'quarter' | 'habits'
+
 interface AppState {
   activeView: View
   activePageId: string | null
   tableTypeId: string | null
+  /**
+   * Which of Tracker's three modes is showing. In the store rather than in
+   * `Tracker` so Home's habit panel can land on Habits — a link that dumps you
+   * on Week and leaves you to find the tab is not a link.
+   */
+  trackerMode: TrackerMode
 
   /**
    * Pages, trash and types live here rather than in each view. Every entry
@@ -81,6 +90,7 @@ interface AppState {
   /** Navigate to a page from anywhere: switches to Notes and selects it. */
   openPage: (id: string) => void
   setTableTypeId: (id: string | null) => void
+  setTrackerMode: (mode: TrackerMode) => void
   setSaveStatus: (status: SaveStatus) => void
 
   refresh: () => Promise<void>
@@ -144,6 +154,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeView: 'home',
   activePageId: null,
   tableTypeId: null,
+  trackerMode: 'week',
 
   pages: [],
   trashed: [],
@@ -184,6 +195,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({ pageContent: { ...state.pageContent, [id]: page.content } }))
   },
   setTableTypeId: (id) => set({ tableTypeId: id }),
+  setTrackerMode: (mode) => set({ trackerMode: mode }),
   setSaveStatus: (status) => set({ saveStatus: status }),
 
   refresh: async () => {

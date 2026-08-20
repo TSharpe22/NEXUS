@@ -51,6 +51,7 @@ interface Props {
   typeName: (typeId: string) => string
   onDuplicate: (page: PageListItem) => void
   onTrash: (page: PageListItem) => void
+  onTogglePin: (page: PageListItem) => void
 }
 
 export function FolderTree({
@@ -60,7 +61,8 @@ export function FolderTree({
   snippets,
   typeName,
   onDuplicate,
-  onTrash
+  onTrash,
+  onTogglePin
 }: Props) {
   const folders = useAppStore((s) => s.folders)
   const expandedFolderIds = useAppStore((s) => s.expandedFolderIds)
@@ -182,6 +184,15 @@ export function FolderTree({
         </span>
       </span>
       <span className="nx-tree-row__actions">
+        <button
+          title={page.is_pinned ? 'Unpin from Home' : 'Pin to Home'}
+          onClick={(e) => {
+            e.stopPropagation()
+            onTogglePin(page)
+          }}
+        >
+          {page.is_pinned ? 'Unpin' : 'Pin'}
+        </button>
         <button
           title="Duplicate"
           onClick={(e) => {

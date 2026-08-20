@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TrackerTask, DatedPage } from '@shared/types'
 import { rangeFor, eachDay, dayLabel, monthLabel, isToday, type RangeKind } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
-import { useAppStore } from '../store/app-store'
+import { useAppStore, type TrackerMode } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { EmptyState } from '../design/EmptyState'
 import { Icon } from '../design/Icon'
@@ -18,7 +18,7 @@ import './Tracker.css'
  * only home for anything the user typed.
  */
 
-type Mode = RangeKind | 'habits'
+type Mode = TrackerMode
 
 const MODE_LABELS: Record<Mode, string> = {
   week: 'Week',
@@ -97,7 +97,9 @@ export function Tracker() {
   // The two date windows plus the year grid. Habits are not a range — they
   // are a whole year at a glance — so they sit alongside `RangeKind` rather
   // than inside it.
-  const [mode, setMode] = useState<Mode>('week')
+  // Held in the store so Home can link straight to Habits.
+  const mode = useAppStore((s) => s.trackerMode)
+  const setMode = useAppStore((s) => s.setTrackerMode)
   const kind: RangeKind = mode === 'quarter' ? 'quarter' : 'week'
   const [offset, setOffset] = useState(0)
   const [tasks, setTasks] = useState<TrackerTask[]>([])

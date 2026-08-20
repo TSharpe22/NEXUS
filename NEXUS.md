@@ -97,11 +97,21 @@ substitutes for the other.
 ### Schema (simplified from the original)
 
 - `pages` — `id, title, icon, type_id, content (JSON blob of the BlockNote
-  document), page_width, folder_id, is_deleted, created_at, updated_at`. The BlockNote
+  document), page_width, folder_id, is_deleted, is_pinned, pinned_at,
+  created_at, updated_at`. The BlockNote
   document is stored as a single JSON blob, not exploded into a `blocks`
   table with parent/order columns. BlockNote already models a document as
   one ordered nested array — storing it as rows and reassembling on every
   save was the direct cause of a `created_at`-reset bug in the first build.
+  `is_pinned`/`pinned_at` back Home's pinned list. They are columns rather
+  than a `pins` table because a pin is a flag on one page, on the same axis as
+  `folder_id`; a table earns its keep only once folders, types or saved
+  searches can be pinned too. They are also the only thing on a page that no
+  projection can rebuild — `page_fts`, `tasks` and `links` are all derived
+  from documents and are refilled when empty, while a pin exists solely
+  because the user made it. `setPagePinned` leaves `updated_at` alone: pinning
+  is not an edit, and touching it would push the page to the top of every
+  recency-ordered list and out of Home's stale panel.
 - `properties` — `page_id, key, type, value_text, value_number, value_date,
   value_relation`. Sparse columns, not a JSON blob — keeps typed queries
   cheap. `setProperty` owns which column a value lands in and writes all of
@@ -192,6 +202,11 @@ that is gated on the stored version rather than written as an idempotent step
 run on each startup — there is nothing to re-repair once a file has been
 through it. The header comment on `SCHEMA_VERSION` is the log of what each
 version did; keep it current when bumping.
+
+`user_version` 10 adds `pages.is_pinned` and `pages.pinned_at`. Two additive
+ALTERs guarded by `columnExists`. Unlike every step before it this is user
+data rather than a projection, so `check-migration.mjs` asserts both that
+migrating never invents a pin and that re-running never clears one.
 
 `user_version` 8 adds `tasks`. Additive, and derived in the same sense as
 `page_fts`: the table is created empty and `repo.ensureTaskIndex()` fills it
@@ -366,10 +381,40 @@ it later isn't a rewrite.
 
 Six sections, each a thin view over the same page/property model:
 
-- **Home** — dashboard. An interactive force-directed graph of the whole
-  vault (pan, zoom, drag a node, click to open), vault stats, recent
-  activity, and an entries table (name / type / properties / modified)
-  across all pages.
+- **Home** — the day. Nexus opens here, so the screen answers what today is
+  before it answers anything about the vault: the date, a capture box, then
+  today's journal entry, the tasks dated today, the habits' last three weeks
+  and the pinned pages. The instrument panel — the force-directed graph (pan,
+  zoom, drag a node, click to open), what has gone quiet, and vault counts —
+  sits underneath rather than above. It is built to fit one window without
+  scrolling: two grid rows of fixed height, each panel scrolling its own list
+  rather than pushing the page taller, collapsing to one column under 1100px.
+
+  Three things are worth knowing about it.
+
+  **It reads, it does not create.** The entry panel calls `journal.peek()`,
+  which returns today's entry or null and builds nothing — `journal.today()`
+  would create the entry, the Journal type, its folder, its date property and
+  a template, so merely opening the app each morning would write to the vault.
+  With no entry the panel offers to start one.
+
+  **Quick capture is a write through the ordinary paths.** A captured line
+  becomes a page of its own by default, or a paragraph or a `checkListItem`
+  in today's entry. All three go through `createPage`/`updatePage` rather than
+  writing rows, so the search index, link graph and task table are current the
+  moment the capture lands. A task capture is an ordinary checkbox block,
+  which means an `@2026-08-22` typed into the capture box is parsed into a due
+  date by the projector already there, with nothing new to write. The store
+  puts the returned body back into `pageContent` afterwards: that cache is
+  renderer-owned and never dropped, so a body cached earlier in the session is
+  behind the moment main appends to it.
+
+  **Pinned and stale are filters over the page list the store already holds**,
+  not their own queries — `pages:list` carries `is_pinned` and `pinned_at`, so
+  there is no second read path to keep in step. Stale is `STALE_DAYS` (90) in
+  `shared/date-range.ts`, and excludes pinned pages: a pin says the page
+  matters, and calling it neglected in the same breath is noise. Pages are
+  pinned from the Notes list's hover actions and unpinned from either place.
 - **Notes** — the page tree and the block editor. A "Today's entry" button at
   the top of the list opens today's journal entry, creating it from the
   Journal type's template if it does not exist yet. Everything it needs — the
@@ -413,7 +458,10 @@ Six sections, each a thin view over the same page/property model:
   panels sit outside the window because a date-scoped view would otherwise
   swallow their contents: *Overdue* (open tasks whose date has passed) and
   *No date* (open tasks with no date on the block or its page). Both show only
-  while you're looking at the current window.
+  while you're looking at the current window. Which mode is showing lives in
+  the store rather than in the view, so Home's habit panel can link straight
+  to Habits — a link that lands on Week and leaves you to find the tab is not
+  a link.
 
 - **Activity** — chronological feed from `activity_log`. Consecutive content
   saves on one page coalesce into a single "edited" entry (see
