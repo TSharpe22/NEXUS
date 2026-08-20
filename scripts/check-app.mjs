@@ -1440,6 +1440,7 @@ const today = await page.evaluate(async () => {
   const pad = (n) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
 })
+const todayISO = today
 check('date property set to the logical day, in local time', dateProp?.value_date === today,
   `${dateProp?.value_date} vs ${today}`)
 
@@ -1563,43 +1564,56 @@ check('and before the heading after it, rather than at the end of the page',
 // by reading it back: the bug it fixes was three views computing the day for
 // themselves, so what matters is that the entry the app makes actually shifts.
 log('\n— a day starts when you say it does —')
-const nowHour = await page.evaluate(() => new Date().getHours())
-if (nowHour >= 23) {
-  log('  (skipped — cannot shift the day forward from inside the 23rd hour)')
-} else {
-  const expectedYesterday = await page.evaluate(() => {
-    const d = new Date()
-    d.setDate(d.getDate() - 1)
-    const pad = (n) => String(n).padStart(2, '0')
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-  })
-  // 23 means "the day only starts at 11pm", so any earlier hour is yesterday.
-  await page.evaluate(() => window.api.prefs.setDayStartHour(23))
-  const shifted = await page.evaluate(() => window.api.journal.today())
-  const shiftedProps = await page.evaluate((id) => window.api.properties.getForPage(id), shifted.id)
-  check('moving the day-start hour moves which entry is "today"',
-    shiftedProps.find((p) => p.key === 'date')?.value_date === expectedYesterday,
-    `${shiftedProps.find((p) => p.key === 'date')?.value_date} vs ${expectedYesterday}`)
-  // "Entry — Wed 19 Aug 2026" for a logical day of 2026-08-19: the title has to
-  // name the day the entry is *for*, or an entry opened at 1am is called
-  // tomorrow.
-  check('and the entry is titled for the day it belongs to, not the wall clock',
-    shifted.title.includes(String(Number(expectedYesterday.slice(8, 10)))),
-    `${JSON.stringify(shifted.title)} for ${expectedYesterday}`)
-  check('a task written before the rollover is not overdue yet',
-    (await page.evaluate((d) => window.api.tasks.overdue(d), expectedYesterday)).every(
-      (t) => t.dueDate < expectedYesterday
-    ))
+// Chosen relative to the clock rather than hardcoded, so this never skips:
+// an hour one past the current one means "the day has not started yet", and
+// the logical day is therefore yesterday. At 23:00 that wraps to midnight,
+// where the rule correctly says today — still an assertion, just not a shift.
+const { hour: nowHour, startHour, expected } = await page.evaluate(() => {
+  const now = new Date()
+  const hour = now.getHours()
+  const start = (hour + 1) % 24
+  const d = new Date()
+  if (hour < start) d.setDate(d.getDate() - 1)
+  const pad = (n) => String(n).padStart(2, '0')
+  return {
+    hour,
+    startHour: start,
+    expected: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+  }
+})
 
-  // Put it back and clean up, so nothing downstream inherits a shifted day.
-  await page.evaluate((id) => window.api.pages.hardDelete(id), shifted.id)
-  await page.evaluate(() => window.api.prefs.setDayStartHour(4))
-  check('the setting round-trips',
-    (await page.evaluate(() => window.api.prefs.get())).dayStartHour === 4)
-  check('an hour outside the clock is clamped rather than stored',
-    (await page.evaluate(() => window.api.prefs.setDayStartHour(99))) === 23)
-  await page.evaluate(() => window.api.prefs.setDayStartHour(4))
+await page.evaluate((h) => window.api.prefs.setDayStartHour(h), startHour)
+const shifted = await page.evaluate(() => window.api.journal.today())
+const shiftedProps = await page.evaluate((id) => window.api.properties.getForPage(id), shifted.id)
+check('the day-start hour decides which entry is "today"',
+  shiftedProps.find((p) => p.key === 'date')?.value_date === expected,
+  `${shiftedProps.find((p) => p.key === 'date')?.value_date} vs ${expected} (now ${nowHour}h, starts ${startHour}h)`)
+// "Entry — Wed 19 Aug 2026" for a logical day of 2026-08-19: a *new* entry has
+// to be titled for the day it is for, or one opened at 1am is called tomorrow.
+// Only when the shift actually made one — at 23:00 the hour wraps to midnight,
+// no shift happens, and what comes back is the existing entry under whatever
+// name it has since been given.
+if (expected !== todayISO) {
+  check('and the entry is titled for the day it belongs to, not the wall clock',
+    shifted.title.includes(String(Number(expected.slice(8, 10)))),
+    `${JSON.stringify(shifted.title)} for ${expected}`)
+} else {
+  check('the existing entry is reused rather than a second one made for the same day',
+    shifted.id === entry.id, `${shifted.id} vs ${entry.id}`)
 }
+check('a task dated on the logical day is not overdue on it',
+  (await page.evaluate((d) => window.api.tasks.overdue(d), expected)).every((t) => t.dueDate < expected))
+
+// Put it back and clean up, so nothing downstream inherits a shifted day.
+if (shiftedProps.find((p) => p.key === 'date')?.value_date !== todayISO) {
+  await page.evaluate((id) => window.api.pages.hardDelete(id), shifted.id)
+}
+await page.evaluate(() => window.api.prefs.setDayStartHour(4))
+check('the setting round-trips',
+  (await page.evaluate(() => window.api.prefs.get())).dayStartHour === 4)
+check('an hour outside the clock is clamped rather than stored',
+  (await page.evaluate(() => window.api.prefs.setDayStartHour(99))) === 23)
+await page.evaluate(() => window.api.prefs.setDayStartHour(4))
 
 // ---------------------------------------------------------------- inbox
 log('\n— the inbox —')
