@@ -1727,6 +1727,57 @@ check('the property is gone from the type', (await scratchDef()) === undefined)
 
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 
+// ------------------------------------------------------------- page loading
+// The store's page list carries no document body — it is fetched per page and
+// cached. What can rot silently here is the body: a list that quietly regains
+// `content` puts the payload back, and a cache that misses leaves the editor
+// mounting against an empty document, which the next keystroke saves.
+log('\n— page list and body loading —')
+
+const listShape = await page.evaluate(async () => {
+  const [list, full] = await Promise.all([window.api.pages.list(), window.api.pages.getAll()])
+  return {
+    sameLength: list.length === full.length,
+    anyContent: list.some((p) => 'content' in p),
+    hasTitles: list.every((p) => typeof p.title === 'string'),
+    hasFolders: list.every((p) => 'folder_id' in p)
+  }
+})
+check('the list covers every page', listShape.sameLength)
+check('the list carries no document body', !listShape.anyContent)
+check('but still carries what the sidebar reads', listShape.hasTitles && listShape.hasFolders)
+
+// Open a page the store has never held a body for, and assert the editor gets
+// the real document rather than an empty one.
+const coldOpen = await page.evaluate(async () => {
+  const store = window.nexus.store
+  const target = (await window.api.pages.list()).find((p) => p.title === 'Renamed kinetics')
+  if (!target) return 'TARGET_NOT_FOUND'
+  // Evict it, so this is genuinely a cold read rather than a cache hit.
+  store.setState({ pageContent: {} })
+  store.getState().openPage(target.id)
+  return target.id
+})
+check('a page with no cached body can be opened', coldOpen !== 'TARGET_NOT_FOUND', coldOpen)
+await sleep(1200)
+const coldBody = await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? 'NO_EDITOR')
+check('its body is fetched and rendered', coldBody.includes('Rate depends on temperature'),
+  JSON.stringify(coldBody.slice(0, 80)))
+
+// A page whose body is still in flight must not fall through to the empty
+// state — that flashed "No page selected" on every switch between pages.
+const heldFrame = await page.evaluate(async () => {
+  const store = window.nexus.store
+  const list = await window.api.pages.list()
+  const other = list.find((p) => p.title !== 'Renamed kinetics' && p.title)
+  store.setState({ pageContent: {} })
+  store.getState().openPage(other.id)
+  // Read synchronously, before the fetch can resolve.
+  return document.body.innerText.includes('No page selected')
+})
+check('a selected page never falls through to "No page selected"', heldFrame === false)
+await sleep(1000)
+
 // ---------------------------------------------------------------- snapshots
 // `check:backup` covers the rotation policy in isolation; what it cannot see
 // is the wiring — that a launch actually takes one, that the write-ahead log

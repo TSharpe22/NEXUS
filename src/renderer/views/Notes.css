@@ -777,3 +777,10 @@
   border: 1px solid var(--nx-border-2);
   border-radius: var(--nx-radius-md);
 }
+
+/* Held frame while a selected page's body loads. Sized like the title it
+   replaces so the column does not jump when the editor mounts. */
+.nx-notes__loading {
+  padding: var(--nx-space-4) 0;
+  opacity: 0.6;
+}

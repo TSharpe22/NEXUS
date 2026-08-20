@@ -98,6 +98,20 @@ export function registerIpcHandlers(): void {
       rethrow('pages:getAll', e)
     }
   })
+  ipcMain.handle('pages:list', () => {
+    try {
+      return repo.getPageList()
+    } catch (e) {
+      rethrow('pages:list', e)
+    }
+  })
+  ipcMain.handle('pages:listDeleted', () => {
+    try {
+      return repo.getDeletedPageList()
+    } catch (e) {
+      rethrow('pages:listDeleted', e)
+    }
+  })
   ipcMain.handle('pages:getAllSummary', (_, typeId?: string) => {
     try {
       return repo.getPagesSummary(typeId)

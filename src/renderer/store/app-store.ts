@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Folder, Page, Tag, TagWithCount, TypeDef } from '@shared/types'
+import type { Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
 
 export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
@@ -41,12 +41,25 @@ interface AppState {
    * that list yet, so the view fell through to "No page selected". One copy of
    * the data means every one of those paths resolves.
    */
-  pages: Page[]
-  trashed: Page[]
+  pages: PageListItem[]
+  trashed: PageListItem[]
   types: TypeDef[]
   folders: Folder[]
   tags: TagWithCount[]
   loaded: boolean
+
+  /**
+   * Document bodies for pages that have been opened, keyed by page id.
+   *
+   * `pages` carries no body, so this is where the editor's document comes
+   * from. It is a cache the renderer *owns* rather than a copy of a list: it
+   * is written when a page is loaded and on every save, and never dropped
+   * while the app runs. That is deliberate. Re-reading the body from the
+   * database on each open would race a save that has been flushed but not yet
+   * committed, and handing BlockNote a stale document is how a page came back
+   * empty and then saved that emptiness over the real one.
+   */
+  pageContent: Record<string, string>
 
   /** Folder ids currently expanded in the Notes tree; persisted. */
   expandedFolderIds: string[]
@@ -59,6 +72,12 @@ interface AppState {
 
   setActiveView: (view: View) => void
   setActivePageId: (id: string | null) => void
+  /**
+   * Pull a page's body into `pageContent` if it is not already there. Every
+   * path that opens a page goes through this; the editor waits on it rather
+   * than mounting against a body it does not have yet.
+   */
+  loadPageContent: (id: string) => Promise<void>
   /** Navigate to a page from anywhere: switches to Notes and selects it. */
   openPage: (id: string) => void
   setTableTypeId: (id: string | null) => void
@@ -77,7 +96,11 @@ interface AppState {
   createType: (name: string) => Promise<TypeDef>
   renameType: (id: string, name: string) => Promise<void>
   deleteType: (id: string) => Promise<{ reassigned: number }>
-  /** Reflect an edit locally without a round trip; the editor already persisted it. */
+  /**
+   * Reflect an edit locally without a round trip; the caller already persisted
+   * it. A `content` in the patch lands in `pageContent`, everything else on
+   * the list entry — the two halves of a page now live in different places.
+   */
   patchPage: (id: string, patch: Partial<Page>) => void
 
   createFolder: (name: string, parentFolderId: string | null) => Promise<Folder>
@@ -117,6 +140,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   pages: [],
   trashed: [],
+  pageContent: {},
   types: [],
   folders: [],
   tags: [],
@@ -131,19 +155,34 @@ export const useAppStore = create<AppState>((set, get) => ({
   setActiveView: (view) => set({ activeView: view }),
   setActivePageId: (id) => {
     set({ activePageId: id, activePageTags: [] })
-    if (id) void get().loadPageTags(id)
+    if (id) {
+      void get().loadPageTags(id)
+      void get().loadPageContent(id)
+    }
   },
   openPage: (id) => {
     set({ activeView: 'notes', activePageId: id, activePageTags: [] })
     void get().loadPageTags(id)
+    void get().loadPageContent(id)
+  },
+
+  loadPageContent: async (id) => {
+    if (get().pageContent[id] !== undefined) return
+    const page = await window.api.pages.getById(id)
+    if (!page) return
+    // Re-checked after the await: a save that landed while this was in flight
+    // holds the newer body, and overwriting it with what the database had
+    // before that save is the stale-document bug all over again.
+    if (get().pageContent[id] !== undefined) return
+    set((state) => ({ pageContent: { ...state.pageContent, [id]: page.content } }))
   },
   setTableTypeId: (id) => set({ tableTypeId: id }),
   setSaveStatus: (status) => set({ saveStatus: status }),
 
   refresh: async () => {
     const [pages, trashed, types, folders, tags] = await Promise.all([
-      window.api.pages.getAll(),
-      window.api.pages.getDeleted(),
+      window.api.pages.list(),
+      window.api.pages.listDeleted(),
       window.api.types.list(),
       window.api.folders.list(),
       window.api.tags.list()
@@ -166,7 +205,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     // The entry lives in the Journal folder; open that folder so the page
     // appears in context rather than seemingly from nowhere.
     if (page.folder_id) get().setFolderExpanded(page.folder_id, true)
-    set({ activeView: 'notes', activePageId: page.id })
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: page.id,
+      pageContent: { ...state.pageContent, [page.id]: page.content }
+    }))
     void get().loadPageTags(page.id)
     return page
   },
@@ -174,14 +217,22 @@ export const useAppStore = create<AppState>((set, get) => ({
   createPage: async (typeId) => {
     const page = await window.api.pages.create(typeId)
     await get().refresh()
-    set({ activeView: 'notes', activePageId: page.id })
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: page.id,
+      pageContent: { ...state.pageContent, [page.id]: page.content }
+    }))
     return page
   },
 
   duplicatePage: async (id) => {
     const copy = await window.api.pages.duplicate(id)
     await get().refresh()
-    set({ activeView: 'notes', activePageId: copy.id })
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: copy.id,
+      pageContent: { ...state.pageContent, [copy.id]: copy.content }
+    }))
     return copy
   },
 
@@ -233,9 +284,14 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   patchPage: (id, patch) =>
-    set((state) => ({
-      pages: state.pages.map((p) => (p.id === id ? { ...p, ...patch } : p))
-    })),
+    set((state) => {
+      const { content, ...rest } = patch
+      return {
+        pages: state.pages.map((p) => (p.id === id ? { ...p, ...rest } : p)),
+        pageContent:
+          content === undefined ? state.pageContent : { ...state.pageContent, [id]: content }
+      }
+    }),
 
   // ----------------------------------------------------------
   // Folders
@@ -329,8 +385,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   clearTagFilter: () => set({ activeTagFilter: [] })
 }))
 
-/** Look up a page by id across both live pages and trash. */
-export function usePageById(id: string | null): Page | null {
+/**
+ * Look up a page by id across both live pages and trash. Carries no body —
+ * callers wanting one read `pageContent`.
+ */
+export function usePageById(id: string | null): PageListItem | null {
   return useAppStore((s) => {
     if (!id) return null
     return s.pages.find((p) => p.id === id) ?? s.trashed.find((p) => p.id === id) ?? null

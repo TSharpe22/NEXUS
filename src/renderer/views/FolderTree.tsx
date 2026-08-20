@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react'
 import { SearchHighlight } from '../design/SearchHighlight'
-import type { Folder, Page } from '@shared/types'
+import type { Folder, Page, PageListItem } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Icon } from '../design/Icon'
 import { relativeTime } from '../hooks/use-relative-time'
@@ -42,15 +42,15 @@ function Chevron({ open }: { open: boolean }) {
 
 interface Props {
   /** Pages already narrowed by the search box and tag filter. */
-  pages: Page[]
+  pages: PageListItem[]
   /** True while a search or tag filter is active. */
   filtering: boolean
   query: string
   /** Page id to body excerpt, for hits matched on content rather than title. */
   snippets?: Map<string, string>
   typeName: (typeId: string) => string
-  onDuplicate: (page: Page) => void
-  onTrash: (page: Page) => void
+  onDuplicate: (page: PageListItem) => void
+  onTrash: (page: PageListItem) => void
 }
 
 export function FolderTree({
@@ -90,7 +90,7 @@ export function FolderTree({
 
   const pagesByFolder = useMemo(() => {
     const known = new Set(folders.map((f) => f.id))
-    const map = new Map<string, Page[]>()
+    const map = new Map<string, PageListItem[]>()
     for (const page of pages) {
       // A page whose folder was deleted from under it still has to appear
       // somewhere; unknown ids fall back to the root.
@@ -150,7 +150,7 @@ export function FolderTree({
     [movePageToFolder, moveFolder]
   )
 
-  const renderPage = (page: Page, depth: number) => (
+  const renderPage = (page: PageListItem, depth: number) => (
     <div
       key={page.id}
       className={`nx-tree-row nx-tree-row--page ${page.id === activePageId ? 'is-active' : ''}`}

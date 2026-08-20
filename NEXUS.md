@@ -226,6 +226,38 @@ The document walkers those projections share live in `src/shared/document.ts`,
 reachable from both processes, because a second copy of that parsing in the
 renderer is how the two would drift.
 
+### The page list and the document body
+
+The renderer's store holds `pages` as `PageListItem` — every column of a page
+**except** `content`. The body is by far the largest column and almost nothing
+outside the editor reads it: the sidebar, the command palette, Tables and Home
+all want a title, a type and a folder. `refresh()` runs after most mutations,
+so shipping every page's whole document across IPC each time was what made
+small actions — adding a tag, renaming a folder — feel chunky. At 1500 pages
+that payload was 14.3 MB; it is now 0.33 MB.
+
+`pages:list` and `pages:listDeleted` serve it. `pages:getAll` still returns
+whole pages and is left alone — it is what tooling and the smoke test read.
+
+Bodies live in `pageContent`, keyed by page id, filled by `loadPageContent`
+when a page is opened and by `patchPage` on every save. **It is a cache the
+renderer owns, not a copy of a list**, and nothing evicts it while the app
+runs. That is deliberate, and it is the same bug twice over if you change it:
+
+- Re-reading the body from the database on each open races a save that has
+  been flushed but not yet committed. `loadPageContent` re-checks the cache
+  after its own await for the same reason.
+- The editor is not mounted until the body has arrived. Mounting it against an
+  empty document is how a page came back blank and then saved that blankness
+  over the real one on the first keystroke.
+- A selected page whose body is still loading renders a held frame, not the
+  "No page selected" empty state — otherwise that flashes on every switch.
+
+Anything that writes a page's body outside the editor has to `patchPage` it
+too. The Tracker's checkbox toggle is the live example: it rewrites the block
+in the main process and patches the result back, because the editor would
+otherwise hand BlockNote the pre-toggle document next time the page opened.
+
 ### Backups
 
 `src/main/backup.ts` copies the database aside on every launch, keeping the

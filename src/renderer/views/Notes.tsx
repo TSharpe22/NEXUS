@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearch } from '../hooks/use-search'
 import toast from 'react-hot-toast'
-import type { Page } from '@shared/types'
+import type { Page, PageListItem } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Button } from '../design/Button'
 import { confirmDialog } from '../design/Confirm'
@@ -23,6 +23,7 @@ export function Notes() {
     loaded,
     activePageId,
     setActivePageId,
+    pageContent,
     createPage,
     duplicatePage,
     trashPage,
@@ -44,11 +45,24 @@ export function Notes() {
 
   // Resolved against the store, so a page opened from the palette, a mention
   // or the graph is always found — not only ones this view happened to load.
-  const activePage = useMemo(
+  const activeEntry = useMemo(
     () => pages.find((p) => p.id === activePageId) ?? trashed.find((p) => p.id === activePageId) ?? null,
     [pages, trashed, activePageId]
   )
-  const isTrashed = !!activePage && trashed.some((p) => p.id === activePage.id)
+
+  /**
+   * The editor needs a whole page; the list only carries everything but the
+   * body. This is null until the body has arrived, and the editor is not
+   * mounted before then — mounting it against an empty document is what makes
+   * the first keystroke save that emptiness over the real page.
+   */
+  const activePage: Page | null = useMemo(() => {
+    if (!activeEntry) return null
+    const content = pageContent[activeEntry.id]
+    return content === undefined ? null : { ...activeEntry, content }
+  }, [activeEntry, pageContent])
+
+  const isTrashed = !!activeEntry && trashed.some((p) => p.id === activeEntry.id)
 
   const typeName = (typeId: string) => types.find((t) => t.id === typeId)?.name ?? 'Note'
 
@@ -80,7 +94,7 @@ export function Notes() {
   }, [searchResults])
 
   const list = useMemo(() => {
-    let source: Page[] = showTrash ? trashed : pages
+    let source: PageListItem[] = showTrash ? trashed : pages
 
     if (!showTrash && taggedPageIds) {
       const allowed = new Set(taggedPageIds)
@@ -126,7 +140,7 @@ export function Notes() {
     }
   }
 
-  const handleDeleteForever = async (page: Page) => {
+  const handleDeleteForever = async (page: PageListItem) => {
     const label = page.title || 'Untitled'
     // Permanent and unrecoverable — the one place in the app that warrants a
     // confirm. Previously this fired straight from a hover button.
@@ -303,19 +317,30 @@ export function Notes() {
       </aside>
 
       <section className="nx-notes__main">
-        {activePage ? (
+        {activeEntry ? (
           <div className="nx-notes__scroll">
             <div className="nx-notes__doc">
               {isTrashed && (
                 <div className="nx-notes__banner">
                   This page is in the trash.
-                  <button onClick={() => restorePage(activePage.id)}>Restore it</button>
+                  <button onClick={() => restorePage(activeEntry.id)}>Restore it</button>
                 </div>
               )}
-              <Editor key={activePage.id} page={activePage}>
-                <PropertiesPanel page={activePage} />
-              </Editor>
-              <BacklinksPanel pageId={activePage.id} />
+              {/*
+                A page is selected but its body has not arrived. This is a
+                held frame, not "no page selected" — falling through to the
+                empty state would flash it on every switch between pages.
+              */}
+              {activePage ? (
+                <>
+                  <Editor key={activePage.id} page={activePage}>
+                    <PropertiesPanel page={activePage} />
+                  </Editor>
+                  <BacklinksPanel pageId={activePage.id} />
+                </>
+              ) : (
+                <div className="nx-notes__loading nx-type-data">Loading…</div>
+              )}
             </div>
           </div>
         ) : (

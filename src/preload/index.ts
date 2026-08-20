@@ -18,6 +18,8 @@ const api: NexusAPI = {
   pages: {
     create: (typeId) => ipcRenderer.invoke('pages:create', typeId),
     getAll: () => ipcRenderer.invoke('pages:getAll'),
+    list: () => ipcRenderer.invoke('pages:list'),
+    listDeleted: () => ipcRenderer.invoke('pages:listDeleted'),
     getAllSummary: (typeId) => ipcRenderer.invoke('pages:getAllSummary', typeId),
     getById: (id) => ipcRenderer.invoke('pages:getById', id),
     update: (id, data) => ipcRenderer.invoke('pages:update', id, data),

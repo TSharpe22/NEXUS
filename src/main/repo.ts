@@ -13,6 +13,7 @@ import type {
   StorageStats,
   PageSummary,
   PageLocation,
+  PageListItem,
   GraphPreview,
   GraphData,
   GraphNode,
@@ -139,13 +140,36 @@ export function getPageLocations(): PageLocation[] {
     .all() as PageLocation[]
 }
 
+/** Columns of `pages` except the document body, as one reusable list. */
+const LIST_COLUMNS =
+  'id, type_id, title, icon, page_width, folder_id, is_deleted, created_at, updated_at'
+
+/**
+ * Every live page without its body, newest first — what the sidebar, the
+ * command palette and the tag filter all actually read.
+ */
+export function getPageList(): PageListItem[] {
+  return getDb()
+    .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`)
+    .all() as PageListItem[]
+}
+
+/** The same, for the trash. */
+export function getDeletedPageList(): PageListItem[] {
+  return getDb()
+    .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 1 ORDER BY updated_at DESC`)
+    .all() as PageListItem[]
+}
+
 export function getPagesSummary(typeId?: string): PageSummary[] {
   const db = getDb()
   const rows = (
     typeId
-      ? db.prepare('SELECT * FROM pages WHERE is_deleted = 0 AND type_id = ? ORDER BY updated_at DESC').all(typeId)
-      : db.prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC').all()
-  ) as Page[]
+      ? db
+          .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 AND type_id = ? ORDER BY updated_at DESC`)
+          .all(typeId)
+      : db.prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`).all()
+  ) as PageListItem[]
 
   if (rows.length === 0) return []
 

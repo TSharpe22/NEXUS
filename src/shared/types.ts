@@ -192,7 +192,17 @@ export interface PageLocation {
   folder_id: string | null
 }
 
-export interface PageSummary extends Page {
+/**
+ * A page without its document body.
+ *
+ * The body is by far the largest column, and almost nothing outside the editor
+ * reads it — the sidebar, the command palette, Tables and Home all want a
+ * title, a type and a folder. Shipping every page's whole document to the
+ * renderer on every mutation is what made small actions feel chunky.
+ */
+export type PageListItem = Omit<Page, 'content'>
+
+export interface PageSummary extends PageListItem {
   properties: Property[]
 }
 
@@ -262,6 +272,9 @@ export interface NexusAPI {
   pages: {
     create(typeId?: string): Promise<Page>
     getAll(): Promise<Page[]>
+    /** Every live page without its body — what the sidebar and palette read. */
+    list(): Promise<PageListItem[]>
+    listDeleted(): Promise<PageListItem[]>
     getAllSummary(typeId?: string): Promise<PageSummary[]>
     getById(id: string): Promise<Page | null>
     update(
