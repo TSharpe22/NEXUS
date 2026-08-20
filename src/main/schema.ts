@@ -47,8 +47,16 @@ let db: Database.Database
  *     The table is dropped and recreated rather than altered — it is derived
  *     from documents and properties, so nothing is lost, and
  *     `repo.ensureLinkIndex()` refills it at startup.
+ * 10 — pinning: `pages.is_pinned` and `pages.pinned_at`, backing Home's
+ *     pinned list. Purely additive, two ALTERs guarded by `columnExists`.
+ *     Deliberately columns on `pages` rather than a `pins` table: a pin is a
+ *     flag on one page, on the same axis as `folder_id`, and a table would
+ *     only earn its keep once folders, types or saved searches can be pinned
+ *     too. Unlike `page_fts` and `tasks` this is user data, not a projection
+ *     — nothing can re-derive which pages were pinned, so it is never
+ *     rebuilt.
  */
-export const SCHEMA_VERSION = 9
+export const SCHEMA_VERSION = 10
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -101,6 +109,8 @@ const CURRENT_SCHEMA = `
     page_width  INTEGER NOT NULL DEFAULT 720,
     folder_id   TEXT REFERENCES folders(id) ON DELETE SET NULL,
     is_deleted  INTEGER NOT NULL DEFAULT 0,
+    is_pinned   INTEGER NOT NULL DEFAULT 0,
+    pinned_at   TEXT,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -656,6 +666,21 @@ export function applySchema(
   // left to do here. Like `page_fts` it is derived — `repo.ensureTaskIndex()`
   // fills it from `pages` at startup when it is missing or empty, which is
   // also how an existing file picks up every checkbox already written.
+
+  // v10. Pinning. `CURRENT_SCHEMA` above only creates `pages` when it is
+  // absent, so an existing file needs these two explicitly. Additive and
+  // idempotent; every page in an existing vault starts unpinned.
+  //
+  // `pinned_at` is what orders the list — a pin the user added today belongs
+  // below one they have kept for a month, and `updated_at` cannot answer that
+  // because editing a page would reshuffle the pins.
+  if (!columnExists('pages', 'is_pinned')) {
+    db.exec('ALTER TABLE pages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0')
+  }
+  if (!columnExists('pages', 'pinned_at')) {
+    db.exec('ALTER TABLE pages ADD COLUMN pinned_at TEXT')
+  }
+  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_pinned ON pages(is_pinned)')
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 

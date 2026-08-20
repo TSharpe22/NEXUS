@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
+import type { CaptureTarget, Folder, Page, PageListItem, Tag, TagWithCount, TypeDef } from '@shared/types'
 
 export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
 
@@ -88,6 +88,13 @@ interface AppState {
   /** Open today's journal entry, creating it from the template if needed. */
   openTodayEntry: () => Promise<Page>
   duplicatePage: (id: string) => Promise<Page>
+  /** Pin a page to Home, or unpin it. */
+  setPagePinned: (id: string, pinned: boolean) => Promise<void>
+  /**
+   * Capture one line from Home. Resolves with the page it landed on, without
+   * navigating — capture is meant to cost nothing but the typing.
+   */
+  capture: (text: string, target: CaptureTarget) => Promise<Page>
   trashPage: (id: string) => Promise<void>
   restorePage: (id: string) => Promise<void>
   deletePageForever: (id: string) => Promise<void>
@@ -234,6 +241,23 @@ export const useAppStore = create<AppState>((set, get) => ({
       pageContent: { ...state.pageContent, [copy.id]: copy.content }
     }))
     return copy
+  },
+
+  setPagePinned: async (id, pinned) => {
+    await window.api.pages.setPinned(id, pinned)
+    await get().refresh()
+  },
+
+  capture: async (text, target) => {
+    const page = await window.api.capture.line(text, target)
+    // A journal or task capture appends to a document the main process just
+    // rewrote. `pageContent` is a cache the renderer owns and never drops, so
+    // a body cached from earlier in the session is now behind — and handing
+    // that stale document back to the editor is precisely how a page saves
+    // over what was written into it elsewhere.
+    set((state) => ({ pageContent: { ...state.pageContent, [page.id]: page.content } }))
+    await get().refresh()
+    return page
   },
 
   trashPage: async (id) => {

@@ -163,7 +163,7 @@ check('block order preserved', content.map((b) => b.type), ['heading', 'paragrap
 check('column contents unwrapped, not dropped', [content[2].content[0].text, content[3].content[0].text], ['left col', 'right col'])
 check('page_width preset coerced to number', p1.page_width, 900)
 check('page_width is a JS number', typeof p1.page_width, 'number')
-check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at', 'folder_id'])
+check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at', 'folder_id', 'is_pinned', 'pinned_at'])
 
 // v3 — organisation tables. Additive, so they have to appear on a migrated
 // first-build file just as they do on a fresh one.
@@ -196,6 +196,14 @@ check('tasks columns', db.pragma('table_info(tasks)').map((c) => c.name),
 // here is the expected state.
 check('links.source added', db.pragma('table_info(links)').map((c) => c.name).includes('source'), true)
 check('links.property_key added', db.pragma('table_info(links)').map((c) => c.name).includes('property_key'), true)
+
+// v10 — pinning. Additive columns, and unlike page_fts/tasks/links this is
+// user data rather than a projection: nothing can re-derive it, so what
+// matters is that migrating never invents a pin.
+check('pages.is_pinned added', db.pragma('table_info(pages)').map((c) => c.name).includes('is_pinned'), true)
+check('pages.pinned_at added', db.pragma('table_info(pages)').map((c) => c.name).includes('pinned_at'), true)
+check('every migrated page starts unpinned',
+  db.prepare('SELECT count(*) c FROM pages WHERE is_pinned <> 0 OR pinned_at IS NOT NULL').get().c, 0)
 check('a mention and a relation to the same target can coexist', (() => {
   db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('ls','note','Src','[]')`).run()
   db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('lt','note','Tgt','[]')`).run()
@@ -407,6 +415,59 @@ applySchemaTwiceCheck: {
 v8.pragma('foreign_keys = ON')
 check('foreign keys satisfied', v8.pragma('foreign_key_check'), [])
 v8.close()
+
+// ------------------------------------------------------------------
+// v9 file: pages exists without the pin columns. The step is two ALTERs, so
+// what has to hold is that they land, that nothing arrives pinned, and that
+// a pin already made survives the migration running again — pins are the
+// first thing on `pages` that no projection can rebuild.
+// ------------------------------------------------------------------
+console.log('\nv9 file picking up pinning:')
+const v9Path = join(dir, 'v9-pins.db')
+const v9 = new Database(v9Path)
+v9.pragma('foreign_keys = OFF')
+applySchema(v9, () => null)
+// `pages` as v9 had it: no is_pinned, no pinned_at. CREATE TABLE IF NOT
+// EXISTS in the current schema will not touch a table that already exists,
+// which is exactly why the ALTERs have to be there.
+v9.exec(`
+  DROP TABLE pages;
+  CREATE TABLE pages (
+    id          TEXT PRIMARY KEY,
+    type_id     TEXT NOT NULL DEFAULT 'note' REFERENCES types(id),
+    title       TEXT NOT NULL DEFAULT '',
+    icon        TEXT,
+    content     TEXT NOT NULL DEFAULT '[]',
+    page_width  INTEGER NOT NULL DEFAULT 720,
+    folder_id   TEXT REFERENCES folders(id) ON DELETE SET NULL,
+    is_deleted  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  INSERT INTO pages (id, type_id, title, content) VALUES ('p1','note','Kept','[]');
+  INSERT INTO pages (id, type_id, title, content) VALUES ('p2','note','Also kept','[]');
+`)
+v9.pragma('user_version = 9')
+
+applySchema(v9, () => null)
+check('pages picks up is_pinned', v9.pragma('table_info(pages)').map((c) => c.name).includes('is_pinned'), true)
+check('pages picks up pinned_at', v9.pragma('table_info(pages)').map((c) => c.name).includes('pinned_at'), true)
+check('the pages themselves are untouched', v9.prepare('SELECT count(*) c FROM pages').get().c, 2)
+check('and none of them arrives pinned',
+  v9.prepare('SELECT count(*) c FROM pages WHERE is_pinned = 1').get().c, 0)
+check('the file moves to the current version', v9.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+
+// A pin is user data — re-running the migration must not clear it.
+v9.prepare(`UPDATE pages SET is_pinned = 1, pinned_at = '2026-08-20 09:00:00' WHERE id = 'p1'`).run()
+applySchema(v9, () => null)
+check('re-running keeps a pin that was made',
+  v9.prepare(`SELECT is_pinned, pinned_at FROM pages WHERE id = 'p1'`).get(),
+  { is_pinned: 1, pinned_at: '2026-08-20 09:00:00' })
+check('and leaves the unpinned page alone',
+  v9.prepare(`SELECT is_pinned FROM pages WHERE id = 'p2'`).get().is_pinned, 0)
+v9.pragma('foreign_keys = ON')
+check('foreign keys satisfied', v9.pragma('foreign_key_check'), [])
+v9.close()
 
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)

@@ -105,3 +105,23 @@ export function rangeFor(kind: RangeKind, offset: number, today = new Date()): D
 export function isToday(iso: string, today = new Date()): boolean {
   return iso === localDateISO(today)
 }
+
+/**
+ * How long a page goes untouched before Home calls it stale.
+ *
+ * Here rather than in `repo.ts` because Home derives its stale list from the
+ * page list the store already holds, in the renderer — the main process has
+ * no say in it and no second copy of the rule.
+ */
+export const STALE_DAYS = 90
+
+/** Whether `timestamp` is at least `days` days old. */
+export function isOlderThan(timestamp: string, days: number, now = new Date()): boolean {
+  // Stored timestamps are `YYYY-MM-DD HH:MM:SS` in UTC with no zone marker,
+  // which `Date` would read as local time and shift by the offset. Normalising
+  // to ISO keeps a 90-day boundary from moving by hours depending on where the
+  // vault is opened.
+  const parsed = Date.parse(timestamp.replace(' ', 'T') + 'Z')
+  if (Number.isNaN(parsed)) return false
+  return now.getTime() - parsed >= days * 24 * 60 * 60 * 1000
+}

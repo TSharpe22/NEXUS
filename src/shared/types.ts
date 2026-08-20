@@ -10,6 +10,10 @@ export interface Page {
   /** Folder this page lives in. null = root of the tree. */
   folder_id: string | null
   is_deleted: number
+  /** Pinned to Home. Unlike every other projection on a page, nothing can re-derive this. */
+  is_pinned: number
+  /** When the pin was made, which is what orders Home's list. null when unpinned. */
+  pinned_at: string | null
   created_at: string
   updated_at: string
 }
@@ -202,6 +206,13 @@ export interface PageLocation {
  */
 export type PageListItem = Omit<Page, 'content'>
 
+/**
+ * Where a captured line lands. `page` is the default — a thought worth typing
+ * is worth a page, and a page can be typed, tagged and linked afterwards,
+ * which a line inside a journal entry cannot.
+ */
+export type CaptureTarget = 'page' | 'journal' | 'task'
+
 export interface PageSummary extends PageListItem {
   properties: Property[]
 }
@@ -290,6 +301,18 @@ export interface NexusAPI {
     emptyTrash(): Promise<number>
     getDeleted(): Promise<Page[]>
     duplicate(id: string): Promise<Page>
+    /**
+     * Pin a page to Home, or unpin it. There is no matching read: `list()`
+     * already carries `is_pinned` and `pinned_at`.
+     */
+    setPinned(id: string, pinned: boolean): Promise<void>
+  }
+  capture: {
+    /**
+     * Capture one line from Home. Resolves with the page it landed on — the
+     * new page itself for 'page', today's journal entry for the other two.
+     */
+    line(text: string, target: CaptureTarget): Promise<Page>
   }
   folders: {
     list(): Promise<Folder[]>
