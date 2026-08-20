@@ -23,6 +23,10 @@
 .bn-editor,
 .nx-editor__title,
 .nx-table tbody td,
+/* Paths, and the commit in About. Blanket `user-select: none` on the chrome
+   made the one thing you actually need to copy out of Settings — where the
+   vault lives, which build you are running — impossible to select. */
+.nx-settings__path,
 .nx-selectable {
   user-select: text;
   -webkit-user-select: text;
