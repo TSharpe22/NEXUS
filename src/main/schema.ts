@@ -36,8 +36,19 @@ let db: Database.Database
  *     starts from. Purely additive. Built as 6 on its own branch, but 6 had
  *     already shipped as the relation repair — a version number that means two
  *     different things to two databases is not recoverable, so it became 7.
+ * 8 — the tracker: `tasks`, one row per checkbox block in a page's document.
+ *     Purely additive, and a derived projection like `page_fts` — it is
+ *     rebuilt from `pages` whenever it is missing or empty, so losing it
+ *     costs nothing and no user data lives here.
+ * 9 — `links` gains `source` ('mention' | 'relation') and `property_key`, so
+ *     a relation property can contribute a backlink without the next content
+ *     save wiping it: `syncLinks` deletes what is not in the document, and
+ *     before this it could not tell a relation's row from a stale mention.
+ *     The table is dropped and recreated rather than altered — it is derived
+ *     from documents and properties, so nothing is lost, and
+ *     `repo.ensureLinkIndex()` refills it at startup.
  */
-export const SCHEMA_VERSION = 7
+export const SCHEMA_VERSION = 9
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -112,13 +123,32 @@ const CURRENT_SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_properties_page ON properties(page_id);
   CREATE INDEX IF NOT EXISTS idx_properties_key ON properties(key);
 
+  -- Backlinks, from two places a page can point at another.
+  --
+  -- source = 'mention'  — a [[wiki-link]] in the body. context is the text
+  --                       around it; property_key is ''.
+  -- source = 'relation' — a relation property. property_key is the property
+  --                       it came from; context is NULL.
+  --
+  -- The discriminator is what lets the two be projected independently: a
+  -- content save rewrites only this page's mentions, and setting a property
+  -- rewrites only its relations. Without it, saving the body deleted the
+  -- relation's row, because it was not in the document's mention set.
+  --
+  -- property_key is NOT NULL with an empty default rather than nullable, so
+  -- the unique constraint actually holds for mentions — SQLite treats NULLs
+  -- as distinct, which would have allowed one mention to be recorded twice.
+  -- A page relating to the same target through two properties is two rows,
+  -- which is the point of having the key in the key.
   CREATE TABLE IF NOT EXISTS links (
     id              TEXT PRIMARY KEY,
     source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
     target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    source          TEXT NOT NULL DEFAULT 'mention',
+    property_key    TEXT NOT NULL DEFAULT '',
     context         TEXT,
     created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(source_page_id, target_page_id)
+    UNIQUE(source_page_id, target_page_id, source, property_key)
   );
 
   CREATE INDEX IF NOT EXISTS idx_links_source ON links(source_page_id);
@@ -158,6 +188,32 @@ const CURRENT_SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_page_tags_tag ON page_tags(tag_id);
+
+
+  -- One row per checkbox block in a page's document. A projection, not a
+  -- store: the block inside pages.content is the source of truth and this is
+  -- only a queryable index of it, rebuilt by repo.projectDocument on every
+  -- write to a page's body. Nothing here may be the only copy of anything
+  -- the user typed.
+  --
+  -- Keyed by (page_id, block_id) because BlockNote block ids are stable
+  -- across saves, which is what lets a row survive an edit to the block
+  -- above it. completed_at is the one field with no counterpart in the
+  -- document — the block records *that* it is checked, never when — so the
+  -- projector carries it forward across a reprojection.
+  CREATE TABLE IF NOT EXISTS tasks (
+    page_id      TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    block_id     TEXT NOT NULL,
+    text         TEXT NOT NULL DEFAULT '',
+    is_done      INTEGER NOT NULL DEFAULT 0,
+    due_date     TEXT,
+    completed_at TEXT,
+    sort_order   INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (page_id, block_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
+  CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(is_done);
 `
 
 // ============================================================
@@ -488,6 +544,50 @@ export function applySchema(
     migrateFromV1()
   }
 
+  // v9. `links` grows a source discriminator, which SQLite cannot add to an
+  // existing UNIQUE constraint without rebuilding the table.
+  //
+  // The rows are copied across rather than dropped and re-derived. They look
+  // derived, and for anything this build wrote they are — but a file coming
+  // from the first build has links that were extracted by the *old* app from
+  // its own block rows, and nothing in the migrated document is guaranteed to
+  // still produce them. Re-deriving would quietly delete backlinks the user
+  // could see yesterday, which is not a migration's job. Everything carried
+  // over is a mention; relations had no way to make a link before now.
+  //
+  // The second statement is the other half: every relation already stored
+  // gets its link immediately, so an existing vault shows relation backlinks
+  // on first launch rather than only after each property is touched again.
+  // Ids are opaque, and this file stays free of any dependency, so they come
+  // from randomblob rather than from uuid.
+  if (tableExists('links') && !columnExists('links', 'source')) {
+    db.exec(`
+      CREATE TABLE links_v9 (
+        id              TEXT PRIMARY KEY,
+        source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+        target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+        source          TEXT NOT NULL DEFAULT 'mention',
+        property_key    TEXT NOT NULL DEFAULT '',
+        context         TEXT,
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(source_page_id, target_page_id, source, property_key)
+      );
+
+      INSERT OR IGNORE INTO links_v9 (id, source_page_id, target_page_id, source, property_key, context, created_at)
+        SELECT id, source_page_id, target_page_id, 'mention', '', context, created_at FROM links;
+
+      DROP TABLE links;
+      ALTER TABLE links_v9 RENAME TO links;
+
+      INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+        SELECT lower(hex(randomblob(16))), pr.page_id, pr.value_relation, 'relation', pr.key, NULL, datetime('now')
+          FROM properties pr
+          JOIN pages p ON p.id = pr.value_relation
+         WHERE pr.type = 'relation'
+           AND pr.value_relation IS NOT NULL AND pr.value_relation <> '';
+    `)
+  }
+
   db.exec(CURRENT_SCHEMA)
 
   // v3. `folders` is created by CURRENT_SCHEMA above, so the column's
@@ -551,6 +651,11 @@ export function applySchema(
       `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
     )
   }
+
+  // v8. `tasks` is created by CURRENT_SCHEMA above, so nothing structural is
+  // left to do here. Like `page_fts` it is derived — `repo.ensureTaskIndex()`
+  // fills it from `pages` at startup when it is missing or empty, which is
+  // also how an existing file picks up every checkbox already written.
 
   db.pragma(`user_version = ${SCHEMA_VERSION}`)
 

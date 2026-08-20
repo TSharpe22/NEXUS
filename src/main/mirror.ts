@@ -23,7 +23,7 @@ import {
 import { dirname, join, resolve, sep } from 'path'
 import * as repo from './repo'
 import { exportPageMarkdown } from './io'
-import type { Page, Folder } from '../shared/types'
+import type { Page, PageLocation, Folder } from '../shared/types'
 
 const SETTING_ENABLED = 'mirror.enabled'
 const SETTING_FOLDER = 'mirror.folder'
@@ -127,7 +127,7 @@ function assertInsideRoot(root: string, candidate: string): string {
  * Relative path for every page, mirroring the Notes folder tree as
  * directories. Pages at the folder root land at the top level.
  */
-export function computePaths(pages: Page[], folders: Folder[]): Map<string, string> {
+export function computePaths(pages: PageLocation[], folders: Folder[]): Map<string, string> {
   const folderById = new Map(folders.map((f) => [f.id, f]))
 
   // Directory path for a folder, deduplicated per parent so two folders that
@@ -271,7 +271,7 @@ function renderPage(page: Page, relPath: string, typeName: string): string {
  * differ on every sync, so an otherwise-unchanged vault would churn its mtime
  * every couple of seconds while typing. The last sync time is in settings.
  */
-function renderIndex(pages: Page[], paths: Map<string, string>): string {
+function renderIndex(pages: PageLocation[], paths: Map<string, string>): string {
   const lines = [
     '# Nexus vault index',
     '',
@@ -310,22 +310,51 @@ function pruneEmptyDirs(root: string, startDir: string): void {
   }
 }
 
-export function syncNow(): MirrorResult {
+/**
+ * Write the vault out to disk.
+ *
+ * `only` names the pages known to have changed; omitting it re-renders
+ * everything. The distinction is the difference between a keystroke costing a
+ * couple of milliseconds and costing a pass over the whole vault — rendering
+ * one page means four queries and a markdown build, and doing that for every
+ * page every 1.5s blocks the main process, which is also the process serving
+ * autosave.
+ *
+ * Paths are always recomputed for every page regardless, because they are not
+ * independent: one page's title decides whether another needs a "(2)" suffix.
+ * That is cheap — three columns, no document blobs — and it means a page whose
+ * *path* moved is rewritten even when the page itself was never marked.
+ */
+export function syncNow(only?: string[]): MirrorResult {
   const { enabled, folder } = getConfig()
   if (!enabled || !folder) return { written: 0, deleted: 0, unchanged: 0, total: 0 }
 
   const root = resolve(folder)
   mkdirSync(root, { recursive: true })
 
-  const pages = repo.getAllPages()
-  const paths = computePaths(pages, repo.getFolders())
+  const locations = repo.getPageLocations()
+  const paths = computePaths(locations, repo.getFolders())
+  const previous = repo.getMirrorManifest()
   const typeNames = new Map(repo.getTypes().map((t) => [t.id, t.name]))
 
   const desired = new Map<string, string>(paths)
   desired.set(INDEX_KEY, INDEX_FILENAME)
 
+  // Which pages need their file written.
+  const dirty = new Set<string>()
+  if (only) {
+    for (const id of only) if (paths.has(id)) dirty.add(id)
+    // A page that moved has to be written at its new path even if nothing
+    // about the page itself changed, and one the manifest has never seen has
+    // no file on disk yet.
+    for (const [id, relPath] of paths) if (previous.get(id) !== relPath) dirty.add(id)
+  } else {
+    for (const id of paths.keys()) dirty.add(id)
+  }
+
   let written = 0
-  let unchanged = 0
+  // Every page not in `dirty` is one this sync deliberately left alone.
+  let unchanged = paths.size - dirty.size
 
   const writeIfChanged = (relPath: string, contents: string): void => {
     const absolute = assertInsideRoot(root, join(root, relPath))
@@ -346,16 +375,21 @@ export function syncNow(): MirrorResult {
     written++
   }
 
-  for (const page of pages) {
-    const relPath = paths.get(page.id)
+  for (const pageId of dirty) {
+    const relPath = paths.get(pageId)
     if (!relPath) continue
+    // Only now is the document blob worth reading.
+    const page = repo.getPageById(pageId)
+    if (!page) continue
     writeIfChanged(relPath, renderPage(page, relPath, typeNames.get(page.type_id) ?? 'Note'))
   }
-  writeIfChanged(INDEX_FILENAME, renderIndex(pages, paths))
+
+  // The index names every page and its path, so any title or path change
+  // rewrites it. Rendering it costs nothing beyond what is already in hand.
+  writeIfChanged(INDEX_FILENAME, renderIndex(locations, paths))
 
   // Remove files this mirror previously wrote that are no longer wanted —
   // pages deleted, renamed, or moved elsewhere in the tree.
-  const previous = repo.getMirrorManifest()
   const desiredPaths = new Set(desired.values())
   let deleted = 0
 
@@ -378,7 +412,7 @@ export function syncNow(): MirrorResult {
   repo.replaceMirrorManifest(desired)
   repo.setSetting(SETTING_LAST_SYNC, new Date().toISOString())
 
-  return { written, deleted, unchanged, total: pages.length }
+  return { written, deleted, unchanged, total: paths.size }
 }
 
 // ============================================================
@@ -387,31 +421,48 @@ export function syncNow(): MirrorResult {
 
 let timer: ReturnType<typeof setTimeout> | null = null
 
+/** Pages changed since the last sync. A full pass is requested with `null`. */
+let pendingPages: Set<string> | null = new Set()
+
+function markPending(pageId?: string): void {
+  if (pendingPages === null) return // Already going to rewrite everything.
+  if (pageId) pendingPages.add(pageId)
+  else pendingPages = null
+}
+
 /**
- * Request a sync soon. Called after every mutation; the debounce collapses the
- * burst of content saves during typing into a single pass over the vault.
+ * Request a sync soon. `pageId` names the one page a mutation touched; leaving
+ * it off asks for a full pass, which is what anything cross-cutting needs —
+ * renaming a type or a tag changes the frontmatter of every page carrying it,
+ * and none of those pages is itself modified.
+ *
+ * The debounce collapses the burst of content saves during typing into one
+ * pass, and the pending set collapses *which* pages that pass has to touch.
  */
-export function scheduleSync(): void {
+export function scheduleSync(pageId?: string): void {
   if (!getConfig().enabled) return
+  markPending(pageId)
   if (timer) clearTimeout(timer)
-  timer = setTimeout(() => {
-    timer = null
-    try {
-      syncNow()
-    } catch (err) {
-      console.error('[nexus] vault mirror sync failed:', err)
-    }
-  }, DEBOUNCE_MS)
+  timer = setTimeout(runPending, DEBOUNCE_MS)
+}
+
+function runPending(): void {
+  timer = null
+  const scope = pendingPages
+  pendingPages = new Set()
+  try {
+    syncNow(scope === null ? undefined : [...scope])
+  } catch (err) {
+    console.error('[nexus] vault mirror sync failed:', err)
+    // The pages that failed are no longer in the pending set, so anything less
+    // than a full pass next time would leave them stale forever.
+    pendingPages = null
+  }
 }
 
 /** Run any pending sync immediately, so quitting never drops a pending write. */
 export function flushPending(): void {
   if (!timer) return
   clearTimeout(timer)
-  timer = null
-  try {
-    syncNow()
-  } catch (err) {
-    console.error('[nexus] vault mirror flush failed:', err)
-  }
+  runPending()
 }

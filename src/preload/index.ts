@@ -18,6 +18,8 @@ const api: NexusAPI = {
   pages: {
     create: (typeId) => ipcRenderer.invoke('pages:create', typeId),
     getAll: () => ipcRenderer.invoke('pages:getAll'),
+    list: () => ipcRenderer.invoke('pages:list'),
+    listDeleted: () => ipcRenderer.invoke('pages:listDeleted'),
     getAllSummary: (typeId) => ipcRenderer.invoke('pages:getAllSummary', typeId),
     getById: (id) => ipcRenderer.invoke('pages:getById', id),
     update: (id, data) => ipcRenderer.invoke('pages:update', id, data),
@@ -69,17 +71,33 @@ const api: NexusAPI = {
   },
   links: {
     getBacklinks: (pageId) => ipcRenderer.invoke('links:getBacklinks', pageId),
-    syncLinks: (pageId, linkTargets) => ipcRenderer.invoke('links:syncLinks', pageId, linkTargets),
     searchPages: (query, excludePageId) => ipcRenderer.invoke('links:searchPages', query, excludePageId)
+  },
+  habits: {
+    candidates: () => ipcRenderer.invoke('habits:candidates'),
+    days: (typeId, dateKey, booleanKey, from, to) =>
+      ipcRenderer.invoke('habits:days', typeId, dateKey, booleanKey, from, to)
+  },
+  tasks: {
+    inRange: (from, to) => ipcRenderer.invoke('tasks:inRange', from, to),
+    overdue: (before) => ipcRenderer.invoke('tasks:overdue', before),
+    undated: (limit) => ipcRenderer.invoke('tasks:undated', limit),
+    forPage: (pageId) => ipcRenderer.invoke('tasks:forPage', pageId),
+    datedPages: (from, to) => ipcRenderer.invoke('tasks:datedPages', from, to),
+    setDone: (pageId, blockId, done) => ipcRenderer.invoke('tasks:setDone', pageId, blockId, done)
   },
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
+  },
+  shell: {
+    openPath: (target) => ipcRenderer.invoke('shell:openPath', target)
   },
   stats: {
     getStorage: () => ipcRenderer.invoke('stats:getStorage'),
     getGraphPreview: () => ipcRenderer.invoke('stats:getGraphPreview'),
     getGraph: () => ipcRenderer.invoke('stats:getGraph'),
-    getDataDir: () => ipcRenderer.invoke('stats:getDataDir')
+    getDataDir: () => ipcRenderer.invoke('stats:getDataDir'),
+    getBackups: () => ipcRenderer.invoke('stats:getBackups')
   },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),

@@ -1,11 +1,11 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
-import { getDataDir } from './database'
-import type { PropertyType, LinkTarget } from '../shared/types'
+import { getDataDir, getBackupInfo } from './database'
+import type { PropertyType } from '../shared/types'
 
 function rethrow(channel: string, error: unknown): never {
   console.error(channel, error)
@@ -16,20 +16,23 @@ function rethrow(channel: string, error: unknown): never {
 export function registerIpcHandlers(): void {
   ipcMain.handle('pages:create', (_, typeId?: string) => {
     try {
-      return repo.createPage(typeId)
+      const page = repo.createPage(typeId)
+      // Scheduled here rather than in a `finally`, because the id of a page
+      // that has just been created is only in the return value. Naming it is
+      // what keeps a new page off the mirror's whole-vault path.
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('pages:create', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('journal:today', () => {
     try {
-      return repo.getOrCreateTodayEntry()
+      const page = repo.getOrCreateTodayEntry()
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('journal:today', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
@@ -95,6 +98,20 @@ export function registerIpcHandlers(): void {
       rethrow('pages:getAll', e)
     }
   })
+  ipcMain.handle('pages:list', () => {
+    try {
+      return repo.getPageList()
+    } catch (e) {
+      rethrow('pages:list', e)
+    }
+  })
+  ipcMain.handle('pages:listDeleted', () => {
+    try {
+      return repo.getDeletedPageList()
+    } catch (e) {
+      rethrow('pages:listDeleted', e)
+    }
+  })
   ipcMain.handle('pages:getAllSummary', (_, typeId?: string) => {
     try {
       return repo.getPagesSummary(typeId)
@@ -115,7 +132,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:update', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:softDelete', (_, id: string) => {
@@ -124,7 +141,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:softDelete', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:restore', (_, id: string) => {
@@ -133,7 +150,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:restore', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:hardDelete', (_, id: string) => {
@@ -142,7 +159,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:hardDelete', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:getDeleted', () => {
@@ -154,11 +171,11 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('pages:duplicate', (_, id: string) => {
     try {
-      return repo.duplicatePage(id)
+      const page = repo.duplicatePage(id)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('pages:duplicate', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
@@ -167,7 +184,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:setType', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('pages:emptyTrash', () => {
@@ -186,7 +203,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('pages:move', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(id)
     }
   })
 
@@ -256,7 +273,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('tags:addToPage', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:removeFromPage', (_, pageId: string, tagId: string) => {
@@ -265,7 +282,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('tags:removeFromPage', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:rename', (_, id: string, name: string) => {
@@ -319,7 +336,7 @@ export function registerIpcHandlers(): void {
       } catch (e) {
         rethrow('properties:set', e)
       } finally {
-        mirror.scheduleSync()
+        mirror.scheduleSync(pageId)
       }
     }
   )
@@ -336,7 +353,7 @@ export function registerIpcHandlers(): void {
     } catch (e) {
       rethrow('properties:remove', e)
     } finally {
-      mirror.scheduleSync()
+      mirror.scheduleSync(pageId)
     }
   })
 
@@ -426,13 +443,6 @@ export function registerIpcHandlers(): void {
       rethrow('links:getBacklinks', e)
     }
   })
-  ipcMain.handle('links:syncLinks', (_, pageId: string, linkTargets: LinkTarget[]) => {
-    try {
-      return repo.syncLinks(pageId, linkTargets)
-    } catch (e) {
-      rethrow('links:syncLinks', e)
-    }
-  })
   ipcMain.handle('links:searchPages', (_, query: string, excludePageId?: string) => {
     try {
       return repo.searchPagesForLink(query, excludePageId)
@@ -441,6 +451,69 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('habits:candidates', () => {
+    try {
+      return repo.getHabitCandidates()
+    } catch (e) {
+      rethrow('habits:candidates', e)
+    }
+  })
+  ipcMain.handle(
+    'habits:days',
+    (_, typeId: string, dateKey: string, booleanKey: string, from: string, to: string) => {
+      try {
+        return repo.getHabitDays(typeId, dateKey, booleanKey, String(from), String(to))
+      } catch (e) {
+        rethrow('habits:days', e)
+      }
+    }
+  )
+  ipcMain.handle('tasks:inRange', (_, from: string, to: string) => {
+    try {
+      return repo.getTasksInRange(String(from), String(to))
+    } catch (e) {
+      rethrow('tasks:inRange', e)
+    }
+  })
+  ipcMain.handle('tasks:overdue', (_, before: string) => {
+    try {
+      return repo.getOverdueTasks(String(before))
+    } catch (e) {
+      rethrow('tasks:overdue', e)
+    }
+  })
+  ipcMain.handle('tasks:undated', (_, limit?: number) => {
+    try {
+      return repo.getUndatedTasks(limit ?? 100)
+    } catch (e) {
+      rethrow('tasks:undated', e)
+    }
+  })
+  ipcMain.handle('tasks:forPage', (_, pageId: string) => {
+    try {
+      return repo.getTasksForPage(pageId)
+    } catch (e) {
+      rethrow('tasks:forPage', e)
+    }
+  })
+  ipcMain.handle('tasks:datedPages', (_, from: string, to: string) => {
+    try {
+      return repo.getDatedPagesInRange(String(from), String(to))
+    } catch (e) {
+      rethrow('tasks:datedPages', e)
+    }
+  })
+  ipcMain.handle('tasks:setDone', (_, pageId: string, blockId: string, done: boolean) => {
+    try {
+      return repo.setTaskDone(pageId, blockId, Boolean(done))
+    } catch (e) {
+      rethrow('tasks:setDone', e)
+    } finally {
+      // Ticking a task rewrites the page's body, so the mirror is stale until
+      // it re-runs — the same reason every other page write schedules one.
+      mirror.scheduleSync(pageId)
+    }
+  })
   ipcMain.handle('activity:getRecent', (_, limit?: number) => {
     try {
       return repo.getRecentActivity(limit)
@@ -478,6 +551,24 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('stats:getBackups', () => {
+    try {
+      return getBackupInfo()
+    } catch (e) {
+      rethrow('stats:getBackups', e)
+    }
+  })
+  ipcMain.handle('shell:openPath', async (_, target: string) => {
+    try {
+      // Returns a message on failure rather than throwing, which is how a
+      // missing folder or no file manager comes back.
+      const problem = await shell.openPath(target)
+      return problem || null
+    } catch (e) {
+      rethrow('shell:openPath', e)
+    }
+  })
+
   ipcMain.handle('io:exportPageMarkdown', (_, pageId: string) => {
     try {
       return io.exportPageMarkdown(pageId)
@@ -501,20 +592,20 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('io:importMarkdown', (_, content: string, filename: string) => {
     try {
-      return io.importMarkdown(content, filename)
+      const page = io.importMarkdown(content, filename)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('io:importMarkdown', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('io:importJSON', (_, content: string) => {
     try {
-      return io.importJSON(content)
+      const page = io.importJSON(content)
+      mirror.scheduleSync(page.id)
+      return page
     } catch (e) {
       rethrow('io:importJSON', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 

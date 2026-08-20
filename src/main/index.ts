@@ -2,7 +2,7 @@ import { app, BrowserWindow, shell } from 'electron'
 import { join } from 'path'
 import { initDatabase, closeDatabase } from './database'
 import { registerIpcHandlers } from './ipc'
-import { ensureSearchIndex } from './repo'
+import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex } from './repo'
 import { flushPending as flushMirror } from './mirror'
 
 let mainWindow: BrowserWindow | null = null
@@ -43,6 +43,12 @@ app.whenReady().then(() => {
   initDatabase()
   // The v4 migration creates page_fts empty; fill it before the first query.
   ensureSearchIndex()
+  // Same for v8's `tasks` — every checkbox written before the tracker existed
+  // is picked up here, once.
+  ensureTaskIndex()
+  // v9 drops `links` to rebuild it with a source discriminator; this refills
+  // it from both the documents and the relation properties.
+  ensureLinkIndex()
   registerIpcHandlers()
   createWindow()
 
@@ -51,14 +57,16 @@ app.whenReady().then(() => {
   })
 })
 
+// Closing the last window is not the same as quitting. Tearing the database
+// down here left `activate` re-creating a window against a closed handle, so
+// every query threw; on platforms that do quit, `before-quit` runs anyway and
+// is the one place that has to shut things down.
 app.on('window-all-closed', () => {
-  // Flush before the database closes — the mirror reads from it.
-  flushMirror()
-  closeDatabase()
   if (process.platform !== 'darwin') app.quit()
 })
 
 app.on('before-quit', () => {
+  // Flush before the database closes — the mirror reads from it.
   flushMirror()
   closeDatabase()
 })

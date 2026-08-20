@@ -81,9 +81,11 @@ stable across saves and live in the JSON, so `block_id` works as the roadmap
 intends.
 
 `checkListItem` ships in BlockNote's `defaultBlockSpecs`, which `nexusSchema`
-spreads — so the capture surface already exists as a block type. There is **no
-slash-menu entry for it** (`slash-items.ts` only adds Toggle and Callout);
-confirm how a user actually inserts one before designing around it.
+spreads — so the capture surface already exists as a block type. **Checked
+while building D: it is also already reachable.** BlockNote's
+`getDefaultReactSlashMenuItems` ships a "Check List" item of its own, and
+`getSlashMenuItems` spreads those defaults before appending Toggle and
+Callout, so `/check` inserts one today. No editor work was needed for step 8.
 
 ---
 
@@ -193,3 +195,50 @@ destructive paths went untested for months).
 - `NEXUS.md` updated. It is what the *next* session reads.
 - Work feature by feature, pushing each for review, rather than landing the
   whole milestone at once.
+
+
+---
+
+## 8. What D shipped, and what it left
+
+Built feature by feature, each pushed for review:
+
+1. **The link graph moved into the main process.** `syncLinks` was called from
+   `Editor.tsx`; it now runs from `repo.updatePage` via `projectDocument`,
+   alongside `reindexPage`. That fixed the imported-pages-have-no-backlinks
+   bug §4 predicted, and the walkers moved to `src/shared/document.ts` where
+   both processes can reach them. `links:syncLinks` is gone from the IPC
+   surface and `syncLinks` is no longer exported: the projection has one
+   writer.
+2. **`tasks` (schema 8).** One row per checkbox block, keyed by
+   (page_id, block_id), rebuilt by the same `projectDocument`. Due dates come
+   from an `@2026-08-20` in the block and fall back to the page's own `date`
+   property — resolved at query time, not stored, so editing the property
+   moves its tasks. `completed_at` is carried across reprojections.
+3. **The Tracker**, a sixth nav view: Week, Quarter and Habits, plus Overdue
+   and No-date panels so a date-scoped view cannot swallow a task silently.
+   Ticking a task here writes back into its block and refreshes the store's
+   copy of the page.
+4. **Habits** as a year grid over any type with a date and a boolean property.
+   No habit tables, no habit engine — `getHabitCandidates()` is the whole of
+   it.
+
+Two decisions from §5 were deliberately left where they were:
+
+- ~~**Relations still do not feed backlinks.**~~ **Done, schema 9.** `links`
+  gained `source` ('mention' | 'relation') and `property_key`, so the two are
+  projected independently and a content save no longer erases a relation's
+  row. The migration copies existing rows across as mentions rather than
+  re-deriving them — a first-build file's links were extracted by the old app
+  and nothing guarantees the migrated document still produces them — and
+  backfills a link for every relation already stored, so an existing vault has
+  relation backlinks on first launch. The panel labels them "via <property>".
+- **`io.exportPageJSON` still drops properties.** D does not lean on export,
+  so the portable-reference question (resolve by title, drop on import, or
+  export `[[Title]]` the way the mirror does) is still open and still has to
+  be answered before anything else depends on JSON round-tripping.
+
+One harness change worth knowing about: `scripts/check-app.mjs` navigates by
+nav-item *label* rather than index, because adding a sixth view silently
+retargeted every section that used `nav(3)` and `nav(4)`. Its task fixtures
+are dated relative to the machine clock for the same class of reason.

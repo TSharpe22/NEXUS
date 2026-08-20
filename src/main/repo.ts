@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
 import { journalEntryTitle, localDateISO } from '@shared/journal-date'
+import { extractLinkTargets, extractTasks, parseDocument, setCheckedInDocument } from '@shared/document'
 import { statSync } from 'fs'
 import type {
   Page,
@@ -11,6 +12,8 @@ import type {
   ActivityLogEntry,
   StorageStats,
   PageSummary,
+  PageLocation,
+  PageListItem,
   GraphPreview,
   GraphData,
   GraphNode,
@@ -20,7 +23,11 @@ import type {
   Folder,
   Tag,
   TagWithCount,
-  SearchResult
+  SearchResult,
+  TrackerTask,
+  DatedPage,
+  HabitCandidate,
+  HabitDay
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -72,6 +79,9 @@ export function createPage(typeId: string = 'note', folderId: string | null = nu
   }
 
   reindexPage(id)
+  // A template's body can carry mentions and checkboxes of its own, and a page
+  // created from one never passes through the editor before it is looked at.
+  projectDocument(id)
   logActivity(id, 'created', template ? 'page created from template' : 'page created')
   return getPageById(id)!
 }
@@ -114,13 +124,52 @@ export function getAllPages(): Page[] {
     .all() as Page[]
 }
 
+/**
+ * Every live page's id, title and folder — the three columns the vault mirror
+ * needs to compute paths. Deliberately not `getAllPages()`: that pulls each
+ * page's whole document with it, which is the bulk of the row and is not read
+ * unless the page is actually being rewritten.
+ */
+export function getPageLocations(): PageLocation[] {
+  return getDb()
+    // Ordered by creation, not by `updated_at`: `computePaths` disambiguates
+    // two same-titled pages by which it sees first, so a recency order made
+    // editing one of them rename *both* files on disk. Creation order never
+    // changes, so a page's path only moves when its own title or folder does.
+    .prepare('SELECT id, title, folder_id FROM pages WHERE is_deleted = 0 ORDER BY created_at, id')
+    .all() as PageLocation[]
+}
+
+/** Columns of `pages` except the document body, as one reusable list. */
+const LIST_COLUMNS =
+  'id, type_id, title, icon, page_width, folder_id, is_deleted, created_at, updated_at'
+
+/**
+ * Every live page without its body, newest first — what the sidebar, the
+ * command palette and the tag filter all actually read.
+ */
+export function getPageList(): PageListItem[] {
+  return getDb()
+    .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`)
+    .all() as PageListItem[]
+}
+
+/** The same, for the trash. */
+export function getDeletedPageList(): PageListItem[] {
+  return getDb()
+    .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 1 ORDER BY updated_at DESC`)
+    .all() as PageListItem[]
+}
+
 export function getPagesSummary(typeId?: string): PageSummary[] {
   const db = getDb()
   const rows = (
     typeId
-      ? db.prepare('SELECT * FROM pages WHERE is_deleted = 0 AND type_id = ? ORDER BY updated_at DESC').all(typeId)
-      : db.prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC').all()
-  ) as Page[]
+      ? db
+          .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 AND type_id = ? ORDER BY updated_at DESC`)
+          .all(typeId)
+      : db.prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`).all()
+  ) as PageListItem[]
 
   if (rows.length === 0) return []
 
@@ -166,6 +215,7 @@ export function updatePage(
 
   // Only the two indexed fields need the index rewritten.
   if ('title' in data || 'content' in data) reindexPage(id)
+  if ('content' in data) projectDocument(id)
 
   if ('title' in data) logActivity(id, 'renamed', `renamed to "${data.title}"`)
   else if ('type_id' in data) logActivity(id, 'retyped', 'type changed')
@@ -233,6 +283,7 @@ export function duplicatePage(id: string): Page {
   ).run(newId, ts, id)
 
   reindexPage(newId)
+  projectDocument(newId)
   return getPageById(newId)!
 }
 
@@ -454,6 +505,30 @@ export function reindexPage(pageId: string): void {
   )
 }
 
+/**
+ * Rebuild every projection derived from a page's body.
+ *
+ * Called from each path that writes `pages.content` — `updatePage`,
+ * `createPage` (a template's body comes across whole) and `duplicatePage` —
+ * so a projection can never be more current than the document it came from.
+ *
+ * Link extraction used to run in the renderer, from `Editor.tsx`, after the
+ * save round-tripped. That made a React component the only writer of the link
+ * graph, and pages that never mount it — anything created by `io.importJSON`,
+ * by a template, by the journal button — contributed no backlinks at all.
+ * `reindexPage` was always called from here and never had that problem; this
+ * is the same rule applied to the rest.
+ */
+export function projectDocument(pageId: string): void {
+  const row = getDb().prepare('SELECT content FROM pages WHERE id = ?').get(pageId) as
+    | { content: string | null }
+    | undefined
+  if (!row) return
+  const blocks = parseDocument(row.content)
+  syncLinks(pageId, extractLinkTargets(blocks))
+  projectTasks(pageId, blocks)
+}
+
 /** Drop and rebuild the whole index. Returns the number of pages indexed. */
 export function rebuildSearchIndex(): number {
   const db = getDb()
@@ -556,6 +631,346 @@ export function searchPages(query: string, limit = 50): SearchResult[] {
       bodySnippet: snippet.includes(SEARCH_MARK_OPEN) ? snippet : null
     }
   })
+}
+
+// ============================================================
+// Tasks — the checkbox blocks of every page, as a queryable index.
+//
+// The block inside `pages.content` stays the source of truth: writing a todo
+// is typing a checkbox on the page you are already on, never filling in a
+// form somewhere else. This table only makes those blocks answerable to a
+// query, and is rebuilt from the document on every write.
+// ============================================================
+
+/**
+ * The date a task counts against.
+ *
+ * A checkbox block can carry its own `@YYYY-MM-DD`; when it does not, it
+ * inherits the date of the page holding it — which is what makes a journal
+ * entry's todo list work without any syntax at all, since every entry already
+ * has a `date` property.
+ *
+ * Resolved here, at query time, rather than written into `tasks.due_date` by
+ * the projector: a page's date property can change long after its body was
+ * last touched, and a stored copy would then be wrong with nothing to
+ * reproject it. A property keyed exactly `date` wins over any other date
+ * property on the page, so a Book's `finished` date cannot outrank it.
+ */
+const EFFECTIVE_DUE = `
+  COALESCE(t.due_date, (
+    SELECT pr.value_date FROM properties pr
+     WHERE pr.page_id = t.page_id AND pr.type = 'date'
+       AND pr.value_date IS NOT NULL AND pr.value_date <> ''
+     ORDER BY (pr.key <> 'date'), pr.key
+     LIMIT 1
+  ))`
+
+const TASK_SELECT = `
+  SELECT t.page_id, t.block_id, t.text, t.is_done, t.due_date, t.completed_at,
+         ${EFFECTIVE_DUE} AS effective_due,
+         p.title, p.icon
+    FROM tasks t
+    JOIN pages p ON p.id = t.page_id AND p.is_deleted = 0`
+
+interface TaskRow {
+  page_id: string
+  block_id: string
+  text: string
+  is_done: number
+  due_date: string | null
+  completed_at: string | null
+  effective_due: string | null
+  title: string
+  icon: string | null
+}
+
+function toTask(row: TaskRow): TrackerTask {
+  return {
+    pageId: row.page_id,
+    blockId: row.block_id,
+    text: row.text,
+    isDone: row.is_done === 1,
+    dueDate: row.effective_due,
+    // Which of the two answers supplied the date, so the tracker can show a
+    // task dated by its page differently from one dated by hand.
+    dueDateSource: row.due_date ? 'block' : row.effective_due ? 'page' : null,
+    completedAt: row.completed_at,
+    pageTitle: row.title,
+    pageIcon: row.icon
+  }
+}
+
+/**
+ * Rewrite the task rows for one page from its document.
+ *
+ * `completed_at` is the only field the document cannot answer — a checkbox
+ * records that it is ticked, never when — so it is carried across from the
+ * existing row, stamped when a task turns done and cleared when it is
+ * unticked. Everything else is replaced outright: a block that has gone from
+ * the document has no row afterwards.
+ */
+export function projectTasks(pageId: string, blocks?: unknown[]): void {
+  const db = getDb()
+  let document = blocks
+  if (!document) {
+    const row = db.prepare('SELECT content FROM pages WHERE id = ?').get(pageId) as
+      | { content: string | null }
+      | undefined
+    if (!row) return
+    document = parseDocument(row.content)
+  }
+
+  const found = extractTasks(document)
+  const trx = db.transaction(() => {
+    const existing = new Map(
+      (
+        db.prepare('SELECT block_id, is_done, completed_at FROM tasks WHERE page_id = ?').all(pageId) as {
+          block_id: string
+          is_done: number
+          completed_at: string | null
+        }[]
+      ).map((r) => [r.block_id, r])
+    )
+
+    const keep = new Set(found.map((t) => t.blockId))
+    for (const blockId of existing.keys()) {
+      if (!keep.has(blockId)) {
+        db.prepare('DELETE FROM tasks WHERE page_id = ? AND block_id = ?').run(pageId, blockId)
+      }
+    }
+
+    const upsert = db.prepare(
+      `INSERT INTO tasks (page_id, block_id, text, is_done, due_date, completed_at, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(page_id, block_id) DO UPDATE SET
+         text = excluded.text, is_done = excluded.is_done,
+         due_date = excluded.due_date, completed_at = excluded.completed_at,
+         sort_order = excluded.sort_order`
+    )
+
+    const ts = now()
+    for (const task of found) {
+      const prior = existing.get(task.blockId)
+      const completedAt = task.isDone ? (prior?.is_done === 1 ? prior.completed_at : ts) : null
+      upsert.run(pageId, task.blockId, task.text, task.isDone ? 1 : 0, task.dueDate, completedAt, task.sortOrder)
+    }
+  })
+  trx()
+}
+
+/** Drop and rebuild every page's tasks. Returns the number of rows written. */
+export function rebuildTaskIndex(): number {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM tasks').run()
+    for (const row of db.prepare('SELECT id FROM pages').all() as { id: string }[]) {
+      projectTasks(row.id)
+    }
+    return (db.prepare('SELECT count(*) AS n FROM tasks').get() as { n: number }).n
+  })
+  return trx()
+}
+
+/**
+ * Fill the index if it is empty but there are pages to fill it from.
+ *
+ * The same shape as `ensureSearchIndex`, and for the same reason: v8 creates
+ * the table empty, so every checkbox written before this milestone existed
+ * has to be picked up once at startup.
+ */
+export function ensureTaskIndex(): void {
+  const db = getDb()
+  const indexed = (db.prepare('SELECT count(*) AS n FROM tasks').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (indexed === 0 && total > 0) rebuildTaskIndex()
+}
+
+/** Every task in a page's document, in reading order. */
+export function getTasksForPage(pageId: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(`${TASK_SELECT} WHERE t.page_id = ? ORDER BY t.sort_order`)
+    .all(pageId) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/**
+ * Tasks falling inside a date window, both bounds inclusive, as `YYYY-MM-DD`.
+ * Dates are compared as strings, which is exactly right for that format and
+ * needs no date parsing in SQL.
+ */
+export function getTasksInRange(from: string, to: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE ${EFFECTIVE_DUE} BETWEEN ? AND ?
+        ORDER BY effective_due, p.title, t.sort_order`
+    )
+    .all(from, to) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/** Open tasks whose date has already passed. `before` is exclusive. */
+export function getOverdueTasks(before: string): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NOT NULL AND ${EFFECTIVE_DUE} < ?
+        ORDER BY effective_due, p.title, t.sort_order`
+    )
+    .all(before) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/**
+ * Open tasks with no date anywhere — neither their own nor their page's.
+ *
+ * A date-scoped view would otherwise swallow them silently: a todo typed into
+ * an ordinary untyped note has no date to sort under and would appear in no
+ * window at all.
+ */
+export function getUndatedTasks(limit = 100): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NULL
+        ORDER BY p.updated_at DESC, t.sort_order
+        LIMIT ?`
+    )
+    .all(limit) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/** Pages carrying a date property that falls inside the window. */
+export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id, p.title, p.icon, pr.key, pr.value_date, t.name AS type_name
+         FROM properties pr
+         JOIN pages p ON p.id = pr.page_id AND p.is_deleted = 0
+         LEFT JOIN types t ON t.id = p.type_id
+        WHERE pr.type = 'date' AND pr.value_date BETWEEN ? AND ?
+        ORDER BY pr.value_date, p.title`
+    )
+    .all(from, to) as {
+    id: string
+    title: string
+    icon: string | null
+    key: string
+    value_date: string
+    type_name: string | null
+  }[]
+
+  return rows.map((r) => ({
+    pageId: r.id,
+    pageTitle: r.title,
+    pageIcon: r.icon,
+    typeName: r.type_name,
+    propertyKey: r.key,
+    date: r.value_date
+  }))
+}
+
+/**
+ * Tick a task off without opening its page.
+ *
+ * The write goes back into the document — the block is the source of truth,
+ * so setting `tasks.is_done` on its own would produce a row that the next
+ * reprojection silently reverts. `updatePage` then reprojects, which is what
+ * keeps this honest. Returns the page as stored so the caller can refresh the
+ * copy the editor would remount from; a stale copy there is what once let an
+ * old document be saved over a newer one.
+ */
+export function setTaskDone(pageId: string, blockId: string, done: boolean): Page {
+  const page = getPageById(pageId)
+  if (!page) throw new Error(`Page not found: ${pageId}`)
+
+  const { blocks, found } = setCheckedInDocument(parseDocument(page.content), blockId, done)
+  if (!found) throw new Error(`No checkbox block ${blockId} on page ${pageId}`)
+
+  updatePage(pageId, { content: JSON.stringify(blocks) })
+  return getPageById(pageId)!
+}
+
+// ============================================================
+// Habits — a view, not a subsystem.
+//
+// A habit is a type with a date property and a checkbox property. That is
+// already everything the year grid needs, and it is all built out of what
+// milestone C shipped: no habit tables, no habit-specific columns, nothing
+// here that a user could not have made by adding two properties to a type.
+// ============================================================
+
+/**
+ * Every type that could be read as a habit, with the properties that qualify
+ * it. A type with two date properties offers both; picking between them is the
+ * reader's business, not this function's.
+ */
+export function getHabitCandidates(): HabitCandidate[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT t.id AS type_id, t.name AS type_name, d.key, d.property_type, d.sort_order
+         FROM types t
+         JOIN property_definitions d ON d.type_id = t.id
+        WHERE d.property_type IN ('date', 'boolean')
+        ORDER BY t.name, d.sort_order`
+    )
+    .all() as { type_id: string; type_name: string; key: string; property_type: string }[]
+
+  const byType = new Map<string, HabitCandidate>()
+  for (const row of rows) {
+    const entry = byType.get(row.type_id) ?? {
+      typeId: row.type_id,
+      typeName: row.type_name,
+      dateKeys: [],
+      booleanKeys: []
+    }
+    if (row.property_type === 'date') entry.dateKeys.push(row.key)
+    else entry.booleanKeys.push(row.key)
+    byType.set(row.type_id, entry)
+  }
+
+  // A type with only one half of the pair is not a habit yet.
+  return [...byType.values()].filter((c) => c.dateKeys.length > 0 && c.booleanKeys.length > 0)
+}
+
+/**
+ * One entry per day for a habit, inside a date window.
+ *
+ * Two pages can land on the same day — nothing stops a second entry being
+ * written — so the day counts as done if any of them says so, and holds the
+ * id of the one the grid opens.
+ */
+export function getHabitDays(
+  typeId: string,
+  dateKey: string,
+  booleanKey: string,
+  from: string,
+  to: string
+): HabitDay[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id AS page_id, d.value_date AS date, b.value_text AS flag
+         FROM pages p
+         JOIN properties d ON d.page_id = p.id AND d.key = ? AND d.type = 'date'
+         LEFT JOIN properties b ON b.page_id = p.id AND b.key = ?
+        WHERE p.is_deleted = 0 AND p.type_id = ?
+          AND d.value_date BETWEEN ? AND ?
+        ORDER BY d.value_date, p.updated_at`
+    )
+    .all(dateKey, booleanKey, typeId, from, to) as {
+    page_id: string
+    date: string
+    flag: string | null
+  }[]
+
+  const byDate = new Map<string, HabitDay>()
+  for (const row of rows) {
+    const done = row.flag === 'true'
+    const existing = byDate.get(row.date)
+    if (!existing) byDate.set(row.date, { date: row.date, done, pageId: row.page_id })
+    else if (done && !existing.done) byDate.set(row.date, { date: row.date, done, pageId: row.page_id })
+  }
+  return [...byDate.values()]
 }
 
 // ============================================================
@@ -665,6 +1080,18 @@ export function removePropertyDefinition(id: string): void {
     | undefined
   if (!def) return
 
+  // Removing a property from a type clears its value on every page of that
+  // type, so every one of them may have just lost a relation link. Collected
+  // before the delete, because afterwards there is nothing left to find them
+  // by.
+  const affected = db
+    .prepare(
+      `SELECT page_id FROM properties
+        WHERE key = ? AND type = 'relation'
+          AND page_id IN (SELECT id FROM pages WHERE type_id = ?)`
+    )
+    .all(def.key, def.type_id) as { page_id: string }[]
+
   const trx = db.transaction(() => {
     db.prepare(
       `DELETE FROM properties
@@ -673,6 +1100,8 @@ export function removePropertyDefinition(id: string): void {
     db.prepare('DELETE FROM property_definitions WHERE id = ?').run(id)
   })
   trx()
+
+  for (const row of affected) syncRelationLinks(row.page_id)
 }
 
 export function reorderPropertyDefinitions(typeId: string, orderedIds: string[]): void {
@@ -744,6 +1173,10 @@ export function setProperty(
 
   logActivity(pageId, 'property', `set "${key}"`)
 
+  // Both branches matter: a relation written now needs its link, and a
+  // property retyped *away* from relation needs its old link dropped.
+  if (type === 'relation' || existing?.type === 'relation') syncRelationLinks(pageId)
+
   return read.get(pageId, key) as Property
 }
 
@@ -792,6 +1225,7 @@ export function getKnownPropertyValues(key: string): string[] {
 
 export function removeProperty(pageId: string, key: string): void {
   getDb().prepare('DELETE FROM properties WHERE page_id = ? AND key = ?').run(pageId, key)
+  syncRelationLinks(pageId)
 }
 
 // ============================================================
@@ -801,26 +1235,49 @@ export function removeProperty(pageId: string, key: string): void {
 export function getBacklinks(pageId: string): BacklinkResult[] {
   const rows = getDb()
     .prepare(
-      `SELECT l.context, p.id AS source_page_id, p.title, p.icon
+      `SELECT l.context, l.source, l.property_key, p.id AS source_page_id, p.title, p.icon
        FROM links l JOIN pages p ON p.id = l.source_page_id
        WHERE l.target_page_id = ? AND p.is_deleted = 0
        ORDER BY l.created_at DESC`
     )
-    .all(pageId) as { source_page_id: string; title: string; icon: string | null; context: string | null }[]
+    .all(pageId) as {
+    source_page_id: string
+    title: string
+    icon: string | null
+    context: string | null
+    source: string
+    property_key: string
+  }[]
 
   return rows.map((r) => ({
     sourcePageId: r.source_page_id,
     sourcePageTitle: r.title,
     sourcePageIcon: r.icon,
-    context: r.context
+    context: r.context,
+    source: r.source === 'relation' ? 'relation' : 'mention',
+    // Empty for a mention, which is why the column is not nullable.
+    propertyKey: r.property_key || null
   }))
 }
 
-export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
+/**
+ * Replace a page's outgoing *mention* links with exactly the set given.
+ *
+ * Deliberately not exported: `projectDocument` is the only caller, so the
+ * link graph cannot be written from anywhere that is not looking at the
+ * document itself.
+ *
+ * Scoped to `source = 'mention'`. It used to delete every row this page owned,
+ * which is why a relation could not contribute a backlink: the relation's row
+ * was never in the document's mention set, so the next content save removed
+ * it. Relations are projected by `syncRelationLinks` and the two no longer
+ * touch each other's rows.
+ */
+function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
   const db = getDb()
   const trx = db.transaction(() => {
     const existing = db
-      .prepare('SELECT id, target_page_id FROM links WHERE source_page_id = ?')
+      .prepare("SELECT id, target_page_id FROM links WHERE source_page_id = ? AND source = 'mention'")
       .all(pageId) as { id: string; target_page_id: string }[]
 
     const existingTargets = new Set(existing.map((e) => e.target_page_id))
@@ -844,10 +1301,11 @@ export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
     }
 
     const insert = db.prepare(
-      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, context, created_at) VALUES (?, ?, ?, ?, ?)`
+      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+       VALUES (?, ?, ?, 'mention', '', ?, ?)`
     )
     const updateCtx = db.prepare(
-      'UPDATE links SET context = ? WHERE source_page_id = ? AND target_page_id = ?'
+      "UPDATE links SET context = ? WHERE source_page_id = ? AND target_page_id = ? AND source = 'mention'"
     )
     const ts = now()
     for (const [targetId, context] of newTargets) {
@@ -859,6 +1317,85 @@ export function syncLinks(pageId: string, linkTargets: LinkTarget[]): void {
     }
   })
   trx()
+}
+
+/**
+ * Rebuild the links a page contributes through its *relation properties*.
+ *
+ * Called from every path that writes a relation value, so "tasks linked to a
+ * project, visible from that project" holds without anyone having to also
+ * mention the project in the body. Milestone C left this unresolved because
+ * `syncLinks` would erase the row on the next save; the `source` column in
+ * schema 9 is what makes the two projections independent.
+ *
+ * A relation whose target has been permanently deleted is skipped for the
+ * same reason a dangling mention is: the foreign key would reject the row and
+ * take the whole write with it. The property keeps its value, and every
+ * reader already shows that as a missing page.
+ */
+function syncRelationLinks(pageId: string): void {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    const wanted = db
+      .prepare(
+        `SELECT pr.key, pr.value_relation AS target
+           FROM properties pr
+           JOIN pages p ON p.id = pr.value_relation
+          WHERE pr.page_id = ? AND pr.type = 'relation'
+            AND pr.value_relation IS NOT NULL AND pr.value_relation <> ''`
+      )
+      .all(pageId) as { key: string; target: string }[]
+
+    const keep = new Set(wanted.map((w) => `${w.key}\u0000${w.target}`))
+    const existing = db
+      .prepare("SELECT id, target_page_id, property_key FROM links WHERE source_page_id = ? AND source = 'relation'")
+      .all(pageId) as { id: string; target_page_id: string; property_key: string }[]
+
+    for (const row of existing) {
+      if (!keep.has(`${row.property_key}\u0000${row.target_page_id}`)) {
+        db.prepare('DELETE FROM links WHERE id = ?').run(row.id)
+      }
+    }
+
+    const insert = db.prepare(
+      `INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+       VALUES (?, ?, ?, 'relation', ?, NULL, ?)`
+    )
+    const ts = now()
+    for (const w of wanted) insert.run(uuidv4(), pageId, w.target, w.key, ts)
+  })
+  trx()
+}
+
+/**
+ * Drop and rebuild every link in the vault, from both sources. Returns the
+ * number of rows written.
+ *
+ * `links` is as derived as `page_fts` and `tasks`, which is what let schema 9
+ * drop the table outright rather than migrate its rows.
+ */
+export function rebuildLinkIndex(): number {
+  const db = getDb()
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM links').run()
+    for (const row of db.prepare('SELECT id, content FROM pages').all() as {
+      id: string
+      content: string | null
+    }[]) {
+      syncLinks(row.id, extractLinkTargets(parseDocument(row.content)))
+      syncRelationLinks(row.id)
+    }
+    return (db.prepare('SELECT count(*) AS n FROM links').get() as { n: number }).n
+  })
+  return trx()
+}
+
+/** Fill the link graph if it is empty but there are pages to fill it from. */
+export function ensureLinkIndex(): void {
+  const db = getDb()
+  const linked = (db.prepare('SELECT count(*) AS n FROM links').get() as { n: number }).n
+  const total = (db.prepare('SELECT count(*) AS n FROM pages').get() as { n: number }).n
+  if (linked === 0 && total > 0) rebuildLinkIndex()
 }
 
 export function searchPagesForLink(query: string, excludePageId?: string): Page[] {

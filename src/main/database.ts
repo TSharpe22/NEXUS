@@ -3,6 +3,7 @@ import { app } from 'electron'
 import { join } from 'path'
 import { mkdirSync, existsSync, copyFileSync } from 'fs'
 import { applySchema } from './schema'
+import { rotateBackups, listBackups, backupsDir } from './backup'
 
 let db: Database.Database
 
@@ -13,9 +14,30 @@ export function initDatabase(): void {
   }
 
   const dbPath = join(dataDir, 'nexus.db')
+  // Asked before the connection is opened, because opening one creates the
+  // file — after this line "does a vault exist?" is always yes, and the first
+  // launch would spend a rotation slot snapshotting an empty database.
+  const hadVault = existsSync(dbPath)
   db = new Database(dbPath)
   db.pragma('journal_mode = WAL')
   db.pragma('busy_timeout = 5000')
+
+  // A launch snapshot, before the schema step gets a chance to change
+  // anything. Checkpointed first: under WAL the recent writes are still in
+  // `nexus.db-wal`, so a plain copy of the main file alone is a stale vault.
+  try {
+    if (hadVault) {
+      db.pragma('wal_checkpoint(TRUNCATE)')
+      const { created, pruned } = rotateBackups(dataDir, dbPath)
+      if (created) {
+        console.log(`[nexus] snapshot ${created}${pruned.length ? ` (pruned ${pruned.length})` : ''}`)
+      }
+    }
+  } catch (err) {
+    // Never let a failed snapshot stop the app opening — the vault is fine,
+    // the copy of it is what failed.
+    console.error('[nexus] could not take a launch snapshot:', err)
+  }
 
   // Foreign keys stay OFF through migration — bringing a first-build file
   // forward means rebuilding tables, which drops and recreates tables that
@@ -31,7 +53,10 @@ export function initDatabase(): void {
 }
 
 export function closeDatabase(): void {
-  if (db) db.close()
+  // `before-quit` can fire more than once (a cancelled quit, then a real one),
+  // and a handle that has already been closed must not be closed again.
+  if (!db || !db.open) return
+  db.close()
 }
 
 export function getDb(): Database.Database {
@@ -44,6 +69,16 @@ export function getDbPath(): string {
 
 export function getDataDir(): string {
   return join(app.getPath('userData'), 'data')
+}
+
+export function getBackupInfo(): { folder: string; count: number; latest: string | null } {
+  const dataDir = getDataDir()
+  const backups = listBackups(dataDir)
+  return {
+    folder: backupsDir(dataDir),
+    count: backups.length,
+    latest: backups[0] ?? null
+  }
 }
 
 /**

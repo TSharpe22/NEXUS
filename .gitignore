@@ -3,3 +3,11 @@ out
 dist
 *.log
 .DS_Store
+
+# Never commit a source snapshot. `nexus-clean.tar.gz` was committed on a
+# dozen branches and went stale the day it landed — anyone who unpacked one
+# got the first build back, lasso overlay and all. A snapshot is built from a
+# checkout of `main`, not stored in the repo.
+*.tar.gz
+*.tgz
+*.zip

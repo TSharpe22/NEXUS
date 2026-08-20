@@ -7,7 +7,7 @@ import { nexusSchema } from './schema'
 import { getSlashMenuItems } from './slash-items'
 import { useAppStore } from '../store/app-store'
 import { useDebounce } from '../hooks/use-debounce'
-import { getLinkMenuItems, LinkMenu, extractLinkTargets } from './link-menu'
+import { getLinkMenuItems, LinkMenu } from './link-menu'
 import { TagBar } from './TagBar'
 import './Editor.css'
 
@@ -60,7 +60,6 @@ export function Editor({ page, children }: EditorProps) {
       // page — and the next keystroke then saved that stale document over the
       // good one. `saveTitle` below has always patched; this has to as well.
       patchPage(page.id, { content: serialised })
-      await window.api.links.syncLinks(page.id, extractLinkTargets(document))
       setSaveStatus('saved')
     } catch (e) {
       // Surfacing this matters: silently swallowing it is what made the

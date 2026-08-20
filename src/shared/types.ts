@@ -68,6 +68,58 @@ export interface Property {
   value_relation: string | null
 }
 
+/**
+ * One checkbox block, as the tracker sees it.
+ *
+ * A projection of a block inside `pages.content` — never the only copy of
+ * anything, and never edited directly: ticking one writes back into the
+ * document it came from.
+ */
+export interface TrackerTask {
+  pageId: string
+  blockId: string
+  text: string
+  isDone: boolean
+  /** The date this counts against: the block's own `@date`, else its page's. */
+  dueDate: string | null
+  /** Which of the two supplied `dueDate`, or null when it has neither. */
+  dueDateSource: 'block' | 'page' | null
+  completedAt: string | null
+  pageTitle: string
+  pageIcon: string | null
+}
+
+/** A page placed on the calendar by a `date` property of its own. */
+export interface DatedPage {
+  pageId: string
+  pageTitle: string
+  pageIcon: string | null
+  typeName: string | null
+  /** Which date property put it here — a type can define more than one. */
+  propertyKey: string
+  date: string
+}
+
+/**
+ * A type that can be read as a habit: one carrying both a date property and a
+ * checkbox property. There is no Habit table and no habit type in the
+ * codebase — a habit is those two properties on a type the user made.
+ */
+export interface HabitCandidate {
+  typeId: string
+  typeName: string
+  dateKeys: string[]
+  booleanKeys: string[]
+}
+
+/** One day of a habit's year. */
+export interface HabitDay {
+  date: string
+  done: boolean
+  /** The page recording that day, so a cell in the grid can open it. */
+  pageId: string
+}
+
 export interface Link {
   id: string
   source_page_id: string
@@ -80,7 +132,12 @@ export interface BacklinkResult {
   sourcePageId: string
   sourcePageTitle: string
   sourcePageIcon: string | null
+  /** The text around a mention. Always null for a relation. */
   context: string | null
+  /** Which of the two ways one page can point at another produced this. */
+  source: 'mention' | 'relation'
+  /** The property a relation came from. Always null for a mention. */
+  propertyKey: string | null
 }
 
 export interface LinkTarget {
@@ -117,7 +174,35 @@ export interface PropertyDefinition {
   sort_order: number
 }
 
-export interface PageSummary extends Page {
+/**
+ * Just enough of a page to decide where its mirror file goes. The mirror
+ * recomputes every path on every sync, and pulling whole `Page` rows for that
+ * meant dragging every content blob out of SQLite to read three columns.
+ */
+export interface BackupInfo {
+  folder: string
+  count: number
+  /** Path of the newest snapshot, or null when none has been taken yet. */
+  latest: string | null
+}
+
+export interface PageLocation {
+  id: string
+  title: string
+  folder_id: string | null
+}
+
+/**
+ * A page without its document body.
+ *
+ * The body is by far the largest column, and almost nothing outside the editor
+ * reads it — the sidebar, the command palette, Tables and Home all want a
+ * title, a type and a folder. Shipping every page's whole document to the
+ * renderer on every mutation is what made small actions feel chunky.
+ */
+export type PageListItem = Omit<Page, 'content'>
+
+export interface PageSummary extends PageListItem {
   properties: Property[]
 }
 
@@ -187,6 +272,9 @@ export interface NexusAPI {
   pages: {
     create(typeId?: string): Promise<Page>
     getAll(): Promise<Page[]>
+    /** Every live page without its body — what the sidebar and palette read. */
+    list(): Promise<PageListItem[]>
+    listDeleted(): Promise<PageListItem[]>
     getAllSummary(typeId?: string): Promise<PageSummary[]>
     getById(id: string): Promise<Page | null>
     update(
@@ -254,8 +342,39 @@ export interface NexusAPI {
   }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
-    syncLinks(pageId: string, linkTargets: LinkTarget[]): Promise<void>
+    /**
+     * No `syncLinks` here on purpose: the link graph is projected in the main
+     * process from `repo.updatePage`, so there is no way for a renderer to
+     * write a version of it that disagrees with the document.
+     */
     searchPages(query: string, excludePageId?: string): Promise<Page[]>
+  }
+  habits: {
+    /** Types carrying both a date and a checkbox property. */
+    candidates(): Promise<HabitCandidate[]>
+    days(
+      typeId: string,
+      dateKey: string,
+      booleanKey: string,
+      from: string,
+      to: string
+    ): Promise<HabitDay[]>
+  }
+  tasks: {
+    /** Tasks dated inside [from, to], both bounds inclusive, as YYYY-MM-DD. */
+    inRange(from: string, to: string): Promise<TrackerTask[]>
+    /** Open tasks dated before `before`, which is exclusive. */
+    overdue(before: string): Promise<TrackerTask[]>
+    /** Open tasks with no date on the block or its page. */
+    undated(limit?: number): Promise<TrackerTask[]>
+    forPage(pageId: string): Promise<TrackerTask[]>
+    /** Pages placed in the window by a date property of their own. */
+    datedPages(from: string, to: string): Promise<DatedPage[]>
+    /**
+     * Tick a task off. Writes back into the block, and returns the page as
+     * stored so the caller can refresh the copy the editor remounts from.
+     */
+    setDone(pageId: string, blockId: string, done: boolean): Promise<Page>
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
@@ -265,6 +384,11 @@ export interface NexusAPI {
     getGraphPreview(): Promise<GraphPreview>
     getGraph(): Promise<GraphData>
     getDataDir(): Promise<string>
+    getBackups(): Promise<BackupInfo>
+  }
+  shell: {
+    /** Resolves to null on success, or a message describing why it did not open. */
+    openPath(target: string): Promise<string | null>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>
