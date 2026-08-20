@@ -1506,6 +1506,17 @@ check('the box clears, so a capture cannot be made twice',
 check('capturing does not navigate away from Home',
   await page.evaluate(() => !!document.querySelector('.nx-home')))
 
+// The box is for one thought after another. It stopped being that when the
+// input was disabled mid-capture: the browser blurs a disabled element, so the
+// next thing typed went to the document body and was silently lost.
+await page.click('.nx-home__capture-input')
+await page.keyboard.type('a second thought, typed straight after', { delay: 5 })
+check('the box still has focus after a capture, so the next line can just be typed',
+  (await page.evaluate(() => document.querySelector('.nx-home__capture-input').value)) ===
+    'a second thought, typed straight after',
+  JSON.stringify(await page.evaluate(() => document.querySelector('.nx-home__capture-input').value)))
+await page.fill('.nx-home__capture-input', '')
+
 // A task capture is an ordinary checkbox block in today's entry, which means
 // the projector already there does the work — including the @date token.
 await captureAs('Task')
@@ -2009,6 +2020,33 @@ await sleep(1000)
 // is the wiring — that a launch actually takes one, that the write-ahead log
 // is checkpointed into it first, and that the first launch of an empty vault
 // does not spend a rotation slot on nothing.
+// ---------------------------------------------------------------- shutdown
+// The editor debounces a save by 600ms. Closing the window inside that window
+// used to lose the edit outright: the flush fired, but `before-quit` had
+// already closed the database, so `pages:update` was rejected into a renderer
+// that was being torn down and nobody ever saw it. Main now holds the window
+// open until the renderer says it is done writing.
+log('\n— an edit typed inside the autosave debounce survives quitting —')
+await nav('Notes')
+const quitProbeId = await page.evaluate(async () => {
+  const store = window.nexus.store
+  const list = await window.api.pages.list()
+  const target = list.find((p) => p.title === 'Renamed kinetics') ?? list[0]
+  store.getState().openPage(target.id)
+  return target.id
+})
+await page.waitForSelector('.bn-editor', { timeout: 10_000 })
+await sleep(800)
+check('a page is open to type into', await page.evaluate(() => !!document.querySelector('.bn-editor')))
+await page.click('.bn-editor .bn-block-content')
+await page.keyboard.press('End')
+await page.keyboard.type(' EDIT-AT-QUIT', { delay: 3 })
+await page.click('.nx-editor__title')
+await page.keyboard.press('End')
+await page.keyboard.type(' TITLE-AT-QUIT', { delay: 3 })
+// Well inside both debounces (600ms for the body, 400ms for the title).
+await sleep(80)
+
 log('\n— launch snapshots —')
 const vaultDir = join(userDataDir, 'data')
 const backupDir = join(vaultDir, 'backups')
@@ -2030,6 +2068,12 @@ const relaunched = await electron.launch({
 })
 const relaunchedWindow = await relaunched.firstWindow()
 await relaunchedWindow.waitForSelector('.nx-app', { timeout: 20_000 })
+
+const quitProbe = await relaunchedWindow.evaluate((id) => window.api.pages.getById(id), quitProbeId)
+check('the body edit was written before the window closed',
+  !!quitProbe && quitProbe.content.includes('EDIT-AT-QUIT'))
+check('and so was the title edit',
+  !!quitProbe && quitProbe.title.includes('TITLE-AT-QUIT'), JSON.stringify(quitProbe?.title))
 
 const snapshots = existsSync(backupDir) ? readdirSync(backupDir) : []
 check('relaunching an existing vault takes one', snapshots.length === 1, JSON.stringify(snapshots))

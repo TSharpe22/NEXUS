@@ -111,9 +111,20 @@
   border-color: var(--nx-accent);
 }
 
+/* Both overlays sit on top of the graph, so they carry the panel fill behind
+   them — labels ran straight under the legend and the zoom buttons and left
+   neither readable. */
 .nx-graph__legend {
   position: absolute;
   left: var(--nx-space-3);
   bottom: var(--nx-space-2);
   pointer-events: none;
+  background: var(--nx-surface);
+  border-radius: var(--nx-radius-sm);
+  padding: 2px var(--nx-space-2);
+}
+
+.nx-graph__controls {
+  background: var(--nx-surface);
+  border-radius: var(--nx-radius-sm);
 }

@@ -7,6 +7,28 @@ import * as mirror from './mirror'
 import { getDataDir, getBackupInfo } from './database'
 import type { PropertyType, CaptureTarget } from '../shared/types'
 
+/**
+ * File dialogs, parented to a window when there is one.
+ *
+ * Any window will do; what matters is not bailing out when none is *focused*.
+ * Every caller reads a null result as "the user cancelled", so a momentarily
+ * unfocused window made Import, Export and the mirror folder picker silently
+ * do nothing at all.
+ */
+function dialogParent(): BrowserWindow | undefined {
+  return BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0]
+}
+
+function openDialog(options: Electron.OpenDialogOptions): Promise<Electron.OpenDialogReturnValue> {
+  const win = dialogParent()
+  return win ? dialog.showOpenDialog(win, options) : dialog.showOpenDialog(options)
+}
+
+function saveDialog(options: Electron.SaveDialogOptions): Promise<Electron.SaveDialogReturnValue> {
+  const win = dialogParent()
+  return win ? dialog.showSaveDialog(win, options) : dialog.showSaveDialog(options)
+}
+
 function rethrow(channel: string, error: unknown): never {
   console.error(channel, error)
   const message = error instanceof Error ? error.message : String(error)
@@ -135,38 +157,38 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('pages:update', (_, id: string, data: Record<string, unknown>) => {
     try {
-      return repo.updatePage(id, data)
+      const result = repo.updatePage(id, data)
+      mirror.scheduleSync(id)
+      return result
     } catch (e) {
       rethrow('pages:update', e)
-    } finally {
-      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:softDelete', (_, id: string) => {
     try {
-      return repo.softDeletePage(id)
+      const result = repo.softDeletePage(id)
+      mirror.scheduleSync(id)
+      return result
     } catch (e) {
       rethrow('pages:softDelete', e)
-    } finally {
-      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:restore', (_, id: string) => {
     try {
-      return repo.restorePage(id)
+      const result = repo.restorePage(id)
+      mirror.scheduleSync(id)
+      return result
     } catch (e) {
       rethrow('pages:restore', e)
-    } finally {
-      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:hardDelete', (_, id: string) => {
     try {
-      return repo.hardDeletePage(id)
+      const result = repo.hardDeletePage(id)
+      mirror.scheduleSync(id)
+      return result
     } catch (e) {
       rethrow('pages:hardDelete', e)
-    } finally {
-      mirror.scheduleSync(id)
     }
   })
   ipcMain.handle('pages:getDeleted', () => {
@@ -212,30 +234,30 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('pages:setType', (_, pageId: string, typeId: string) => {
     try {
-      return repo.setPageType(pageId, typeId)
+      const result = repo.setPageType(pageId, typeId)
+      mirror.scheduleSync(pageId)
+      return result
     } catch (e) {
       rethrow('pages:setType', e)
-    } finally {
-      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('pages:emptyTrash', () => {
     try {
-      return repo.emptyTrash()
+      const result = repo.emptyTrash()
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('pages:emptyTrash', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 
   ipcMain.handle('pages:move', (_, id: string, folderId: string | null) => {
     try {
-      return repo.movePageToFolder(id, folderId)
+      const result = repo.movePageToFolder(id, folderId)
+      mirror.scheduleSync(id)
+      return result
     } catch (e) {
       rethrow('pages:move', e)
-    } finally {
-      mirror.scheduleSync(id)
     }
   })
 
@@ -249,38 +271,38 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('folders:create', (_, name: string, parentFolderId: string | null) => {
     try {
-      return repo.createFolder(name, parentFolderId)
+      const result = repo.createFolder(name, parentFolderId)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('folders:create', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:rename', (_, id: string, name: string) => {
     try {
-      return repo.renameFolder(id, name)
+      const result = repo.renameFolder(id, name)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('folders:rename', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:move', (_, id: string, parentFolderId: string | null) => {
     try {
-      return repo.moveFolder(id, parentFolderId)
+      const result = repo.moveFolder(id, parentFolderId)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('folders:move', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('folders:remove', (_, id: string) => {
     try {
-      return repo.deleteFolder(id)
+      const result = repo.deleteFolder(id)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('folders:remove', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 
@@ -301,47 +323,47 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('tags:addToPage', (_, pageId: string, name: string) => {
     try {
-      return repo.addTagToPage(pageId, name)
+      const result = repo.addTagToPage(pageId, name)
+      mirror.scheduleSync(pageId)
+      return result
     } catch (e) {
       rethrow('tags:addToPage', e)
-    } finally {
-      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:removeFromPage', (_, pageId: string, tagId: string) => {
     try {
-      return repo.removeTagFromPage(pageId, tagId)
+      const result = repo.removeTagFromPage(pageId, tagId)
+      mirror.scheduleSync(pageId)
+      return result
     } catch (e) {
       rethrow('tags:removeFromPage', e)
-    } finally {
-      mirror.scheduleSync(pageId)
     }
   })
   ipcMain.handle('tags:rename', (_, id: string, name: string) => {
     try {
-      return repo.renameTag(id, name)
+      const result = repo.renameTag(id, name)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('tags:rename', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:remove', (_, id: string) => {
     try {
-      return repo.deleteTag(id)
+      const result = repo.deleteTag(id)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('tags:remove', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:setColor', (_, id: string, color: string) => {
     try {
-      return repo.setTagColor(id, color)
+      const result = repo.setTagColor(id, color)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('tags:setColor', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('tags:pageIdsFor', (_, tagIds: unknown) => {
@@ -364,11 +386,11 @@ export function registerIpcHandlers(): void {
     'properties:set',
     (_, pageId: string, key: string, type: PropertyType, value: string | number | null) => {
       try {
-        return repo.setProperty(pageId, key, type, value)
+        const result = repo.setProperty(pageId, key, type, value)
+        mirror.scheduleSync(pageId)
+        return result
       } catch (e) {
         rethrow('properties:set', e)
-      } finally {
-        mirror.scheduleSync(pageId)
       }
     }
   )
@@ -381,11 +403,11 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('properties:remove', (_, pageId: string, key: string) => {
     try {
-      return repo.removeProperty(pageId, key)
+      const result = repo.removeProperty(pageId, key)
+      mirror.scheduleSync(pageId)
+      return result
     } catch (e) {
       rethrow('properties:remove', e)
-    } finally {
-      mirror.scheduleSync(pageId)
     }
   })
 
@@ -398,11 +420,11 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('types:create', (_, name: string, icon?: string) => {
     try {
-      return repo.createType(name, icon ?? null)
+      const result = repo.createType(name, icon ?? null)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:create', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:getPropertyDefinitions', (_, typeId: string) => {
@@ -414,57 +436,57 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('types:defineProperty', (_, typeId: string, name: string, propertyType: PropertyType) => {
     try {
-      return repo.defineProperty(typeId, name, propertyType)
+      const result = repo.defineProperty(typeId, name, propertyType)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:defineProperty', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:rename', (_, id: string, name: string) => {
     try {
-      return repo.renameType(id, name)
+      const result = repo.renameType(id, name)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:rename', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:remove', (_, id: string) => {
     try {
-      return repo.deleteType(id)
+      const result = repo.deleteType(id)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:remove', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:renameProperty', (_, definitionId: string, name: string) => {
     try {
-      return repo.renamePropertyDefinition(definitionId, name)
+      const result = repo.renamePropertyDefinition(definitionId, name)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:renameProperty', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
   ipcMain.handle('types:reorderProperties', (_, typeId: string, orderedIds: string[]) => {
     try {
-      return repo.reorderPropertyDefinitions(typeId, orderedIds)
+      const result = repo.reorderPropertyDefinitions(typeId, orderedIds)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:reorderProperties', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 
   ipcMain.handle('types:removeProperty', (_, definitionId: string) => {
     try {
-      return repo.removePropertyDefinition(definitionId)
+      const result = repo.removePropertyDefinition(definitionId)
+      mirror.scheduleSync()
+      return result
     } catch (e) {
       rethrow('types:removeProperty', e)
-    } finally {
-      mirror.scheduleSync()
     }
   })
 
@@ -537,13 +559,13 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('tasks:setDone', (_, pageId: string, blockId: string, done: boolean) => {
     try {
-      return repo.setTaskDone(pageId, blockId, Boolean(done))
-    } catch (e) {
-      rethrow('tasks:setDone', e)
-    } finally {
+      const result = repo.setTaskDone(pageId, blockId, Boolean(done))
       // Ticking a task rewrites the page's body, so the mirror is stale until
       // it re-runs — the same reason every other page write schedules one.
       mirror.scheduleSync(pageId)
+      return result
+    } catch (e) {
+      rethrow('tasks:setDone', e)
     }
   })
   ipcMain.handle('activity:getRecent', (_, limit?: number) => {
@@ -642,21 +664,15 @@ export function registerIpcHandlers(): void {
   })
 
   ipcMain.handle('dialog:showSaveDialog', async (_, options) => {
-    const win = BrowserWindow.getFocusedWindow()
-    if (!win) return null
-    const result = await dialog.showSaveDialog(win, options)
+    const result = await saveDialog(options)
     return result.canceled ? null : result.filePath || null
   })
   ipcMain.handle('dialog:showOpenDialog', async (_, options) => {
-    const win = BrowserWindow.getFocusedWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, options)
+    const result = await openDialog(options)
     return result.canceled ? null : result.filePaths || null
   })
   ipcMain.handle('dialog:showSelectFolder', async () => {
-    const win = BrowserWindow.getFocusedWindow()
-    if (!win) return null
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory', 'createDirectory'] })
+    const result = await openDialog({ properties: ['openDirectory', 'createDirectory'] })
     return result.canceled ? null : result.filePaths?.[0] || null
   })
 

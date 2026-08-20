@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useAppStore, VIEW_META, VIEW_ORDER, View } from './store/app-store'
+import { flushPendingWrites } from './pending-writes'
 import { NavItem } from './design/NavItem'
 import { CommandPalette } from './design/CommandPalette'
 import { ConfirmHost } from './design/Confirm'
@@ -43,6 +44,10 @@ export function App() {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // The main process holds the window open while this runs, so a save still
+  // sitting in a debounce when you hit quit lands before the database closes.
+  useEffect(() => window.api.lifecycle.onFlushRequest(flushPendingWrites), [])
 
   return (
     <div className="nx-app">

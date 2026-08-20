@@ -1,5 +1,9 @@
 # QA scan — Nexus, 2026-08-20
 
+> **Status: every finding below is fixed** except §6's scope question, which
+> was resolved by implementing it. See "What was done" at the end for the
+> after-numbers and what is deliberately left open.
+
 Scan of the daily-driver build: `main` at `831308a` **plus** the unmerged
 `claude/nexus-home-page-jcf28c` (Home rebuilt as the day, pinning, quick
 capture, stale rule), merged locally to scan what is about to be on `main`.
@@ -19,8 +23,8 @@ Everything the repo already checks is green on the merged tree:
 Nothing below was caught by those 281 assertions — every finding is a gap in
 what is asserted, not a regression against it.
 
-Measured on a seeded vault (400 and 1500 pages, `scripts/qa-probe*.mjs`
-pattern, run under xvfb):
+Measured on a seeded vault (400 and 1500 pages, `scripts/probes/`, run under
+xvfb):
 
 | | 400 pages | 1500 pages |
 |---|---|---|
@@ -268,3 +272,71 @@ Worth recording so the next scan doesn't redo it:
 4. **§7 Activity** and the **§8 save indicator** — visible polish, an hour.
 5. **§5 export dedup**; then decide whether **§6 import** is in scope or gets
    written down as deferred.
+
+
+---
+
+# What was done
+
+All of it, on `claude/nexus-qa-scan-4h6ozm` (which also carries the merge of
+the Home branch, since §3 lives in code that is not on `main` yet). The suite
+is green at **372 assertions**, up from 281 — the two failures worth guarding
+are now assertions rather than notes.
+
+| § | Fix | Verified by |
+|---|---|---|
+| 1 | Window close is held open while the renderer flushes; the database closes on `will-quit`, not `before-quit` | new assertions in `check:app`; `probes/quit.mjs` |
+| 2 | `requestSingleInstanceLock()`, second launch focuses the existing window | `probes/quit.mjs` |
+| 3 | Capture input is no longer disabled mid-capture; focus restored after `busy` clears | new assertion in `check:app` |
+| 4 | Positions painted imperatively; grid repulsion; clamped impulses; hub-only labels; proportional fit padding | `probes/scale.mjs`, `probes/graph.mjs` |
+| 5 | Export filenames disambiguated; `parseDocument` instead of a bare `JSON.parse` | `probes/roundtrip.mjs` |
+| 6 | Markdown import parses headings, lists, checkboxes, quotes and fences, and emits block ids | `probes/roundtrip.mjs` |
+| 7 | Activity: pin/folder/tag labels, trashed titles, no more duplicated detail column | screenshot |
+| 8 | Save indicator returns to idle; dialogs no longer need a focused window; mirror syncs moved out of `finally`; `Notes` uses store selectors | typecheck + suite |
+
+## The numbers, before and after
+
+Home at a 1500-page vault, over six seconds from mounting it:
+
+| | before | after |
+|---|---|---|
+| frames rendered | 89 (~15fps) | 349 (~58fps) |
+| worst frame | 201ms | 43ms |
+| p95 frame | 97ms | 21ms |
+| typing in the capture box (30 frames) | 1742ms | 488ms |
+
+An edit typed inside the autosave debounce, then quit:
+
+| | before | after |
+|---|---|---|
+| window close (X) | lost | survives |
+| `app.quit()` (Ctrl+Q / menu) | lost | survives |
+
+## Two things worth knowing about §4
+
+**The layout was unstable, and nobody could see it.** `REPULSION / distSq` has
+a singularity: a close pair got an impulse in the thousands, and at
+`DAMPING` 0.86 a node carries a kick about seven times as far as the kick. The
+layout sprawled to ~98,000px wide. It had never shown up because the
+simulation was too slow at those sizes to reach `MAX_TICKS` — it was always
+being looked at mid-expansion. Making it fast is what exposed it. Clamping the
+denominator and capping per-tick speed fixed it; the graph now settles inside
+its panel at both 400 and 1500 pages.
+
+**Home's graph panel is honest now, and small.** 400+ nodes framed inside a
+441×210 panel is a dense disc of dots — correct, fitted, 60fps, hubs labelled
+and everything else named on hover. Whether that panel should instead show a
+*subset* (the connected core, say, with "open the full graph" beside it) is a
+design call about what Home is for, not a defect, so I have left it. It is the
+one thing in this scan I would still change.
+
+## Left open deliberately
+
+- **Restoring the last view and open page on relaunch.** Flagged in §8, not
+  done: the Home branch's own reasoning is that "Nexus opens here" is the
+  point of the screen, and quietly reopening somewhere else would undo that.
+  Restoring only the open *page* within Notes would not conflict — worth a
+  decision rather than a guess.
+- **Keyboard coverage** beyond ⌘K/⌘N (§8). Still two shortcuts.
+- **List virtualization** (§8). 1500 rows mount in ~1.5s and scroll fine; a
+  watch-item, not a bug.

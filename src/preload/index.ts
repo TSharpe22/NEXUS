@@ -6,6 +6,18 @@ const api: NexusAPI = {
     today: () => ipcRenderer.invoke('journal:today'),
     peek: () => ipcRenderer.invoke('journal:peek'),
   },
+  lifecycle: {
+    // Main holds the window open until `app:flushed` comes back, so the ack
+    // has to wait for the handler's own writes — hence awaiting it rather
+    // than replying the moment it is called.
+    onFlushRequest: (handler) => {
+      const listener = (): void => {
+        void Promise.resolve(handler()).finally(() => ipcRenderer.send('app:flushed'))
+      }
+      ipcRenderer.on('app:flush', listener)
+      return () => ipcRenderer.removeListener('app:flush', listener)
+    }
+  },
   mirror: {
     getConfig: () => ipcRenderer.invoke('mirror:getConfig'),
     setFolder: (folder) => ipcRenderer.invoke('mirror:setFolder', folder),

@@ -1,4 +1,6 @@
+import { v4 as uuidv4 } from 'uuid'
 import * as repo from './repo'
+import { parseDocument } from '../shared/document'
 import type { Page } from '../shared/types'
 
 interface BlockNoteBlock {
@@ -70,7 +72,10 @@ export function exportPageMarkdown(pageId: string): string {
   const page = repo.getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
 
-  const blocks: BlockNoteBlock[] = JSON.parse(page.content || '[]')
+  // `parseDocument` rather than a bare JSON.parse: one unparseable body used
+  // to throw and take the whole vault's export down with it. Every other
+  // reader of a document already tolerates this.
+  const blocks = parseDocument(page.content) as BlockNoteBlock[]
   const body = blocks.flatMap((b) => blockToMarkdownLines(b)).join('\n\n')
   return `# ${page.title || 'Untitled'}\n\n${body}\n`
 }
@@ -86,23 +91,123 @@ export function exportPageJSON(pageId: string): string {
 }
 
 export function exportAllMarkdown(): { filename: string; content: string }[] {
-  return repo.getAllPages().map((page) => ({
-    filename: `${(page.title || 'untitled').replace(/[/\\?%*:|"<>]/g, '-')}.md`,
-    content: exportPageMarkdown(page.id)
-  }))
+  // Two pages sharing a title used to produce one filename, and the writer
+  // overwrites — so exporting a vault with two "Untitled" pages silently wrote
+  // one file and reported both. Disambiguated the way the mirror does it, by
+  // whichever page is seen first.
+  const used = new Set<string>()
+
+  return repo.getAllPages().map((page) => {
+    const base = (page.title || 'untitled').replace(/[/\\?%*:|"<>]/g, '-').trim() || 'untitled'
+    let filename = `${base}.md`
+    for (let n = 2; used.has(filename.toLowerCase()); n++) {
+      filename = `${base} (${n}).md`
+    }
+    used.add(filename.toLowerCase())
+    return { filename, content: exportPageMarkdown(page.id) }
+  })
 }
 
-/** Naive markdown import: title = first H1, everything else becomes paragraphs. */
+/**
+ * One block, in the shape the projections read.
+ *
+ * The `id` is not decoration. `extractTasks` skips any block without one, so
+ * an imported checkbox with no id is a task that never reaches the tracker or
+ * Home — invisible until the page is opened and re-saved through the editor,
+ * which is exactly the sort of silence this codebase keeps paying for.
+ */
+function importedBlock(
+  type: string,
+  text: string,
+  props: Record<string, unknown> = {}
+): BlockNoteBlock {
+  return {
+    id: uuidv4(),
+    type,
+    props,
+    content: text ? [{ type: 'text', text, styles: {} }] : [],
+    children: []
+  }
+}
+
+/**
+ * Markdown import. Title is the first H1 (or the filename), and the body is
+ * parsed into the block types the editor actually has.
+ *
+ * This used to map every line to a paragraph, which meant a heading arrived as
+ * the literal text `## Heading` and a checkbox as `- [ ] thing` — so a Nexus
+ * export did not survive being imported back, and neither did anything written
+ * in another editor. It is still deliberately a *subset*: what round-trips is
+ * what `blockToMarkdownLines` writes. Callouts, toggles and tables have no
+ * markdown spelling here and come back as prose, the same lossiness the mirror
+ * documents on the way out.
+ */
 export function importMarkdown(content: string, filename: string): Page {
   const lines = content.split('\n')
   const titleLine = lines.find((l) => l.startsWith('# '))
   const title = titleLine ? titleLine.slice(2).trim() : filename.replace(/\.md$/, '')
-  const bodyLines = lines.filter((l) => l !== titleLine && l.trim().length > 0)
 
-  const blocks = bodyLines.map((line) => ({
-    type: 'paragraph',
-    content: [{ type: 'text', text: line, styles: {} }]
-  }))
+  const blocks: BlockNoteBlock[] = []
+  let fence: string[] | null = null
+
+  for (const raw of lines) {
+    if (raw === titleLine) continue
+    const line = raw.replace(/\s+$/, '')
+
+    // A fenced code block runs until its closing fence; blank lines and
+    // anything that looks like markup inside it are content, not markup.
+    if (line.trim().startsWith('```')) {
+      if (fence === null) fence = []
+      else {
+        blocks.push(importedBlock('codeBlock', fence.join('\n')))
+        fence = null
+      }
+      continue
+    }
+    if (fence !== null) {
+      fence.push(raw)
+      continue
+    }
+
+    if (!line.trim()) continue
+
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (heading) {
+      // BlockNote's heading spec tops out at 3; deeper markdown headings land
+      // there rather than being dropped.
+      blocks.push(importedBlock('heading', heading[2].trim(), { level: Math.min(heading[1].length, 3) }))
+      continue
+    }
+
+    const checkbox = /^\s*[-*]\s+\[([ xX])\]\s+(.*)$/.exec(line)
+    if (checkbox) {
+      blocks.push(importedBlock('checkListItem', checkbox[2].trim(), { checked: checkbox[1] !== ' ' }))
+      continue
+    }
+
+    const bullet = /^\s*[-*]\s+(.*)$/.exec(line)
+    if (bullet) {
+      blocks.push(importedBlock('bulletListItem', bullet[1].trim()))
+      continue
+    }
+
+    const numbered = /^\s*\d+[.)]\s+(.*)$/.exec(line)
+    if (numbered) {
+      blocks.push(importedBlock('numberedListItem', numbered[1].trim()))
+      continue
+    }
+
+    const quote = /^>\s?(.*)$/.exec(line)
+    if (quote) {
+      blocks.push(importedBlock('quote', quote[1].trim()))
+      continue
+    }
+
+    blocks.push(importedBlock('paragraph', line.trim()))
+  }
+
+  // An unterminated fence is still text somebody wrote; keep it.
+  if (fence !== null && fence.length) blocks.push(importedBlock('codeBlock', fence.join('\n')))
 
   const page = repo.createPage()
   repo.updatePage(page.id, { title, content: JSON.stringify(blocks) })

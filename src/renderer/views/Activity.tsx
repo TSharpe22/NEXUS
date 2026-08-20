@@ -6,7 +6,13 @@ import { Table, TableHead, TableBody, TableRow, Th, Td } from '../design/Table'
 import { useAppStore } from '../store/app-store'
 import { relativeTime } from '../hooks/use-relative-time'
 
-/** Event types get a plain-English label rather than showing the raw enum. */
+/**
+ * Event types get a plain-English label rather than showing the raw enum.
+ *
+ * Every `event_type` `repo.logActivity` is called with needs an entry — a
+ * missing one shows the raw lowercase enum next to properly-cased neighbours,
+ * which is how `pinned`, `folder` and `tag` read until now.
+ */
 const EVENT_LABEL: Record<string, string> = {
   created: 'Created',
   edited: 'Edited',
@@ -14,12 +20,17 @@ const EVENT_LABEL: Record<string, string> = {
   retyped: 'Type changed',
   deleted: 'Trashed',
   restored: 'Restored',
-  property: 'Property set'
+  property: 'Property set',
+  pinned: 'Pinned',
+  unpinned: 'Unpinned',
+  folder: 'Folder',
+  tag: 'Tagged'
 }
 
 export function Activity() {
   const openPage = useAppStore((s) => s.openPage)
   const pages = useAppStore((s) => s.pages)
+  const trashed = useAppStore((s) => s.trashed)
   const [activity, setActivity] = useState<ActivityLogEntry[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -32,8 +43,14 @@ export function Activity() {
 
   if (loading) return <div className="nx-type-data">Loading…</div>
 
-  const titleFor = (pageId: string | null) =>
-    pageId ? (pages.find((p) => p.id === pageId)?.title || 'Untitled') : '—'
+  // Trash included: a page's history does not stop being about that page when
+  // it is trashed, and looking only at live pages renamed every one of its
+  // past rows to "Untitled" the moment it was.
+  const titleFor = (pageId: string | null) => {
+    if (!pageId) return '—'
+    const page = pages.find((p) => p.id === pageId) ?? trashed.find((p) => p.id === pageId)
+    return page?.title || 'Untitled'
+  }
 
   return (
     <Panel dense>
@@ -51,8 +68,14 @@ export function Activity() {
           </TableHead>
           <TableBody>
             {activity.map((a) => {
-              // Rows for pages that were deleted for good have nothing to open.
+              // Folder events carry no page, and a trashed page is not somewhere
+              // to navigate to. (A page deleted for good leaves no rows at all —
+              // `activity_log.page_id` is ON DELETE CASCADE.)
               const exists = !!a.page_id && pages.some((p) => p.id === a.page_id)
+              const label = EVENT_LABEL[a.event_type] ?? a.event_type
+              // Most events pass their own name as the message, so the detail
+              // column spent every row repeating the one beside it.
+              const detail = a.message.toLowerCase() === label.toLowerCase() ? '' : a.message
               return (
                 <TableRow
                   key={a.id}
@@ -61,8 +84,8 @@ export function Activity() {
                 >
                   <Td className="nx-type-data">{relativeTime(a.created_at)}</Td>
                   <Td>{titleFor(a.page_id)}</Td>
-                  <Td className="nx-type-data">{EVENT_LABEL[a.event_type] ?? a.event_type}</Td>
-                  <Td className="nx-type-data">{a.message}</Td>
+                  <Td className="nx-type-data">{label}</Td>
+                  <Td className="nx-type-data">{detail}</Td>
                 </TableRow>
               )
             })}

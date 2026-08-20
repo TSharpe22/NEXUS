@@ -265,6 +265,17 @@ export interface NexusAPI {
    * One-way export of the vault to a Markdown tree on disk, so any assistant,
    * editor or backup tool can read it as ordinary files.
    */
+  lifecycle: {
+    /**
+     * Run `handler` when the main process is about to close this window, and
+     * hold the window open until whatever it returns has settled.
+     *
+     * This is what keeps an edit typed inside the 600ms autosave debounce from
+     * dying on quit: the pending write is issued and *waited for* while the
+     * database is still open. Returns an unsubscribe function.
+     */
+    onFlushRequest(handler: () => void | Promise<unknown>): () => void
+  }
   journal: {
     /** Today's journal entry, created from the Journal template if absent. */
     today(): Promise<Page>

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Page, Property, PropertyDefinition, PropertyType } from '@shared/types'
 import { useAppStore } from '../store/app-store'
+import { registerPendingWrite } from '../pending-writes'
 import { usePageTitles } from '../hooks/use-page-titles'
 import { Button } from '../design/Button'
 import { confirmDialog } from '../design/Confirm'
@@ -273,7 +274,7 @@ function PropertyRow({
   def: PropertyDefinition
   pageId: string
   value: Property | undefined
-  onSave: (value: string | number | null) => void
+  onSave: (value: string | number | null) => void | Promise<unknown>
   onRename: (name: string) => void
   onReorder: (draggedDefinitionId: string) => void
   onClear: () => void
@@ -426,7 +427,7 @@ function ScalarField({
 }: {
   def: PropertyDefinition
   current: string | number | null
-  onSave: (value: string | number | null) => void
+  onSave: (value: string | number | null) => void | Promise<unknown>
 }) {
   const stored = current === null || current === undefined ? '' : String(current)
   const [draft, setDraft] = useState(stored)
@@ -441,16 +442,23 @@ function ScalarField({
     lastCommitted.current = stored
   }, [stored])
 
-  const commit = (next = draft) => {
+  const commit = (next = draft): void | Promise<unknown> => {
     if (next === lastCommitted.current) return
     lastCommitted.current = next
     if (def.property_type === 'number') {
       const parsed = Number(next)
-      onSave(next.trim() === '' || Number.isNaN(parsed) ? null : parsed)
-      return
+      return onSave(next.trim() === '' || Number.isNaN(parsed) ? null : parsed)
     }
-    onSave(next || null)
+    return onSave(next || null)
   }
+
+  // A value commits on blur, and quitting with the field still focused never
+  // blurs it — so without this, a property typed and then quit straight out of
+  // is gone. `draftRef` because the registration outlives any one render and
+  // would otherwise close over the draft as it was when it was registered.
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  useEffect(() => registerPendingWrite(() => commit(draftRef.current)), [])
 
   const inputType =
     def.property_type === 'number' ? 'number' : def.property_type === 'date' ? 'date' : def.property_type === 'url' ? 'url' : 'text'

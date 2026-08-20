@@ -480,16 +480,26 @@ function CaptureBar({ onCapture, onCaptured, openPage }: {
       setText('')
       onCaptured()
       if (andOpen) openPage(page.id)
-      else {
-        toast.success(target === 'page' ? 'Captured as a new page' : "Added to today's entry")
-        inputRef.current?.focus()
-      }
+      else toast.success(target === 'page' ? 'Captured as a new page' : "Added to today's entry")
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e))
     } finally {
       setBusy(false)
     }
   }
+
+  // The box is meant to take one thought after another. It stopped doing that
+  // because the input was disabled while a capture was in flight: the browser
+  // blurs a disabled element, focusing one back does nothing, and re-enabling
+  // it does not restore focus — so the next thing typed went to the document
+  // body and vanished. The input stays enabled now (`submit` already ignores a
+  // re-entrant call) and focus is restored after the render that clears `busy`,
+  // not during it.
+  const wasBusy = useRef(false)
+  useEffect(() => {
+    if (wasBusy.current && !busy) inputRef.current?.focus()
+    wasBusy.current = busy
+  }, [busy])
 
   return (
     <Panel className="nx-home__capture">
@@ -500,7 +510,6 @@ function CaptureBar({ onCapture, onCaptured, openPage }: {
           className="nx-input nx-home__capture-input"
           placeholder="Capture a thought…"
           value={text}
-          disabled={busy}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return

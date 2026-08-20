@@ -7,6 +7,7 @@ import { nexusSchema } from './schema'
 import { getSlashMenuItems } from './slash-items'
 import { useAppStore } from '../store/app-store'
 import { useDebounce } from '../hooks/use-debounce'
+import { registerPendingWrite } from '../pending-writes'
 import { getLinkMenuItems, LinkMenu } from './link-menu'
 import { TagBar } from './TagBar'
 import './Editor.css'
@@ -92,16 +93,19 @@ export function Editor({ page, children }: EditorProps) {
 
   useLayoutEffect(autoGrowTitle, [autoGrowTitle, title])
 
-  // Quitting or reloading mid-debounce would otherwise drop the last edit.
-  // Unmount is already covered by useDebounce's own cleanup.
-  useEffect(() => {
-    const flush = () => {
-      saveContent.flush()
-      saveTitle.flush()
-    }
-    window.addEventListener('beforeunload', flush)
-    return () => window.removeEventListener('beforeunload', flush)
-  }, [saveContent, saveTitle])
+  /**
+   * Quitting mid-debounce would otherwise drop the last edit.
+   *
+   * Registered rather than hung off `beforeunload`, because by the time that
+   * fires the window is already going: the flush was issued, but nothing on
+   * the main side was still waiting for it, and the database had been closed
+   * out from under it. Main now holds the window open until this resolves.
+   * Unmount is already covered by useDebounce's own cleanup.
+   */
+  useEffect(
+    () => registerPendingWrite(() => Promise.all([saveContent.flush(), saveTitle.flush()])),
+    [saveContent, saveTitle]
+  )
 
   /**
    * Enter inside an open toggle puts the new block INSIDE it.

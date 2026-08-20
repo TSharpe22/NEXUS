@@ -16,26 +16,29 @@ import { TagFilter } from './TagFilter'
 import './Notes.css'
 
 export function Notes() {
-  const {
-    pages,
-    trashed,
-    types,
-    loaded,
-    activePageId,
-    setActivePageId,
-    pageContent,
-    createPage,
-    duplicatePage,
-    setPagePinned,
-    trashPage,
-    restorePage,
-    deletePageForever,
-    emptyTrash,
-    folders,
-    activeTagFilter,
-    createFolder,
-    openTodayEntry
-  } = useAppStore()
+  // Selected field by field rather than `useAppStore()` whole. Destructuring
+  // the store subscribes this view to *every* change in it — including
+  // `saveStatus` flicking to "saving" and back on each autosave, which
+  // re-rendered the entire folder tree twice per keystroke-burst under an
+  // editor that is right there on the same screen.
+  const pages = useAppStore((s) => s.pages)
+  const trashed = useAppStore((s) => s.trashed)
+  const types = useAppStore((s) => s.types)
+  const folders = useAppStore((s) => s.folders)
+  const loaded = useAppStore((s) => s.loaded)
+  const activePageId = useAppStore((s) => s.activePageId)
+  const pageContent = useAppStore((s) => s.pageContent)
+  const activeTagFilter = useAppStore((s) => s.activeTagFilter)
+  const setActivePageId = useAppStore((s) => s.setActivePageId)
+  const createPage = useAppStore((s) => s.createPage)
+  const duplicatePage = useAppStore((s) => s.duplicatePage)
+  const setPagePinned = useAppStore((s) => s.setPagePinned)
+  const trashPage = useAppStore((s) => s.trashPage)
+  const restorePage = useAppStore((s) => s.restorePage)
+  const deletePageForever = useAppStore((s) => s.deletePageForever)
+  const emptyTrash = useAppStore((s) => s.emptyTrash)
+  const createFolder = useAppStore((s) => s.createFolder)
+  const openTodayEntry = useAppStore((s) => s.openTodayEntry)
 
   const [showTrash, setShowTrash] = useState(false)
   const [query, setQuery] = useState('')

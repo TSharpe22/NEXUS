@@ -137,6 +137,10 @@ interface AppState {
   clearTagFilter: () => void
 }
 
+/** How long "saved" stays on screen before the indicator goes quiet again. */
+const SAVED_VISIBLE_MS = 1600
+let saveStatusTimer: ReturnType<typeof setTimeout> | undefined
+
 /**
  * Expanded folders survive a restart — collapsing a tree and finding it sprung
  * open again is exactly the friction folders exist to remove.
@@ -196,7 +200,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setTableTypeId: (id) => set({ tableTypeId: id }),
   setTrackerMode: (mode) => set({ trackerMode: mode }),
-  setSaveStatus: (status) => set({ saveStatus: status }),
+  setSaveStatus: (status) => {
+    // "saved" is a confirmation, not a state to sit in. Left latched, the
+    // topbar read "saved" forever after the first save — on every view, hours
+    // later — which makes it say nothing at all about the save you just made.
+    // An error stays until the next save resolves it: that one is not news
+    // that expires.
+    clearTimeout(saveStatusTimer)
+    set({ saveStatus: status })
+    if (status === 'saved') {
+      saveStatusTimer = setTimeout(
+        () => useAppStore.getState().saveStatus === 'saved' && useAppStore.setState({ saveStatus: 'idle' }),
+        SAVED_VISIBLE_MS
+      )
+    }
+  },
 
   refresh: async () => {
     const [pages, trashed, types, folders, tags] = await Promise.all([
