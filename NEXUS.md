@@ -226,6 +226,37 @@ The document walkers those projections share live in `src/shared/document.ts`,
 reachable from both processes, because a second copy of that parsing in the
 renderer is how the two would drift.
 
+### Backups
+
+`src/main/backup.ts` copies the database aside on every launch, keeping the
+last `KEEP_BACKUPS` (10) under `data/backups/`. It imports no `electron`, so
+the rotation is exercised directly: `npm run check:backup`.
+
+This exists because **the mirror is not a backup.** It is one-way and lossy on
+the way out — a callout or a toggle comes back as a plain paragraph and a
+table as nothing at all — so the database file is the only complete copy of a
+vault. Before this, the only copies ever taken were the ones a destructive
+migration made for itself.
+
+Three things about it are load-bearing and easy to undo by accident:
+
+- **The write-ahead log is checkpointed first.** Under WAL the recent writes
+  are still sitting in `nexus.db-wal`, so copying the main file on its own
+  snapshots a vault that is missing the last session.
+- **A snapshot carries the mtime of the vault it captured**, not the time the
+  copy was made. The skip check asks "has the vault moved on since this
+  snapshot?"; left at the copy time it would instead be asking "was the vault
+  written after the copy finished?", which is true for a vault nobody has
+  touched, so opening Nexus five times in a morning would push five identical
+  copies through the rotation and drop five real ones.
+- **Every snapshot name carries a counter, including the first.** Age is read
+  off name order, and adding the counter only on a collision sorts `-002`
+  *before* the bare name, because `-` sorts under `.`.
+
+Migration backups are a different thing and stay where they are, next to the
+database as `nexus.db.backup-<timestamp>`. They are rare, they mark a
+one-way change, and nothing rotates them away.
+
 ### The vault mirror
 
 `src/main/mirror.ts` writes the whole vault out as a Markdown tree, one file

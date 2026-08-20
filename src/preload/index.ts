@@ -87,11 +87,15 @@ const api: NexusAPI = {
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
   },
+  shell: {
+    openPath: (target) => ipcRenderer.invoke('shell:openPath', target)
+  },
   stats: {
     getStorage: () => ipcRenderer.invoke('stats:getStorage'),
     getGraphPreview: () => ipcRenderer.invoke('stats:getGraphPreview'),
     getGraph: () => ipcRenderer.invoke('stats:getGraph'),
-    getDataDir: () => ipcRenderer.invoke('stats:getDataDir')
+    getDataDir: () => ipcRenderer.invoke('stats:getDataDir'),
+    getBackups: () => ipcRenderer.invoke('stats:getBackups')
   },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),

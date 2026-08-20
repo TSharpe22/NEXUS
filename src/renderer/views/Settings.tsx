@@ -4,7 +4,7 @@ import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
 import { relativeTime } from '../hooks/use-relative-time'
-import type { MirrorConfig } from '@shared/types'
+import type { MirrorConfig, BackupInfo } from '@shared/types'
 import './Settings.css'
 
 const SHORTCUTS: [string, string][] = [
@@ -19,11 +19,13 @@ export function Settings() {
   const refresh = useAppStore((s) => s.refresh)
   const pages = useAppStore((s) => s.pages)
   const [dataDir, setDataDir] = useState('')
+  const [backups, setBackups] = useState<BackupInfo | null>(null)
   const [mirror, setMirror] = useState<MirrorConfig | null>(null)
   const [syncing, setSyncing] = useState(false)
 
   useEffect(() => {
     window.api.stats.getDataDir().then(setDataDir)
+    window.api.stats.getBackups().then(setBackups)
     window.api.mirror.getConfig().then(setMirror)
   }, [])
 
@@ -64,6 +66,11 @@ export function Settings() {
     } finally {
       setSyncing(false)
     }
+  }
+
+  const reveal = async (target: string) => {
+    const problem = await window.api.shell.openPath(target)
+    if (problem) toast.error('Could not open that folder')
   }
 
   const exportAll = async () => {
@@ -115,6 +122,29 @@ export function Settings() {
             <div className="nx-type-body">Database location</div>
             <div className="nx-type-data nx-settings__path">{dataDir || '—'}</div>
           </div>
+          <Button variant="ghost" onClick={() => reveal(dataDir)} disabled={!dataDir}>
+            Open
+          </Button>
+        </div>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Snapshots</div>
+            <div className="nx-type-data">
+              {backups && backups.count > 0
+                ? `${backups.count} kept — a copy of the database is taken each time Nexus starts, if anything changed since the last one.`
+                : 'A copy of the database is taken each time Nexus starts, if anything changed since the last one.'}
+            </div>
+            {backups?.latest && (
+              <div className="nx-type-data nx-settings__path">Newest: {backups.latest}</div>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => backups && reveal(backups.folder)}
+            disabled={!backups || backups.count === 0}
+          >
+            Open
+          </Button>
         </div>
         <div className="nx-settings__row">
           <div>

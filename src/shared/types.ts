@@ -179,6 +179,13 @@ export interface PropertyDefinition {
  * recomputes every path on every sync, and pulling whole `Page` rows for that
  * meant dragging every content blob out of SQLite to read three columns.
  */
+export interface BackupInfo {
+  folder: string
+  count: number
+  /** Path of the newest snapshot, or null when none has been taken yet. */
+  latest: string | null
+}
+
 export interface PageLocation {
   id: string
   title: string
@@ -364,6 +371,11 @@ export interface NexusAPI {
     getGraphPreview(): Promise<GraphPreview>
     getGraph(): Promise<GraphData>
     getDataDir(): Promise<string>
+    getBackups(): Promise<BackupInfo>
+  }
+  shell: {
+    /** Resolves to null on success, or a message describing why it did not open. */
+    openPath(target: string): Promise<string | null>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>

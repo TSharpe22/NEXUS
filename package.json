@@ -11,7 +11,8 @@
     "check:migration": "ELECTRON_RUN_AS_NODE=1 electron scripts/check-migration.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "check:app": "electron-vite build && xvfb-run -a node scripts/check-app.mjs",
-    "check": "npm run typecheck && npm run check:migration && npm run check:app"
+    "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:app",
+    "check:backup": "node scripts/check-backup.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.24.2",
@@ -39,6 +40,7 @@
     "@types/uuid": "^10.0.0",
     "@vitejs/plugin-react": "^4.3.0",
     "electron": "^33.0.0",
+    "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
     "playwright-core": "^1.49.0",
     "typescript": "^5.6.0"

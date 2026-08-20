@@ -1,10 +1,10 @@
-import { ipcMain, dialog, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
-import { getDataDir } from './database'
+import { getDataDir, getBackupInfo } from './database'
 import type { PropertyType } from '../shared/types'
 
 function rethrow(channel: string, error: unknown): never {
@@ -534,6 +534,24 @@ export function registerIpcHandlers(): void {
       return getDataDir()
     } catch (e) {
       rethrow('stats:getDataDir', e)
+    }
+  })
+
+  ipcMain.handle('stats:getBackups', () => {
+    try {
+      return getBackupInfo()
+    } catch (e) {
+      rethrow('stats:getBackups', e)
+    }
+  })
+  ipcMain.handle('shell:openPath', async (_, target: string) => {
+    try {
+      // Returns a message on failure rather than throwing, which is how a
+      // missing folder or no file manager comes back.
+      const problem = await shell.openPath(target)
+      return problem || null
+    } catch (e) {
+      rethrow('shell:openPath', e)
     }
   })
 

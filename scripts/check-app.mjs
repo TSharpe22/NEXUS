@@ -1727,7 +1727,51 @@ check('the property is gone from the type', (await scratchDef()) === undefined)
 
 check('no uncaught renderer errors', errors.length === 0, errors.slice(0, 5).join(' | '))
 
+// ---------------------------------------------------------------- snapshots
+// `check:backup` covers the rotation policy in isolation; what it cannot see
+// is the wiring — that a launch actually takes one, that the write-ahead log
+// is checkpointed into it first, and that the first launch of an empty vault
+// does not spend a rotation slot on nothing.
+log('\n— launch snapshots —')
+const vaultDir = join(userDataDir, 'data')
+const backupDir = join(vaultDir, 'backups')
+
+check('the first launch snapshotted nothing',
+  !existsSync(backupDir) || readdirSync(backupDir).length === 0,
+  existsSync(backupDir) ? JSON.stringify(readdirSync(backupDir)) : 'no directory')
+
 await app.close()
+
+// Same userData directory: this is a second launch against the vault the run
+// above filled, which is exactly the case a snapshot is for.
+const relaunched = await electron.launch({
+  executablePath: join(APP, 'node_modules/electron/dist/electron'),
+  args: ['--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`, APP],
+  cwd: APP,
+  env: { ...process.env, NODE_ENV: 'production' },
+  timeout: 45_000
+})
+const relaunchedWindow = await relaunched.firstWindow()
+await relaunchedWindow.waitForSelector('.nx-app', { timeout: 20_000 })
+
+const snapshots = existsSync(backupDir) ? readdirSync(backupDir) : []
+check('relaunching an existing vault takes one', snapshots.length === 1, JSON.stringify(snapshots))
+
+if (snapshots.length === 1) {
+  const snapshot = readFileSync(join(backupDir, snapshots[0]))
+  // Read as bytes rather than through a driver: better-sqlite3 in
+  // node_modules is built for Electron's ABI, and this script is plain node.
+  // SQLite stores short text inline, so a page title written in the first
+  // session is in the file if the snapshot is a real copy of the vault.
+  check('the snapshot holds pages written before it was taken',
+    snapshot.includes('Renamed kinetics'), `${snapshot.length} bytes`)
+  // Everything the first session typed sat in nexus.db-wal until the
+  // checkpoint; without it the copy is a vault missing its last session.
+  check('the snapshot is bigger than an empty database', snapshot.length > 65536,
+    `${snapshot.length} bytes`)
+}
+
+await relaunched.close()
 rmSync(userDataDir, { recursive: true, force: true })
 log(fails === 0 ? '\nall checks passed' : `\n${fails} check(s) failed`)
 process.exit(fails === 0 ? 0 : 1)
