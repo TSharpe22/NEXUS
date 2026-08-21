@@ -1,463 +1,576 @@
 # ARCHITECTURE OPTIONS — the structural model
 
-> Options, not a recommendation. `STRUCTURE.md` argued one direction; this
-> file lays out the space that direction was picked from, so the choice can be
-> made deliberately. Nothing here is scheduled and nothing here is built.
+> Options, not a recommendation. `STRUCTURE.md` argued one direction; this file
+> lays out the space it was picked from. Nothing here is scheduled or built.
+>
+> Revised after working through what "property schema" actually decomposes
+> into. The earlier draft treated relations as their own architectural axis;
+> that was wrong in a way that mattered, and §3 says why.
 
 ---
 
-## What S1 was
+# Part 1 — Definitions
 
-S1 was the first stage of the plan in `STRUCTURE.md`, and it meant exactly
-this:
+Most of the confusion in this area comes from four separate questions being
+asked with one word. Separating them makes every later option obvious.
 
-**Replace `property_definitions(type_id, key, name, property_type)` with two
-tables** — a vault-wide `property_defs` keyed by `key` alone, and a
-`type_properties` join saying which properties each type offers and in what
-order.
+## 1.1 What "property schema" means
+
+A property schema is the set of rules governing the fields a page can carry. It
+is **four independent questions**, and a design is a set of four answers:
+
+| | Question | Example of it going wrong |
+|---|---|---|
+| **Identity** | What makes two properties *the same property*? | Renaming `status` on Book leaves Directive's `status` untouched |
+| **Format** | What kind of value does it hold? | `due` is a date on one page and a string on another |
+| **Membership** | Which pages are expected to carry it? | Every page shows every property that exists anywhere |
+| **Constraint** | Which values are legal? | A relation points at a page that was deleted last week |
+
+**The diagnosis of the current code, in one line: Nexus answers Identity and
+Membership with the same table, and that fusion is the source of nearly every
+limit you have hit.**
+
+`property_definitions(type_id, key, name, property_type)` with
+`UNIQUE(type_id, key)` (`schema.ts:72`) says *simultaneously* "this is which
+property it is" and "this is who carries it." You cannot change one without
+changing the other. That is why:
+
+- The same property on two types is two properties (Identity is trapped inside
+  Membership).
+- A page cannot carry anything off-schema (Membership is enforced, because it
+  is the only thing establishing Identity).
+- Tags needed their own tables (see §1.4).
+
+Meanwhile `properties` — the *values* — is `UNIQUE(page_id, key)`
+(`schema.ts:130`), keyed by name alone with no type in sight. So the value
+store already answers Identity globally and Membership not at all. **Half the
+system already works the way you are describing.**
+
+### Options for Identity
+
+- **I1 — per-type key** *(status quo)*. `(type_id, key)`. Two types, two
+  properties, no reuse.
+- **I2 — global key**. `key` alone. `status` is one property everywhere.
+  Matches how values are already keyed. Risk: one namespace, so a Book's
+  `length` (pages) and a Workout's `length` (minutes) collide.
+- **I3 — namespaced key**. `(namespace, key)` — `book.length`,
+  `workout.length`, `core.status`. Solves the collision; adds a two-part
+  identity to every display, picker and migration.
+- **I4 — opaque id + display name**. Identity is a uuid; the name is just a
+  label and two properties may share one. Maximum flexibility, and the worst
+  ergonomics — you cannot type a property name and mean it, and the mirror's
+  frontmatter has no natural key to write.
+
+### Options for Format
+
+`PropertyType` today: `text | number | date | boolean | select | multi_select |
+relation | url` (`shared/types.ts:62`). The open questions are not which formats exist
+but two knobs that cut across them:
+
+- **Cardinality** — one value or many. Currently `multi_select` is the only
+  many, and it cheats by stringifying a JSON array into `value_text`.
+- **Whether `relation` is a format or a separate concept.** It is a format.
+  See §1.3.
+
+### Options for Membership
+
+- **M1 — enforced by type** *(status quo)*. A page carries exactly what its
+  type declares. The panel cannot render anything else.
+- **M2 — suggested by type**. The type offers a list and an order; a page may
+  carry more. The panel shows type properties first, then extras.
+- **M3 — emergent**. Nothing declares membership. What a page carries is what
+  it carries; "which properties does a Book have" is answered by looking at
+  Books.
+
+### Options for Constraint
+
+- **K1 — none** *(status quo, effectively)*. Select options are inferred from
+  values already typed (`getKnownPropertyValues`, `repo.ts:1532`); relations
+  may point at anything.
+- **K2 — soft**. Constraints filter the picker and flag violations, never
+  reject a write. A relation "limited to Person" shows Persons first and lets
+  you pick anything.
+- **K3 — hard**. The write is rejected.
+
+**K3 is the one option in this document I would argue against outright.** In a
+single-user local app, a rejected write is the app telling you that you are
+wrong about your own notes. K2 gets all the ergonomic benefit — the picker is
+short, the query is reliable — and never blocks you.
+
+## 1.2 What a type is
+
+Once Identity is separated from Membership, a type stops being an owner and
+becomes something much smaller. **A type is a named set of membership
+assertions, plus presentation.** That is genuinely all it needs to be: "pages
+of this kind usually carry these properties, in this order," plus an icon, plus
+a starting template.
+
+Options:
+
+- **T1 — Owner** *(status quo)*. Type owns Identity and Membership. Deleting a
+  type deletes its property definitions.
+- **T2 — Bundle**. Type references properties that exist independently.
+  Deleting a type deletes no property and no value; pages fall back to Note.
+  AnyType's model.
+- **T3 — Label**. Type asserts nothing; it is a tag with an icon. Structure
+  comes entirely from what pages carry and from queries.
+- **T4 — Facet**. T2, but a page has *many*. Its property list is the union of
+  its types' bundles. "This note is also a Project" becomes additive.
+
+Under T2/T3/T4, note what a type *stops* being: a container. A page's type
+does not say where it lives, what it may point at, or what it may carry. It is
+advice with an icon.
+
+## 1.3 What a relation is — and why it is not its own axis
+
+> *"Wouldn't a relation just apply across a type or something? Or, you could
+> apply it and set its value to anything?"*
+
+**A relation is a property whose format is "page reference."** It is not a
+separate kind of thing, and Nexus already models it that way: `relation` is a
+member of `PropertyType`, and its value lives in `properties.value_relation`
+alongside `value_text` and `value_number` (`schema.ts:121`).
+
+AnyType reached the same conclusion and then went further — it has renamed
+Relations to **Properties** outright, with "Object" as one of the available
+formats: *"a reference to another object, such as a person, task, or
+document."* The model diagram still uses the older word and defines it the
+same way: *"Relation: properties which connect objects to each other in the
+graph."* Its current onboarding has no Relations screen at all — the sequence
+is Vault → Channels → **Objects → Types → Properties → Views**. One concept,
+two names, and the newer name is the honest one.
+
+That onboarding order is itself an argument. Objects come first, Types
+classify them afterwards, Properties describe them, Views look at them.
+Structure is layered onto content that already exists rather than being the
+price of creating it — which is M2/M3, not M1.
+
+So your question has a clean answer: **there is no relation architecture to
+decide, only three knobs, and all three are the ordinary property questions
+asked of a reference-format property.**
+
+| Knob | This is really | Options |
+|---|---|---|
+| Which pages can carry it | **Membership** (§1.1) | M1 / M2 / M3 — same answer as every other property |
+| What it may point at | **Constraint** (§1.1) | anything · limited to type(s) · limited to a saved query |
+| How many targets | **Format cardinality** | one *(status quo)* · many, ordered |
+
+"Apply it across a type" is M2. "Apply it and set its value to anything" is
+M3 + K1. Both are coherent, both are what AnyType does depending on how you
+configure it, and neither needs a new subsystem — they need `property_defs` to
+carry a `config` blob with `cardinality` and `target_types` in it.
+
+**Correction to the earlier draft.** It listed C1–C4 as if picking among them
+were an architectural decision on the scale of the others. Three of those four
+were cardinality and inverse-storage choices dressed up as architectures. Only
+one is genuinely a different model:
+
+- **R-collapse — edges with roles.** Delete the reference format. `links` grows
+  a `role`, and everything that looks like a relation is a *view over edges*.
+  Mentions, relations, folder parentage and collection membership become one
+  table. Elegant, and it fights the code hardest: relations stop being
+  properties (so the panel, the Tables column and the mirror's frontmatter all
+  need a second path), and `links` stops being purely derived — which means
+  `rebuildLinkIndex()` (`repo.ts:1720`) stops being a safe recovery move.
+
+That is the only real fork. Everything else is configuration.
+
+**One thing genuinely worth deciding: inverses.** If Book has `author`, does
+Person get `books`? Two answers: **store it** (Notion writes a paired property
+on the other side, and spends real engineering keeping the two consistent) or
+**derive it** (read it out of `links`, which already carries
+`source = 'relation'` and `property_key` from schema v9, `schema.ts:153`).
+Deriving is strictly better here — it cannot desync, it matches the house
+pattern, and the projection already exists. Storing only wins if an inverse
+needs its own manual ordering, which it almost certainly does not.
+
+## 1.4 What a tag is — and whether it is redundant
+
+> *"I think tags may be redundant with more advanced data analysis or 'stuff'
+> like properties/relations."*
+
+**You are right, and the condition under which you are right is exactly the
+decision in §1.1.**
+
+A tag is a property with format `multi_select`, membership M3 (every page may
+carry it), and constraint K1 or K2 (an option list with colours). Nexus already
+has that format. `tags` + `page_tags` is a second implementation of something
+the property system can already express.
+
+Why does it exist, then? `NEXUS.md:77` records the reason, and it is worth
+reading closely:
+
+> *"The original design made them a `multi_select` property. In practice that
+> meant you could not tag anything until you had defined a property on the
+> page's type — schema design as the price of admission for 'mark this note as
+> reading.'"*
+
+That reason is **entirely an artifact of M1**. The ceremony was never inherent
+to properties; it came from membership being enforced by type. Move to M2 or
+M3 and the price of admission disappears — you type a tag, a property named
+`tags` acquires a value, and nothing had to be declared first.
+
+AnyType's resolution is the clean one and worth stating as a slogan: **Tag is a
+format, not a system.**
+
+Three honest caveats before collapsing them:
+
+1. **Multi-value properties have to become real first.** `multi_select` is a
+   stringified JSON array in `value_text`, which cannot be indexed, grouped or
+   joined. `page_tags` is a proper indexed join table — today it is the
+   *better* implementation. Collapsing tags into properties before building a
+   `property_multi(page_id, key, value, sort_order)` table would be a
+   downgrade. **Sequence matters: multi-value storage first, then collapse.**
+2. **Colour and zero-friction creation are real ergonomics**, not accidents.
+   `addTagToPage` creates the tag if it does not exist (`repo.ts:2016`).
+   Whatever replaces it has to keep that gesture, or tagging gets worse.
+3. **A tag chip and a property row are different UI at different altitudes.**
+   Collapsing the *storage* does not require collapsing the *presentation* —
+   a property with format `multi_select` and a `render: chips` hint can still
+   appear under the title rather than in the panel. Storage and chrome are
+   separable, and conflating them is what makes "collapse tags" sound lossy
+   when it is not.
+
+There is a fourth option worth naming since it goes the other direction:
+**tags as pages** (a tag gets a body, backlinks, properties of its own —
+Obsidian's MOC practice formalised). It buys "what *is* this project" a place
+to live and costs 200 extra pages in the trash, the mirror, the search index
+and the graph for a vault with 200 tags.
+
+---
+
+# Part 2 — The revised axes
+
+With the definitions above, the decision space is smaller than the earlier
+draft made it look. Five decisions, in dependency order:
+
+1. **Identity** — I1 / I2 / I3 / I4 *(§1.1)*
+2. **Membership** — M1 / M2 / M3 *(§1.1)*
+3. **Type** — T1 / T2 / T3 / T4 *(§1.2)* — mostly determined by 1 and 2
+4. **Reference model** — property-format *(status quo)* or R-collapse *(§1.3)*
+5. **Containment** — see below
+
+Cardinality, constraints, inverses and tags are **consequences**, not
+decisions: settle 1 and 2 and each has an obvious answer.
+
+## Containment — how is a page placed and found?
+
+The one axis the definitions do not dissolve, because it is bounded by
+something outside the model: **the mirror needs exactly one path per page**.
+`computePaths()` (`mirror.ts:130`) walks `folder_id` up the chain and turns it
+into a directory path.
+
+- **E1 — Folder tree** *(status quo)*. One parent, navigable, mirrors directly.
+- **E2 — Multi-parent**. *Blocked by the mirror* — either it stops being a
+  faithful tree, or a primary parent is nominated, which is E1 with
+  bookkeeping.
+- **E3 — Queries replace folders**. Placement stops being a decision; a page is
+  wherever it matches. Costs the on-disk vault its browsability, which is one
+  of the mirror's two stated reasons to exist.
+- **E4 — Index pages (MOC)**. Containment is content: a page holds an ordered
+  reference-property listing its children. Fully multi-parent, no schema cost,
+  and it works *today* with wiki-links. No tree to render unless one is derived
+  by walking links; cycles possible.
+- **E5 — Both**. Folders for paths and navigation, queries for finding. Honest
+  about what each is for; costs two similar-looking things in one sidebar.
+
+### The level above: spaces
+
+AnyType's onboarding opens on a level Nexus does not have at all — a **Vault**
+holding several **Channels** (Personal, Family, Work, Community), each with its
+own objects, types and properties. Notion has the same idea as workspaces;
+Obsidian as separate vaults you switch between.
+
+Nexus has exactly one vault, and `NEXUS.md:548` puts "sections/vaults"
+explicitly out of MVP scope. It is worth naming as its own axis because it is
+the only structural question that **cannot be reached from the others** —
+folders, tags, types and queries all partition *within* one namespace, while a
+space partitions the namespace itself, including the property vocabulary.
+
+- **S1 — One vault** *(status quo)*. Everything shares one property namespace,
+  one type list, one graph.
+- **S2 — Multiple spaces, separate databases**. Clean isolation, and switching
+  is a restart-shaped operation. This is Obsidian's model and the cheapest by
+  far — it is mostly a file path.
+- **S3 — Multiple spaces, one database**. A `space_id` on nearly every table.
+  Enables cross-space search and moving pages between spaces; touches every
+  query in `repo.ts` and makes the mirror decide whether spaces are directories.
+
+**This interacts with Identity.** If work and personal notes share one vault
+(S1), a global property namespace (I2) has to hold both, and `status` means one
+thing across contexts that may not agree — which is an argument for I3
+namespacing that has nothing to do with Book-vs-Workout collisions. If spaces
+exist (S2/S3), each gets its own namespace and I2 is safe inside one.
+
+Deciding this is not urgent, but deciding I2 *without* considering it is how a
+second irreversible migration gets created later.
+
+---
+
+# Part 3 — The four stances, defined
+
+À-la-carte picking produces incoherent systems. These four hang together. Each
+is given as: the commitment, the literal tables, what creating a book with an
+author feels like, and what it forecloses.
+
+## Stance 1 — Consolidate
+
+**Commitment:** the MVP's shape was right; it is just unfinished. Fix what is
+missing without changing what anything *is*.
+
+**Answers:** I1 · M1 · T1 (owner) · property-format references · E1.
+
+**Tables:** unchanged. `property_definitions` keeps `UNIQUE(type_id, key)`.
+Add `property_multi` for real multi-values, `cardinality` in a config column,
+and saved views on Tables.
+
+**Creating a book with an author:** define type Book; define property `author`
+on Book, format reference, cardinality many; create the page; pick authors.
+Defining `author` on Person later is a separate, unrelated property.
+
+**Forecloses:** cross-type queries stay awkward. Tags can never collapse —
+under M1 the ceremony argument in §1.4 still holds, so they stay a parallel
+system forever. Facets are unreachable without redoing this.
+
+**Who builds it:** Notion, essentially.
+
+## Stance 2 — Emergent
+
+**Commitment:** the MVP's structure is *in the way* more than it is
+insufficient. Delete schema rather than add it.
+
+**Answers:** I2 · M3 · T3 (label) · property-format references, unconstrained
+· E3 or E4.
+
+**Tables:** `property_defs(key, name, format)` as a *hint registry* only —
+derivable from existing values, so nothing to migrate. `type_properties` never
+exists. `tags` collapses into a property. Folders optionally deprecated in
+favour of saved queries.
+
+**Creating a book with an author:** create a page, type `author` into the
+properties panel, point it at a Person. Nothing was declared. "Book" is a value
+of a property, or a tag, or nothing at all.
+
+**Forecloses:** the app can never help — no "Books usually have these fields,"
+no empty prompts, no meaningful template, no columns in Tables until it infers
+them. Habit detection (`getHabitCandidates()`, `repo.ts:1251`, literally "a
+type offering both a date and a boolean") stops having anything to detect.
+
+**Who builds it:** Obsidian.
+
+## Stance 3 — Vocabulary
+
+**Commitment:** separate Identity from Membership. Properties exist in their
+own right; types point at them.
+
+**Answers:** I2 (with a `namespace` column defaulted to `core`, unused at
+first, so I3 stays additive later) · M2 · T2 (bundle) · property-format
+references with K2 soft constraints · E5.
+
+**Tables:**
 
 ```
-property_defs      key PK, name, property_type, created_at
-type_properties    type_id, property_key, sort_order
+property_defs     key PK, namespace, name, format, config JSON
+type_properties   type_id, property_key, sort_order
+property_multi    page_id, key, value, sort_order      -- multi-values, real
+property_refs     page_id, key, target_page_id, sort_order
+queries           id, name, filter JSON, view JSON, pinned
 ```
 
-Concretely it lands four things:
+`tags`/`page_tags` collapse into a `tags` property once `property_multi`
+exists. Inverses derived from `links`. Collections need no table — a collection
+is a page with an ordered reference property.
 
-1. `status` defined on Book and `status` defined on Directive stop being two
-   unrelated rows. One property, one definition, renamed in one place.
-2. The properties panel stops being driven only by
-   `getPropertyDefinitions(typeId)` and instead merges *the page's own
-   property rows* with its type's list. A page can then show and edit a
-   property its type never declared.
-3. That ad-hoc property gets one action — **add to type** — which writes a
-   single `type_properties` row and turns practice into schema.
-4. A migration that merges existing per-type definitions by key, with a
-   collision rule for when two types disagree on a property's type.
+**Creating a book with an author:** define type Book; add `author` to it,
+picking from properties that already exist or creating one. `author` is now
+available to any type. Type it onto a page that is not a Book and it works —
+then click **add to type** to make that a rule.
 
-**S1 presupposed an answer to a question this file has not asked yet** — that
-property schema should be a global vocabulary with types as bundles of
-references (option **A2** below). That is one of four live answers. If a
-different one wins, S1 is not the first stage; something else is.
+**Forecloses:** a page is still one thing. "This note became a project" means
+retyping it and losing the old bundle.
 
----
+**Who builds it:** AnyType, closely.
 
-## The constraints every option has to live inside
+## Stance 4 — Facets
 
-Six facts about this codebase that rule things out before taste does.
+**Commitment:** Vocabulary, plus a page is many things at once.
 
-**1. The mirror is one page, one file, one path.** `computePaths()`
-(`mirror.ts:130`) walks `folder_id` up the folder chain and turns it into a
-directory path. A page in two folders has no path. Any option that gives a page
-multiple parents either breaks the mirror, or has to nominate a primary parent
-for it — which is the same as having one parent plus decoration.
+**Answers:** I2/I3 · M2 · T4 (facet) · property-format references · E5.
 
-**2. Property values are already global; only the schema is not.**
-`properties` is `UNIQUE(page_id, key)` (`schema.ts:130`) with no type in the
-key, and `getKnownPropertyValues()` (`repo.ts:1532`) queries by key across the
-whole vault. Whatever is decided, the value store already behaves like a
-vocabulary. Options that keep schema strictly per-type are choosing to keep
-that mismatch, which is allowed but should be on purpose.
+**Tables:** Stance 3, plus `page_types(page_id, type_id, sort_order)` replacing
+`pages.type_id`.
 
-**3. "Untyped" is not representable.** `pages.type_id` is
-`NOT NULL DEFAULT 'note'` (`schema.ts:105`). Every page is at least a Note.
-Any option treating type as optional has to either make the column nullable or
-keep treating Note as the null.
+**Creating a book with an author:** as Stance 3. Then later, apply the Reading
+Log facet to the same page and it gains `started`, `finished`, `rating` without
+losing anything. Define a small `Dated` facet carrying `date`, apply it to nine
+types, and the calendar picks up all nine.
 
-**4. Projections are the house pattern.** `page_fts`, `tasks` and `links` are
-all rebuilt from source and documented as costing nothing to lose
-(`schema.ts:203`). Anything derivable — backlinks, inverse relations,
-rollups, query membership — should be derived, and an option that needs a
-second stored copy of a derivable fact is paying for the privilege.
+**Forecloses:** little. The cost is not foreclosure, it is work — every reader
+of `type_id` moves (`getPagesSummary`, Tables, the mirror's frontmatter, habit
+candidates, templates, `deleteType`'s re-homing), templates need a rule when
+two facets both offer one, and Tables must decide what "a table of Book" shows
+when rows are also three other things.
 
-**5. BlockNote owns the document body.** The first build died fighting the
-editor's internals over a custom overlay and column layout (`NEXUS.md:15`).
-Any option requiring block-level schema, typed blocks, or database-rows-as-
-blocks is re-opening that fight. Structure lives *around* the document, not
-inside it — with the one exception of a custom block that only *reads*.
+**Who builds it:** nobody in the survey, fully. This is the one that would be
+genuinely novel — and correspondingly the one with no proven design to copy.
 
-**6. One user, one machine, no sync.** No merge conflicts, no concurrent
-writers, no migration coordination across clients. Denormalising is cheap,
-rebuilding an index is cheap, and a wrong call is recoverable with a rebuild
-rather than a data-loss incident. This is the constraint that makes the more
-ambitious options affordable at all.
-
----
-
-## Axis A — where does property schema live?
-
-### A1. Per-type definitions (status quo, Notion's model)
-
-Schema belongs to the type. `UNIQUE(type_id, key)`.
-
-- **Buys:** nothing new; already built and understood. A type is genuinely
-  self-contained, so deleting it takes its schema with it and nothing dangles.
-- **Costs:** no reuse — the same property defined on five types is five rows,
-  five renames, five option lists. The mismatch in constraint 2 stays. A page
-  can never carry anything off-schema.
-- **Forecloses:** cross-type queries by property (`show everything with
-  status = active`) are always a join through five definitions rather than one.
-
-### A2. Global vocabulary + type bundles (AnyType's model, minus objects)
-
-`property_defs` keyed by `key`; `type_properties` says who offers what.
-
-- **Buys:** one definition per property, reused anywhere. Cross-type queries
-  are trivial. Ad-hoc page properties become legal and visible, and
-  promote-to-type becomes a one-click gesture. Finishes constraint 2 rather
-  than working around it.
-- **Costs:** a real migration with a collision rule. Property names become a
-  vault-wide namespace, so `name` means one thing everywhere — which is the
-  point, but it will occasionally be wrong (a Book's `length` in pages, a
-  Workout's `length` in minutes, now one property with one unit).
-- **Watch:** the namespace collision is the sharp edge. Mitigation is either
-  living with it (rename one), or a namespacing convention (`book.length`),
-  which is unpleasant enough that it argues for A3 or A4.
-
-### A3. Global type hints only (Obsidian's model)
-
-No definitions and no bundles. `property_defs` exists solely to say "`due` is
-a date, everywhere" — a type registry, not a schema. What a page carries is
-whatever it carries; a "type" never declares anything.
-
-- **Buys:** maximum freedom and the smallest possible schema. Nothing to
-  migrate — the table is additive, and it can be *derived* from existing
-  values on first run. No collision rule needed because there is no membership
-  to merge.
-- **Costs:** the app can never help. No "this type usually has these
-  properties", no empty fields prompting to be filled, no template beyond a
-  page. Typos silently make new properties. Tables has no columns to show
-  until it infers them from what pages happen to carry.
-- **Watch:** this is a real option, not a straw man — it is cheaper than A2,
-  strictly more free, and gets much of A2's cross-type benefit. It loses
-  precisely the thing structure is for.
-
-### A4. Namespaced vocabulary
-
-A2, but the key is `(namespace, key)` — a property belongs to a namespace
-(often but not always a type), and types may import from other namespaces.
-
-- **Buys:** A2's reuse without A2's collision problem. `book.length` and
-  `workout.length` coexist; `core.status` is shared by importing it.
-- **Costs:** every property now has a two-part identity to display, pick and
-  migrate. `properties.key` would have to grow a namespace column, which
-  touches the one table with the most rows and the most readers.
-- **Watch:** this is the option that is right in three years and wrong now.
-  A2 can grow into it later — a namespace column defaulting to `core` is
-  additive — so picking A2 does not foreclose it.
-
----
-
-## Axis B — what is a type?
-
-### B1. A label plus a property bundle (status quo)
-
-One type per page, carrying schema, an icon and a template.
-
-- **Buys:** simple, already built, one type per page means the properties panel
-  has one list to render and one order to respect.
-- **Costs:** a page that is genuinely two things has to pick. A book you are
-  reading *and* logging is a Book with reading fields bolted on, or a Reading
-  Log with book fields bolted on, and either way the other type's pages don't
-  share the shape.
-
-### B2. A label only
-
-Type carries no schema; it is a tag with a nicer name. Structure comes entirely
-from what pages carry (A3) and from queries.
-
-- **Buys:** collapses two concepts into one. Types and tags stop being a
-  distinction users have to hold.
-- **Costs:** removes the anchor for templates, for Tables' columns, and for the
-  habit detection that already exists (`getHabitCandidates()`,
-  `repo.ts:1251`, is literally "a type offering both a date and a boolean").
-  Several working features are built on type-carries-schema.
-
-### B3. Facets — a page has many types
-
-`pages.type_id` becomes `page_types(page_id, type_id, sort_order)`. A page is a
-Book *and* a Reading Log; its properties panel is the union of both bundles.
-
-- **Buys:** composition without inheritance, which is the thing inheritance is
-  usually reached for. Structure becomes additive: define a small `Dated`
-  facet carrying `date`, apply it to nine types, and the calendar picks all
-  nine up. Answers "this note became a project" without retyping anything.
-- **Costs:** the largest change on this page. Every reader of `type_id` moves
-  (`getPagesSummary`, Tables, the mirror's frontmatter, habit candidates,
-  templates, `deleteType`'s re-homing). Templates need a rule for two facets
-  both offering one. The properties panel needs an order across bundles.
-  Tables needs to decide what "a table of Book" means when a row is also
-  three other things.
-- **Watch:** this is the highest-ceiling option and the one most likely to
-  produce the first build's failure mode — a large refactor whose payoff
-  depends on a usage pattern that may not exist. See "cheap probes" below:
-  the honest test is counting how many pages in the real vault actually want
-  a second type.
-
-### B4. Inheritance — Book extends Media
-
-- **Buys:** shared schema down a hierarchy.
-- **Costs:** diamond resolution, override semantics, and a migration question
-  every time a parent changes.
-- **Verdict:** dominated. B3 gets the same reuse without the hierarchy, and A2
-  gets most of it without touching types at all. Neither Notion nor AnyType
-  has this. Listed for completeness.
-
----
-
-## Axis C — how does one page point at another?
-
-### C1. Single-valued relation property (status quo)
-
-`properties.value_relation` holds one page id.
-
-- **Costs:** "books by this author" is not expressible. Already the most-felt
-  limit.
-
-### C2. Multi-valued relation table, inverse derived
-
-`property_relations(page_id, property_key, target_page_id, sort_order)`. The
-paired side is read out of `links`, which already carries
-`source = 'relation'` and `property_key` (`schema.ts:153`).
-
-- **Buys:** ordered multi-targets. Inverses cost nothing and cannot desync.
-  Collections stop needing a table — a collection is a page with an ordered
-  multi-relation.
-- **Costs:** one new table, one migration out of `value_relation`, and every
-  reader of relations moves.
-
-### C3. Multi-valued with stored inverse (Notion's model)
-
-Same, but pointing Book→Author writes Author→Books as a real property.
-
-- **Buys:** the inverse is a first-class property — it can be reordered, hidden,
-  renamed and rolled up like any other.
-- **Costs:** two stored copies of one fact, and all the consistency work that
-  implies, against constraint 4. Notion spends real engineering here.
-- **Verdict:** the only reason to prefer this over C2 is if inverses need to
-  carry their own per-page ordering. They probably don't.
-
-### C4. Collapse relations into the link graph
-
-No relation *property* at all. `links` grows a `role` (`author`, `parent`,
-`cites`), and what looks like a relation property in the panel is a **view over
-edges with that role**. Mentions are edges with no role.
-
-- **Buys:** one edge table for the whole vault. Mentions, relations, folder
-  parentage and collection membership all become the same thing with different
-  roles, and the graph view is reading the actual model rather than a
-  projection of three. Traversal (`two hops from here`) becomes a query rather
-  than a feature.
-- **Costs:** relations stop being properties, so everything property-shaped —
-  the panel row, the Tables column, the mirror's frontmatter, sorting —
-  needs a second path for them. `links` stops being purely derived, which
-  breaks the rebuild-from-source guarantee that made schema v9 safe; roles
-  written by hand can no longer be regenerated from documents.
-- **Watch:** structurally the most elegant option and the one that fights the
-  existing code hardest. The loss of "links is derived" is the real price,
-  and it is bigger than it looks — `rebuildLinkIndex()` (`repo.ts:1720`) is
-  currently a safe recovery move and would stop being one.
-
----
-
-## Axis D — do tags stay their own system?
-
-### D1. Separate tables (status quo)
-
-`tags` + `page_tags`, flat, many-to-many, case-insensitive, no schema needed.
-
-- **Buys:** tagging costs nothing — no type, no property definition, no
-  ceremony. This was a deliberate reversal of the original design and
-  `NEXUS.md:77` documents why.
-- **Costs:** a third vocabulary to maintain beside properties and types. Tags
-  cannot be typed, ordered, or given meaning.
-
-### D2. Tags become a universal multi-select property
-
-One property, `tags`, defined on nothing and available everywhere.
-
-- **Buys:** one mechanism. Tag filters become ordinary property filters, so a
-  query language has one fewer field kind.
-- **Costs:** re-introduces exactly the ceremony that got it reversed, unless
-  properties become genuinely schema-free (A3) — in which case this is nearly
-  free. **This option is cheap under A3 and expensive under A1/A2**, which is
-  a good example of the axes not being independent.
-
-### D3. Nested tags
-
-`area/health`, `area/work` — parsed at display time, no schema change.
-
-- **Buys:** hierarchy in the one axis that has none, for almost nothing. The
-  tag chips group; the filter matches a prefix.
-- **Costs:** essentially none. Renaming a parent has to rewrite children,
-  which `renameTag()` (`repo.ts:2053`) can do with a `LIKE` update.
-- **Verdict:** the cheapest real win on this page, and independent of every
-  other decision here.
-
-### D4. Tags become relations to tag pages
-
-A tag is a page; tagging is a relation. Obsidian's MOC practice, formalised.
-
-- **Buys:** a tag gets a body, backlinks, properties of its own — "what is this
-  project" has somewhere to live. Collapses tags into C2/C4.
-- **Costs:** every tag is now a page in the trash, the mirror, the search index
-  and the graph. A vault with 200 tags gains 200 files. The tag chip UI has to
-  keep working over something much heavier.
-
----
-
-## Axis E — how is a page contained and found?
-
-### E1. Folder tree + tags + search (status quo)
-
-One parent, navigable, mirrors directly to disk.
-
-- **Costs:** one axis of placement, and the tree is the only navigable
-  structure — everything else is a filter.
-
-### E2. Multi-parent containment
-
-A page lives in many folders.
-
-- **Blocked by constraint 1.** The mirror needs one path. Either it picks a
-  primary parent (which is E1 with extra bookkeeping) or the mirror stops
-  being a faithful tree. Not recommended unless the mirror's contract changes.
-
-### E3. Queries replace folders
-
-Saved filters, pinned in the sidebar. AnyType's Sets.
-
-- **Buys:** placement stops being a decision. A page is wherever it matches.
-- **Costs:** the mirror needs *something* for a path and would fall back to
-  flat, which makes the on-disk vault much less browsable — one of the mirror's
-  two stated reasons to exist. Also loses navigability: a tree can be explored
-  without knowing what you want, a query list cannot.
-
-### E4. Index pages (MOC)
-
-Containment is content: a page holds links to its children. Structure is in the
-document, not the schema. Under C2 this is a page with an ordered multi-
-relation; under C4 it is a set of edges with a `child` role.
-
-- **Buys:** containment gets a body — the index page can explain itself. Fully
-  multi-parent with no schema cost. Nothing to migrate, because it needs no
-  feature at all: it works today with `[[wiki-links]]`.
-- **Costs:** no tree to render unless one is derived by walking the links, and
-  cycles are possible. The mirror still needs folders for paths.
-
-### E5. Folders for paths, queries for everything else
-
-Keep the tree because the mirror and navigation need it; add queries as a
-parallel, non-exclusive way in. Both pinned in the same sidebar.
-
-- **Buys:** honest about what each is for. Placement stays cheap and browsable;
-  finding stops depending on placement.
-- **Costs:** two things in the sidebar that look similar and are not, which is
-  a real UI problem and the reason AnyType's Set/Collection split confuses
-  people.
-
----
-
-## The axes are not independent
-
-The couplings worth knowing before picking anything:
-
-- **A determines D2's price.** Tags-as-a-property is nearly free under A3
-  (no schema to define) and expensive under A1/A2 (definition ceremony
-  returns).
-- **B3 needs A2 or A4.** Facets whose bundles come from per-type definitions
-  (A1) would give a page two unrelated `status` properties with no way to
-  reconcile them. Multi-type requires a shared vocabulary first.
-- **C2 makes collections free.** Once relations hold many ordered targets, a
-  collection is a page, not a table — which removes a concept from axis E.
-- **C4 subsumes D4 and E4.** If edges have roles, tags-as-relations and
-  index-pages are the same mechanism, and three axes collapse into one.
-- **E is bounded by the mirror.** Any option here is really a question about
-  whether the mirror's one-page-one-path contract holds.
-- **A2's migration is the only irreversible step on this page.** Everything
-  else is additive or rebuildable. Merging the property namespace is not.
-
-**Decision order.** A first — it constrains B and prices D. Then C, because it
-decides whether collections and index pages need storage. Then D and E, which
-are mostly independent once A and C are settled. Views last: they consume the
-model and change nothing about it.
-
----
-
-## Four coherent stances
-
-Picking per-axis à la carte produces incoherent systems. These four hang
-together.
+## Side by side
 
 | | Consolidate | Emergent | Vocabulary | Facets |
 |---|---|---|---|---|
-| **A** schema | A1 per-type | A3 hints only | A2 global | A2 global |
-| **B** type | B1 bundle | B2 label | B1 bundle | B3 many |
-| **C** relation | C3 stored inverse | C2 derived | C2 derived | C2 derived |
-| **D** tags | D1 + D3 | D2 property | D1 + D3 | D1 + D3 |
-| **E** organise | E1 tree | E3 queries | E5 both | E5 both |
-| **Migration risk** | low | very low | medium | high |
-| **Ceiling** | low | medium | high | highest |
-| **Fights the code** | no | a little | some | a lot |
-
-**Consolidate** — finish what the MVP started without changing its shape. Fix
-multi-relations, add views to Tables, leave schema per-type. Smallest possible
-step; you keep the mismatch in constraint 2 and the ceiling stays where it is.
-Right answer if the honest need is "relations should hold more than one thing"
-and nothing more.
-
-**Emergent** — go the other way and delete structure rather than add it.
-Properties are free-form with global type hints, a type is a label, tags are a
-property, queries replace the tree. Cheapest to build, most free, and the app
-stops being able to help you. Right answer if the real complaint is that the
-MVP's structure is *in the way* rather than insufficient.
-
-**Vocabulary** — the `STRUCTURE.md` direction. Global properties, types stay
-single and become bundles, relations multi-valued with derived inverses, tree
-and queries side by side. Highest ceiling reachable without a large refactor,
-and the only stance where practice→schema promotion is a first-class gesture.
-One irreversible migration.
-
-**Facets** — Vocabulary plus many types per page. The most expressive model
-available and the only one where "this note is also a project now" is additive.
-Touches every reader of `type_id` in the codebase and its payoff depends on a
-usage pattern that has not been demonstrated yet.
+| Identity | per-type | global | global | global |
+| Membership | enforced | emergent | suggested | suggested |
+| Type is | owner | label | bundle | facet, many |
+| Tags | stay separate | collapse | collapse | collapse |
+| Migration risk | low | very low | medium | high |
+| Ceiling | low | medium | high | highest |
+| Fights the code | no | a little | some | a lot |
+| Prior art | Notion | Obsidian | AnyType | none |
 
 ---
 
-## What I would pick, stated separately
+# Part 4 — The three systems against your vision
 
-**Vocabulary**, with two amendments: take **D3** (nested tags) immediately
-since it is independent and nearly free, and design `property_defs` with a
-`namespace` column defaulted to `core` from day one — unused at first, but it
-makes **A4** additive later instead of a second irreversible migration.
+## 4.1 Your vision, as stated
 
-**Facets is the tempting one and the one to defer.** Not because it is wrong —
-it may well be where this ends up — but because Vocabulary is a strict prefix
-of it. A2 is required by B3 anyway, so building Vocabulary first costs nothing
-against a later move to Facets, and the interval produces the evidence for
-whether Facets is needed at all.
+Assembled from what you have actually said, not what I would like you to mean:
+
+- **V1 — Structure and freedom, without trading one for the other.** *"Structure
+  is important but so is freedom."*
+- **V2 — You can build your own structure, and complexity is an acceptable
+  price.** *"even if it introduces complexity."*
+- **V3 — Properties and references should be flexible.** *"you could apply it
+  and set its value to anything."*
+- **V4 — Tags are probably redundant given a good property system.**
+- **V5 — Local-first, single user, fully owned, offline, readable on disk.**
+  From `NEXUS.md`, and the mirror exists to enforce it.
+- **V6 — Analysis matters.** *"more advanced data analysis."*
+
+**Still undetermined, and each changes the answer:** whether structure should
+ever be *enforced* (K3) or only ever advisory; whether navigation matters or
+querying suffices (E1 vs E3); and whether one page needs to be two things
+(T2 vs T4).
+
+## 4.2 How each stacks up
+
+| | V1 both | V2 build your own | V3 flexible refs | V4 tags collapse | V5 owned/offline | V6 analysis |
+|---|---|---|---|---|---|---|
+| **Notion** | structure ✓ freedom ✗ | ✓ within a database | ✗ typed to a database | ✗ tags are a select | ✗✗ cloud, not yours | ✓✓ best in class |
+| **Obsidian** | freedom ✓ structure ✗ | ✓ nothing stops you | ✓✓ total | ~ tags exist separately | ✓✓ plain files | ~ Dataview over untyped YAML |
+| **AnyType** | ✓ closest to both | ✓✓ types and properties are yours | ✓✓ property with optional limit | ✓ tag is a format | ✓ local-first, ✗ not plain files | ~ Sets, no rollups/formulas |
+
+**Notion is for V6 and against nearly everything else you have said.** Its
+analysis layer — views, grouping, rollups, formulas — is genuinely the best
+built and worth stealing from wholesale. Its structural model is the opposite
+of V1: schema is owned by the container, a page belongs to one database and
+inherits its schema entire, and there is no vocabulary above the database, so
+`Status` in three databases is three unrelated properties. And V5 rules it out
+completely — it is a hosted product and your data is a export away from being
+someone else's.
+
+**Obsidian is for V5 and V3 and against the structure half of V1.** Plain
+files on disk is the gold standard and the thing your mirror is imitating.
+Total freedom on properties is exactly V3. But the app can never help: there is
+no gesture that turns a pattern you have repeated forty times into a rule, and
+no path from practice to structure. On V4 it is ambivalent in an instructive
+way — it has both frontmatter properties *and* a separate tag system, and never
+resolved the overlap, which is the same unresolved thing you are pointing at
+in Nexus. On V6 Dataview is powerful but it is a query language over untyped
+YAML, so every query carries its own defensive coercion.
+
+**AnyType is the closest to your vision, and it is close on the specific
+points you raised unprompted.** Property-not-relation (§1.3), tag-as-format
+(§1.4), types as bundles rather than owners, Sets as saved queries, and a
+graph as the primary representation rather than a tree. Its onboarding also
+makes **Views** a first-class named concept with four layouts — table,
+calendar, kanban, gallery — which is the same conclusion as "grouping is what
+makes a layout": those four are one query rendered four ways, not four
+features. Where it falls short of
+you: V5 — local-first and encrypted, but stored in its own format rather than
+plain files, so "fully owned" is true legally and awkward practically. And V6 —
+Sets are good, but there are no rollups and no formulas, so it is weaker at
+analysis than Notion by a wide margin.
+
+## 4.3 The finding that matters
+
+**Nexus is already most of the way to AnyType's model without having named
+it.** `relation` is already a property format. `properties` is already keyed
+globally by name. `links` already carries a relation discriminator. Habits are
+already "a type offering two properties" rather than a subsystem. The
+architecture you are describing is largely the one already here, half-built.
+
+What is missing is a short list:
+
+| Missing | Where it bites |
+|---|---|
+| Identity separated from Membership | the root cause — §1.1 |
+| Cardinality (a reference holds one target) | "books by this author" |
+| Soft target constraints | the relation picker shows every page |
+| Real multi-value storage | `multi_select` is JSON in a text column |
+| Tags still a parallel system | §1.4, and only collapsible after the above |
+| Saved queries | Tables holds sort and filter in React state |
+| Rollups | no aggregation across a reference |
+| Spaces | one vault, so one property namespace for every context |
+
+**And there is one thing Nexus could have that none of the three do.** Notion
+has structure with no path from practice. Obsidian has practice with no path to
+structure. AnyType has both but keeps your vault in its own format. A system
+with AnyType's model, Obsidian's plain-file ownership, and a first-class
+*promote this into schema* gesture is not a compromise between the three — it
+is a gap none of them occupies.
 
 ---
 
-## Cheap probes before committing
+# Part 5 — Constraints, couplings, and what to do before deciding
 
-Ways to test a stance against the real vault without writing app code.
+## 5.1 Constraints that rule things out before taste does
 
-1. **Count the pages that want a second type.** Read your vault and list pages
-   whose title or properties suggest they are two things. If it is under a
-   dozen, Facets is not paying for itself yet.
-2. **Count property-name collisions.** `SELECT key, COUNT(DISTINCT type) FROM
-   properties GROUP BY key HAVING COUNT(DISTINCT type) > 1` — every row is a
-   case A2's migration has to resolve and A4 would have avoided. If this is
-   zero, A2's only real cost evaporates.
-3. **Write the ten queries you actually want**, in English, before designing
-   the filter tree. If most are single-type, E1 plus a better Tables covers
-   them and E5 is premature. If most cross types, A1 is already the bottleneck.
-4. **Count how deep the folder tree actually is.** A tree that is one level
-   everywhere is a tag system with worse ergonomics, and E3 becomes much more
-   attractive.
-5. **List the relations you would draw** and mark each single or multi. If
-   fewer than a third are multi, C1 is not the limit it feels like.
+1. **The mirror needs one path per page** (`mirror.ts:130`) — bounds every
+   containment option.
+2. **Values are already keyed globally** (`schema.ts:130`) — keeping schema
+   per-type is choosing to keep a mismatch.
+3. **"Untyped" is not representable** — `pages.type_id` is
+   `NOT NULL DEFAULT 'note'` (`schema.ts:105`). Every page is at least a Note.
+4. **Projections are the house pattern** — `page_fts`, `tasks`, `links` are all
+   rebuilt from source (`schema.ts:203`). Derivable facts should be derived.
+5. **BlockNote owns the body** — the first build died fighting the editor
+   (`NEXUS.md:15`). Structure lives around the document, not inside it.
+6. **One user, one machine, no sync** — no merge conflicts, no coordination.
+   Denormalising is cheap and a wrong call is recoverable with a rebuild. This
+   is what makes the ambitious stances affordable at all.
 
-Each of these is a question about the vault as it is, and every one of them
-changes which stance is right. None require touching the code.
+## 5.2 Couplings
+
+- **Membership prices tags.** M1 forces tags to stay separate; M2/M3 make them
+  collapsible. §1.4.
+- **Tags need multi-value storage first.** Collapsing before `property_multi`
+  exists is a downgrade from an indexed join table to a JSON string.
+- **Facets need global Identity.** T4 on I1 would give one page two unrelated
+  `status` properties with no way to reconcile them.
+- **Cardinality makes collections free.** Ordered multi-references mean a
+  collection is a page, not a table — one fewer concept on the containment
+  axis.
+- **R-collapse subsumes tags-as-pages and index-pages.** If edges carry roles,
+  those three stop being separate ideas.
+- **Only one step here is irreversible.** Merging the property namespace (I1 →
+  I2) rewrites values. Everything else is additive or rebuildable.
+
+## 5.3 Probes — answer these against the real vault, not in the abstract
+
+1. **Property-name collisions.**
+   `SELECT key, COUNT(DISTINCT type) c FROM properties GROUP BY key HAVING c > 1`
+   — every row is a case the I1→I2 migration must resolve. **If this returns
+   zero, the only real cost of Vocabulary evaporates.**
+2. **Pages that want a second type.** Under a dozen and Facets is not paying
+   for itself yet.
+3. **The ten queries you actually want**, in English, before any filter tree is
+   designed. Mostly single-type means E1 plus a better Tables covers it.
+4. **Folder depth.** A tree that is one level everywhere is a tag system with
+   worse ergonomics, and E3 gets much more attractive.
+5. **References you would draw, marked single or multi.** Fewer than a third
+   multi and cardinality is not the limit it feels like.
+6. **Tag/property overlap.** How many existing tags are really values of one
+   unnamed property (`status`, `area`, `medium`)? A high number is direct
+   evidence for §1.4.
+
+Probes 1, 2 and 6 are SQL against the vault and need no app code at all.
