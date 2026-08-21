@@ -51,7 +51,13 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
   const [typeId, setTypeId] = useState<string | null>(null)
   const [dateKey, setDateKey] = useState<string | null>(null)
   const [booleanKey, setBooleanKey] = useState<string | null>(null)
-  const [year, setYear] = useState(new Date().getFullYear())
+  const today = useToday()
+  // The logical year, not the calendar one. Every other date in this view goes
+  // through `today`, so opening on `new Date()`'s year meant that between
+  // midnight and the day-start hour on 1 January the grid showed a year that
+  // did not contain today — the one day of the year the streak is worth
+  // looking at. Initial state only: stepping through years is still free.
+  const [year, setYear] = useState(() => Number(today.slice(0, 4)))
   const [days, setDays] = useState<HabitDay[]>([])
 
   useEffect(() => {
@@ -96,7 +102,6 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
     return weeks
   }, [from, to])
 
-  const today = useToday()
   const doneCount = days.filter((d) => d.done).length
   const recorded = days.length
   const { longest, current } = useMemo(() => streaks(days, today), [days, today])

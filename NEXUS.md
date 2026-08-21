@@ -103,6 +103,17 @@ setting rather than one per view, because the bug was the views disagreeing
 with the person using them; three settings would only let them disagree with
 each other too.
 
+The rule leaks into anything that names a date for itself, and `new Date()`
+appearing anywhere near one is the smell. Two places had kept their own copy
+and were found by the suite failing between midnight and 4am: the habit grid
+opened on the calendar year, so on 1 January at 00:30 the grid on screen did
+not contain today; and `check-app.mjs` dated every fixture from the wall
+clock, so it wrote a task for "yesterday" that the app still called today.
+Both now read the logical day — the view through `useToday()`, the harness
+through one `dayFromToday()` that asks the app for the hour rather than
+assuming 4. **A test that only passes for twenty hours a day is a test that
+lies for four**, and this one had been lying since the setting shipped.
+
 **The inbox is a page, not a table.** One ordinary page, pointed at by the
 `inbox.pageId` setting, holding checkbox blocks like any other page. That
 means a captured task is already in `tasks`, already searchable, already

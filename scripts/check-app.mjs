@@ -797,12 +797,32 @@ log('\n— tasks projected from checkbox blocks —')
 // boundary would file an evening's work under tomorrow.
 const localISO = (d) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+// And relative to the *logical* day, not the calendar one. `day.startHour`
+// decides what "today" means in every view; a fixture dated from the wall
+// clock therefore disagrees with the app between midnight and that hour. It
+// did: a run at 00:26 dated a task "yesterday" that the tracker still called
+// today, and marked a habit for a day one past the end of its own strip —
+// three assertions failing nightly for four hours against an app that was
+// right. Every fixture date in this file goes through here.
+//
+// Read from the app rather than hardcoded, so changing the default cannot
+// quietly re-open that window. Snapshotted once: the only section that moves
+// the setting is the day-start one below, which restores it to the default and
+// asserts that it did.
+const dayStartHour = (await page.evaluate(() => window.api.prefs.get())).dayStartHour
 const dayFromToday = (days) => {
   const d = new Date()
+  if (d.getHours() < dayStartHour) d.setDate(d.getDate() - 1)
   d.setDate(d.getDate() + days)
   return localISO(d)
 }
 const TOMORROW = dayFromToday(1)
+// Guard the silent path: if `prefs.get()` ever stops carrying the hour,
+// `getHours() < undefined` is false and every fixture below quietly goes back
+// to calendar dates — the same three failures, with nothing pointing at why.
+check('the suite dates its fixtures by the app\'s day, not the wall clock',
+  Number.isInteger(dayStartHour), `dayStartHour was ${JSON.stringify(dayStartHour)}`)
 
 
 // The capture surface is the checkbox block BlockNote already ships, reached
@@ -1095,8 +1115,10 @@ check('the habits view explains what a habit is made of',
   /No habits yet/i.test(await trackerText()) && /checkbox property/i.test(await trackerText()))
 
 // Fixed dates inside the current year rather than offsets from today, so the
-// grid always holds them however close to New Year this runs.
-const habitYear = new Date().getFullYear()
+// grid always holds them however close to New Year this runs. The logical
+// year, for the same reason the days are logical: at 00:30 on 1 January the
+// grid is still showing the year that has not finished yet.
+const habitYear = Number(dayFromToday(0).slice(0, 4))
 const habitPages = await page.evaluate(async (year) => {
   const type = await window.api.types.create('Habit', null)
   await window.api.types.defineProperty(type.id, 'Day', 'date')
@@ -1433,13 +1455,7 @@ const dateProp = entryProps.find((p) => p.key === 'date')
 // The *logical* day, not the calendar one: a day starts at the configured
 // hour, so a suite run at 2am must expect yesterday's date here — which is
 // the whole point of the setting, and would otherwise be a nightly flake.
-const today = await page.evaluate(async () => {
-  const { dayStartHour } = await window.api.prefs.get()
-  const d = new Date()
-  if (d.getHours() < dayStartHour) d.setDate(d.getDate() - 1)
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-})
+const today = dayFromToday(0)
 const todayISO = today
 check('date property set to the logical day, in local time', dateProp?.value_date === today,
   `${dateProp?.value_date} vs ${today}`)
@@ -1769,10 +1785,7 @@ log('\n— home: habits and staleness —')
 // The tracker section deleted its own Habit fixture on the way out, so this
 // builds a fresh one — and dates it today, since the tracker's March pages
 // would fall outside a three-week strip anyway.
-const homeHabit = await page.evaluate(async () => {
-  const d = new Date()
-  const pad = (n) => String(n).padStart(2, '0')
-  const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+const homeHabit = await page.evaluate(async (today) => {
   const type = await window.api.types.create('Habit', null)
   await window.api.types.defineProperty(type.id, 'Day', 'date')
   await window.api.types.defineProperty(type.id, 'Done', 'boolean')
@@ -1781,7 +1794,7 @@ const homeHabit = await page.evaluate(async () => {
   await window.api.properties.set(p.id, 'day', 'date', today)
   await window.api.properties.set(p.id, 'done', 'boolean', 'true')
   return { typeId: type.id, pageId: p.id }
-})
+}, dayFromToday(0))
 await nav('Notes')
 await sleep(500)
 await nav('Home')
