@@ -2,6 +2,21 @@
 
 > Authoritative reference for Claude Code sessions working on Nexus. Read this
 > and `DESIGN.md` before writing code.
+>
+> **This file describes the MVP, which is complete and in daily use.** Work
+> that changes the data model — properties, types, references, views,
+> analysis, plain text — is planned in four further documents, and any session
+> touching structure should read them first:
+>
+> - **`PHASES.md`** — the build plan. Ordered, dependent phases with schema,
+>   migrations, code touchpoints and explicit non-goals. **Start here.**
+> - **`MODEL.md`** — the vocabulary. Object, Type, Property, Value, Format,
+>   View, Folder. Use these words in code, UI and commits; "relation" is not
+>   one of them.
+> - **`ARCHITECTURE_OPTIONS.md`** — why those choices and not others. Consult
+>   before proposing an alternative; most are already argued and rejected.
+> - **`STRUCTURE.md`** — the first sketch. Superseded by the three above; kept
+>   for the reasoning behind the initial direction.
 
 ---
 
