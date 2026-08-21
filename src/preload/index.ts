@@ -127,6 +127,11 @@ const api: NexusAPI = {
     getBackups: () => ipcRenderer.invoke('stats:getBackups'),
     restoreBackup: (snapshotPath) => ipcRenderer.invoke('backups:restore', snapshotPath)
   },
+  files: {
+    store: (bytes, originalName) => ipcRenderer.invoke('files:store', bytes, originalName),
+    stats: () => ipcRenderer.invoke('files:stats'),
+    reclaim: () => ipcRenderer.invoke('files:reclaim')
+  },
   io: {
     exportPageMarkdown: (pageId) => ipcRenderer.invoke('io:exportPageMarkdown', pageId),
     exportPageJSON: (pageId) => ipcRenderer.invoke('io:exportPageJSON', pageId),

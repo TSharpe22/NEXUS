@@ -1,10 +1,14 @@
-import { app, BrowserWindow, shell } from 'electron'
+import { app, BrowserWindow, net, protocol, shell } from 'electron'
 import { join } from 'path'
-import { initDatabase, closeDatabase } from './database'
+import { pathToFileURL } from 'url'
+import { existsSync } from 'fs'
+import { initDatabase, closeDatabase, getDataDir } from './database'
 import { registerIpcHandlers } from './ipc'
 import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex } from './repo'
 import { flushPending as flushMirror } from './mirror'
 import { flushRenderer } from './flush'
+import { attachmentPath, mimeFor } from './files'
+import { ATTACHMENT_SCHEME, attachmentName } from '../shared/attachments'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -59,6 +63,62 @@ function createWindow(): void {
   }
 }
 
+// Attachments are served on a scheme of their own, and it has to be declared
+// before the app is ready — `registerSchemesAsPrivileged` is a no-op
+// afterwards, and the failure is a silent one: images simply never load.
+//
+// `standard` so the `nexus-file://vault/<name>` form parses the same way
+// everywhere; `secure` so a page loaded over `file://` in a packaged build is
+// not mixing in what Chromium would call insecure content; `supportFetchAPI`
+// and `stream` so a video or a PDF can be range-requested rather than pulled
+// into memory whole.
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: ATTACHMENT_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true }
+  }
+])
+
+/**
+ * Serve one attachment, or refuse.
+ *
+ * The handler is the reason attachments get a scheme rather than `file://`
+ * URLs in documents: a document is user data, and a `file://` URL sitting in
+ * one would be honoured by the renderer against the whole filesystem. Here the
+ * only thing that can be asked for is a name matching the digest shape,
+ * resolved inside the store and nowhere else — a URL naming anything outside
+ * it does not resolve to a path at all.
+ *
+ * `net.fetch` rather than reading the file: it carries range requests through,
+ * so seeking in a video works. The content type is overridden from our own
+ * table because it is derived from an extension we control the shape of.
+ */
+function registerAttachmentProtocol(): void {
+  protocol.handle(ATTACHMENT_SCHEME, async (request) => {
+    const name = attachmentName(request.url)
+    if (!name) return new Response('Not found', { status: 404 })
+
+    const path = attachmentPath(getDataDir(), name)
+    if (!path || !existsSync(path)) {
+      // A page outliving its picture is not an error worth crashing a render
+      // over — the block shows as broken, and Settings can say how many.
+      return new Response('Not found', { status: 404 })
+    }
+
+    const response = await net.fetch(pathToFileURL(path).toString())
+    const headers = new Headers(response.headers)
+    headers.set('content-type', mimeFor(name))
+    // Immutable by construction: the name is the digest of the contents, so a
+    // given URL can never come back with different bytes.
+    headers.set('cache-control', 'public, max-age=31536000, immutable')
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers
+    })
+  })
+}
+
 // One Nexus per vault. A second launch used to open its own window against the
 // same database file, each process holding its own renderer-side document
 // cache — so whichever saved last won, and the other window's next keystroke
@@ -74,6 +134,7 @@ if (!app.requestSingleInstanceLock()) {
   })
 
   app.whenReady().then(() => {
+    registerAttachmentProtocol()
     initDatabase()
     // The v4 migration creates page_fts empty; fill it before the first query.
     ensureSearchIndex()

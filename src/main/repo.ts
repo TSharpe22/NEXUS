@@ -3,6 +3,7 @@ import { getDb, getDbPath } from './database'
 import { journalEntryTitle } from '@shared/journal-date'
 import { DEFAULT_DAY_START_HOUR, logicalDate, logicalDateISO, normaliseDayStartHour } from '@shared/day'
 import {
+  extractAttachmentNames,
   extractLinkTargets,
   extractTasks,
   parseDocument,
@@ -130,6 +131,29 @@ export function getAllPages(): Page[] {
   return getDb()
     .prepare('SELECT * FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC')
     .all() as Page[]
+}
+
+/**
+ * Every attachment name any page still refers to — trash included.
+ *
+ * **Trash included is the whole point.** A trashed page is one Restore away
+ * from being read again, and a sweep that treated it as gone would delete the
+ * pictures out of a note the moment it was thrown away, leaving a restore that
+ * silently comes back with holes in it. Only `emptyTrash` and `hardDelete`
+ * actually drop a document, and even then the file survives until someone asks
+ * for the space back.
+ *
+ * A full scan of every document body, which is why it is called from Settings
+ * and from nothing on a write path. Reclaiming is correct only against a
+ * complete set: a page missed here is a page whose pictures get deleted.
+ */
+export function getReferencedAttachments(): Set<string> {
+  const rows = getDb().prepare('SELECT content FROM pages').all() as { content: string | null }[]
+  const names = new Set<string>()
+  for (const row of rows) {
+    for (const name of extractAttachmentNames(parseDocument(row.content))) names.add(name)
+  }
+  return names
 }
 
 /**

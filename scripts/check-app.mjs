@@ -14,6 +14,7 @@ import { _electron as electron } from 'playwright-core'
 import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
+import { createHash } from 'crypto'
 
 const APP = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
 const SHOT = process.env.SCREENSHOT_DIR || '/tmp/shots'
@@ -1996,6 +1997,244 @@ check('editing one of them does not rename the other',
   JSON.stringify(tree().filter((f) => f.includes('Twin note'))) === JSON.stringify(twinFilesBefore),
   JSON.stringify(tree().filter((f) => f.includes('Twin note'))))
 
+// --- attachments ---------------------------------------------------------
+// The mirror folder is still live here on purpose: what an attachment has to
+// survive is the round trip from a paste, through the store, out to a folder
+// somebody else can read.
+log('\n— attachments —')
+
+// A real 1×1 PNG, so "did it load" can be asked of an actual <img> rather
+// than of a status code. Testing the img path rather than fetch() is
+// deliberate: `img-src` in the CSP is what the app relies on, and a fetch
+// would pass or fail on `connect-src`, which nothing in the app uses.
+const DOT_PNG_B64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=='
+const dotBytes = Buffer.from(DOT_PNG_B64, 'base64')
+const dotDigest = createHash('sha256').update(dotBytes).digest('hex')
+
+const stored = await page.evaluate(async (b64) => {
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+  const first = await window.api.files.store(bytes, 'dot.png')
+  const second = await window.api.files.store(bytes, 'a different name.png')
+  return { first, second }
+}, DOT_PNG_B64)
+
+check('a stored file is named by the digest of its bytes',
+  stored.first.name === `${dotDigest}.png`, stored.first.name)
+check('and comes back as the URL a document carries',
+  stored.first.url === `nexus-file://vault/${dotDigest}.png`, stored.first.url)
+check('storing the same bytes again writes nothing',
+  stored.second.deduplicated === true && stored.second.name === stored.first.name,
+  JSON.stringify(stored.second))
+
+// The assertion this whole feature turns on. If the scheme was not registered
+// before app-ready, or the CSP does not name it, the image silently never
+// loads — which is exactly what the app did before any of this existed.
+const loaded = await page.evaluate(
+  (url) =>
+    new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve({ ok: true, width: img.naturalWidth })
+      img.onerror = () => resolve({ ok: false, width: 0 })
+      img.src = url
+    }),
+  stored.first.url
+)
+check('the renderer can actually display it', loaded.ok && loaded.width === 1,
+  JSON.stringify(loaded))
+
+// A URL naming something outside the store must not resolve to a file. The
+// name shape is checked before any path is built, so this is a 404 rather
+// than a read — either way the image does not load.
+const escaped = await page.evaluate(
+  () =>
+    new Promise((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve(true)
+      img.onerror = () => resolve(false)
+      img.src = 'nexus-file://vault/../../../../etc/passwd'
+    })
+)
+check('a URL pointing outside the store serves nothing', escaped === false)
+
+// A refused image is a 404, and Chromium logs one as a console error — which
+// this harness collects and treats as a failure. Exactly one is removed here
+// rather than the collector being loosened: the assertion above is what
+// proves the refusal happened, so a 404 that stops arriving fails there
+// instead of being quietly tolerated everywhere.
+const refusal = errors.findIndex((e) => e.includes('404'))
+check('the refusal reached the renderer as a 404', refusal !== -1, errors.join(' | '))
+if (refusal !== -1) errors.splice(refusal, 1)
+
+// The gesture itself. Everything above goes through the IPC channel directly,
+// which would keep passing if `uploadFile` were never wired into the editor —
+// and an editor with no upload handler is exactly the state this feature
+// existed to fix: BlockNote silently drops a pasted file rather than failing,
+// so nothing throws and nothing logs.
+await nav('Notes')
+await sleep(400)
+// Made through the store rather than through `window.api`: Notes renders the
+// editor for the page the store's list knows about, and a page created behind
+// the store's back is one it cannot show.
+const pastedPage = await page.evaluate(async () => {
+  const created = await window.nexus.store.getState().createPage('note')
+  return created.id
+})
+await sleep(1200)
+check('the page to paste into is the one open',
+  (await page.evaluate(() => window.nexus.store.getState().activePageId)) === pastedPage &&
+    (await page.evaluate(() => !!document.querySelector('.bn-editor'))),
+  await page.evaluate(() => window.nexus.store.getState().activePageId))
+
+const pasteResult = await page.evaluate(async (b64) => {
+  const target = document.querySelector('.bn-editor .bn-block-content')
+  if (!target) return { ok: false, why: 'no editor' }
+  target.click()
+
+  const binary = atob(b64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+  const data = new DataTransfer()
+  data.items.add(new File([bytes], 'pasted.png', { type: 'image/png' }))
+  const editable = document.querySelector('.bn-editor [contenteditable="true"]') ?? target
+  editable.dispatchEvent(
+    new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true })
+  )
+  return { ok: true }
+}, DOT_PNG_B64)
+check('the editor accepted a pasted file', pasteResult.ok, JSON.stringify(pasteResult))
+
+// Generous: the paste runs the upload, then waits out the 600ms autosave.
+await sleep(2500)
+const pastedDoc = await page.evaluate(
+  async (id) => JSON.parse((await window.api.pages.getById(id)).content || '[]'),
+  pastedPage
+)
+const pastedImage = pastedDoc.find((b) => b.type === 'image')
+check('pasting a picture into a page stores it and puts it in the document',
+  !!pastedImage && pastedImage.props?.url === `nexus-file://vault/${dotDigest}.png`,
+  JSON.stringify(pastedDoc).slice(0, 240))
+check('and the paste stored no second copy of bytes already held',
+  (await page.evaluate(() => window.api.files.stats())).count === 1,
+  JSON.stringify(await page.evaluate(() => window.api.files.stats())))
+
+// Out of the way, so the sections below see the vault they were written
+// against — and so the reclaim assertions further down are not looking at a
+// second page holding the same picture.
+//
+// Deselected before it is deleted, and the store refreshed after: an editor
+// left mounted on a page that no longer exists saves into it on the next
+// keystroke, and every later section that types gets a foreign-key error
+// instead of a document.
+await page.evaluate(async (id) => {
+  window.nexus.store.getState().setActivePageId(null)
+  await window.api.pages.hardDelete(id)
+  await window.nexus.store.getState().refresh()
+}, pastedPage)
+await sleep(500)
+
+// Into a page, in a folder, so the Markdown link has to climb back out.
+const attached = await page.evaluate(async (url) => {
+  const folder = await window.api.folders.create('Pictures', null)
+  const p = await window.api.pages.create('note')
+  await window.api.pages.update(p.id, { title: 'Note with a picture' })
+  await window.api.pages.move(p.id, folder.id)
+  await window.api.pages.update(p.id, {
+    content: JSON.stringify([
+      {
+        id: 'img-1',
+        type: 'image',
+        props: { url, caption: 'a single dot', previewWidth: 64 },
+        children: []
+      }
+    ])
+  })
+  return p.id
+}, stored.first.url)
+
+await page.evaluate(() => window.api.mirror.syncNow())
+const withPicture = tree()
+check('the mirror copies the attachment beside the notes',
+  withPicture.includes(`_files/${dotDigest}.png`), JSON.stringify(withPicture.slice(0, 12)))
+check('and the copy is byte-identical',
+  Buffer.compare(readFileSync(join(mirrorDir, '_files', `${dotDigest}.png`)), dotBytes) === 0)
+
+const pictureMd = fileFor('Note with a picture') ?? ''
+check('the Markdown links to the copy, relative to its own file',
+  pictureMd.includes(`![a single dot](../_files/${dotDigest}.png)`),
+  JSON.stringify(pictureMd.slice(-160)))
+
+// A second file nothing points at, so reclaim has something to find and
+// something to leave alone.
+const orphanBytes = Buffer.from('an attachment no page mentions', 'utf-8')
+const orphanDigest = createHash('sha256').update(orphanBytes).digest('hex')
+await page.evaluate(async (text) => {
+  const bytes = new TextEncoder().encode(text)
+  await window.api.files.store(bytes, 'orphan.txt')
+}, 'an attachment no page mentions')
+
+const statsBefore = await page.evaluate(() => window.api.files.stats())
+check('stats counts what nothing points at', statsBefore.unreferencedCount === 1,
+  JSON.stringify(statsBefore))
+check('and counts every stored file, referenced or not', statsBefore.count === 2,
+  JSON.stringify(statsBefore))
+
+// Trashing the page must NOT make its picture collectable: a trashed page is
+// one Restore away from being read again, and a restore that comes back
+// without its images is a silent loss.
+await page.evaluate((id) => window.api.pages.softDelete(id), attached)
+const statsTrashed = await page.evaluate(() => window.api.files.stats())
+check('trashing a page does not orphan its attachment',
+  statsTrashed.unreferencedCount === 1, JSON.stringify(statsTrashed))
+await page.evaluate((id) => window.api.pages.restore(id), attached)
+
+const reclaimed = await page.evaluate(() => window.api.files.reclaim())
+check('reclaiming deletes the unreferenced file', reclaimed.deleted === 1,
+  JSON.stringify(reclaimed))
+check('and reports the bytes it freed', reclaimed.bytes === orphanBytes.length,
+  `${reclaimed.bytes} vs ${orphanBytes.length}`)
+// Asserted through stats rather than by loading the image again: the handler
+// sends `immutable`, so a second <img> would be served out of the renderer's
+// cache and would pass whether or not the file survived.
+const statsAfter = await page.evaluate(() => window.api.files.stats())
+check('the file a page still shows survived, and only it',
+  statsAfter.count === 1 && statsAfter.unreferencedCount === 0, JSON.stringify(statsAfter))
+check('the orphan is gone from disk',
+  !existsSync(join(statsAfter.folder, `${orphanDigest}.txt`)), statsAfter.folder)
+check('the referenced one is still there',
+  existsSync(join(statsAfter.folder, `${dotDigest}.png`)))
+
+// The panel is the only UI the store has, and it is where the one destructive
+// button lives — so it is checked against a store with something in it, not
+// only against the empty state Settings shows on first visit.
+const settingsPanel = (title) =>
+  page.evaluate((t) => {
+    const panel = [...document.querySelectorAll('.nx-settings .nx-panel')].find(
+      (el) => el.querySelector('.nx-panel__title')?.textContent.trim() === t
+    )
+    return panel?.innerText ?? ''
+  }, title)
+
+await nav('Settings')
+await sleep(700)
+const attachmentPanel = await settingsPanel('Attachments')
+check('Settings reports what the store holds', /1 file,/.test(attachmentPanel), attachmentPanel)
+check('and says there is nothing left to reclaim',
+  /Every stored file is still referenced/.test(attachmentPanel), attachmentPanel)
+check('so the delete button is not offered', await page.evaluate(() => {
+  const panel = [...document.querySelectorAll('.nx-settings .nx-panel')].find(
+    (el) => el.querySelector('.nx-panel__title')?.textContent.trim() === 'Attachments'
+  )
+  const button = [...panel.querySelectorAll('.nx-button')].find(
+    (b) => b.textContent.trim() === 'Delete them'
+  )
+  return !!button && button.disabled
+}))
+await page.screenshot({ path: SHOT + '/16-attachments.png' })
+
 await page.evaluate(() => window.api.mirror.setFolder(null))
 rmSync(mirrorDir, { recursive: true, force: true })
 
@@ -2010,9 +2249,15 @@ log('\n— persistence across an editor remount —')
 // keystroke then saved that empty document over the real one.
 await nav('Notes')
 await sleep(700)
+// 'Renamed kinetics', not 'Reaction kinetics': the mirror section renamed this
+// page through `window.api` rather than through the store, so the tree went on
+// showing the old title and this row was found by a name the database had not
+// had for a thousand lines. It passed on a stale cache. Anything here that
+// resyncs the store — as the attachments section now does on its way out —
+// makes the row vanish, which is the assertion finally telling the truth.
 const reopen = await page.evaluate(() => {
   const row = [...document.querySelectorAll('.nx-tree-row--page')].find(
-    (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === 'Reaction kinetics'
+    (r) => r.querySelector('.nx-tree-row__title')?.textContent.trim() === 'Renamed kinetics'
   )
   if (!row) return 'ROW_NOT_FOUND'
   row.click()

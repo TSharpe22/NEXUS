@@ -5,8 +5,9 @@ import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
 import { confirmDialog } from '../design/Confirm'
 import { dayStartLabel } from '@shared/day'
+import { formatBytes } from '@shared/format'
 import { relativeTime } from '../hooks/use-relative-time'
-import type { MirrorConfig, BackupInfo } from '@shared/types'
+import type { MirrorConfig, BackupInfo, AttachmentStats } from '@shared/types'
 import './Settings.css'
 
 const SHORTCUTS: [string, string][] = [
@@ -23,6 +24,8 @@ export function Settings() {
   const [dataDir, setDataDir] = useState('')
   const [backups, setBackups] = useState<BackupInfo | null>(null)
   const [mirror, setMirror] = useState<MirrorConfig | null>(null)
+  const [attachments, setAttachments] = useState<AttachmentStats | null>(null)
+  const [reclaiming, setReclaiming] = useState(false)
   const [syncing, setSyncing] = useState(false)
   const [showRestore, setShowRestore] = useState(false)
   const prefs = useAppStore((s) => s.prefs)
@@ -38,7 +41,40 @@ export function Settings() {
     window.api.stats.getDataDir().then(setDataDir)
     window.api.stats.getBackups().then(setBackups)
     window.api.mirror.getConfig().then(setMirror)
+    window.api.files.stats().then(setAttachments)
   }, [])
+
+  /**
+   * Delete every attachment no page refers to.
+   *
+   * Confirmed, and the count is named in the question: this is the only thing
+   * in Nexus that deletes a file the user did not delete themselves, and the
+   * files it removes are exactly the ones an old snapshot would want back.
+   */
+  const reclaimFiles = async () => {
+    if (!attachments || attachments.unreferencedCount === 0) return
+    const ok = await confirmDialog({
+      title: 'Delete unreferenced files?',
+      message:
+        `${attachments.unreferencedCount} file(s), ${formatBytes(attachments.unreferencedBytes)}. ` +
+        'Restoring a snapshot taken before you removed them would find the pictures gone.',
+      confirmLabel: 'Delete',
+      danger: true
+    })
+    if (!ok) return
+
+    setReclaiming(true)
+    try {
+      const { deleted, bytes } = await window.api.files.reclaim()
+      setAttachments(await window.api.files.stats())
+      toast.success(`Deleted ${deleted} file(s), ${formatBytes(bytes)} reclaimed`)
+    } catch (e) {
+      console.error('[nexus] could not reclaim attachments', e)
+      toast.error('Could not delete the unreferenced files')
+    } finally {
+      setReclaiming(false)
+    }
+  }
 
   const chooseMirrorFolder = async () => {
     const folder = await window.api.dialog.showSelectFolder()
@@ -233,6 +269,44 @@ export function Settings() {
           </div>
           <Button variant="ghost" onClick={importFiles}>
             Import
+          </Button>
+        </div>
+      </Panel>
+
+      <Panel title="Attachments">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Stored files</div>
+            <div className="nx-type-data">
+              {attachments && attachments.count > 0
+                ? `${attachments.count} file${attachments.count === 1 ? '' : 's'}, ${formatBytes(attachments.bytes)}. Pasted images and dropped files live beside the database, named by their contents — the same picture in ten notes is stored once.`
+                : 'Paste or drop an image into a page and it is stored here, beside the database.'}
+            </div>
+            <div className="nx-type-data nx-settings__path">{attachments?.folder ?? '—'}</div>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => attachments && reveal(attachments.folder)}
+            disabled={!attachments || attachments.count === 0}
+          >
+            Open
+          </Button>
+        </div>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Unreferenced files</div>
+            <div className="nx-type-data">
+              {attachments && attachments.unreferencedCount > 0
+                ? `${attachments.unreferencedCount} file${attachments.unreferencedCount === 1 ? '' : 's'} no page points at any more, ${formatBytes(attachments.unreferencedBytes)}. Nothing is deleted on its own: a snapshot taken before you removed the picture still needs it.`
+                : 'Every stored file is still referenced by a page.'}
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            onClick={() => void reclaimFiles()}
+            disabled={reclaiming || !attachments || attachments.unreferencedCount === 0}
+          >
+            {reclaiming ? 'Deleting…' : 'Delete them'}
           </Button>
         </div>
       </Panel>

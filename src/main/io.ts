@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import * as repo from './repo'
 import { parseDocument } from '../shared/document'
+import { ATTACHMENT_URL_PREFIX, attachmentName } from '../shared/attachments'
 import type { Page } from '../shared/types'
 
 interface BlockNoteBlock {
@@ -28,12 +29,51 @@ function inlineToText(content: unknown): string {
     .join('')
 }
 
-function blockToMarkdownLines(block: BlockNoteBlock, depth = 0): string[] {
+/**
+ * Where a Markdown reader should look for an attachment.
+ *
+ * The mirror hands in a path relative to the page's own file, because the
+ * folder it writes is meant to be readable on its own. Nothing passed means
+ * the `nexus-file://` URL is written verbatim: it names the file
+ * unambiguously, so the reference survives even where the bytes do not
+ * travel with it.
+ */
+export type AttachmentHref = (name: string) => string
+
+/** `![caption](href)` for an image, a plain link for anything else. */
+function attachmentLines(block: BlockNoteBlock, href: AttachmentHref): string[] {
+  const url = typeof block.props?.url === 'string' ? block.props.url : ''
+  if (!url) return []
+
+  const name = attachmentName(url)
+  const target = name ? href(name) : url
+  const caption =
+    String(block.props?.caption ?? '').trim() ||
+    String(block.props?.name ?? '').trim() ||
+    (block.type === 'image' ? 'image' : block.type)
+
+  // Spaces in a Markdown target break the link; a stored name cannot contain
+  // one, but a pasted web URL can.
+  const safeTarget = target.includes(' ') ? `<${target}>` : target
+  return [`${block.type === 'image' ? '!' : ''}[${caption}](${safeTarget})`]
+}
+
+function blockToMarkdownLines(
+  block: BlockNoteBlock,
+  depth = 0,
+  href: AttachmentHref = (name) => `${ATTACHMENT_URL_PREFIX}${name}`
+): string[] {
   const indent = '  '.repeat(depth)
   const text = inlineToText(block.content)
   const lines: string[] = []
 
   switch (block.type) {
+    case 'image':
+    case 'video':
+    case 'audio':
+    case 'file':
+      lines.push(...attachmentLines(block, href))
+      break
     case 'heading': {
       const level = (block.props?.level as number) ?? 1
       lines.push(`${'#'.repeat(level)} ${text}`)
@@ -61,14 +101,14 @@ function blockToMarkdownLines(block: BlockNoteBlock, depth = 0): string[] {
   }
 
   for (const child of block.children ?? []) {
-    lines.push(...blockToMarkdownLines(child, depth + 1))
+    lines.push(...blockToMarkdownLines(child, depth + 1, href))
   }
 
   return lines
 }
 
 /** Best-effort markdown export. Lossy for callouts/toggles/tables — documented, not this round's concern. */
-export function exportPageMarkdown(pageId: string): string {
+export function exportPageMarkdown(pageId: string, href?: AttachmentHref): string {
   const page = repo.getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
 
@@ -76,7 +116,7 @@ export function exportPageMarkdown(pageId: string): string {
   // to throw and take the whole vault's export down with it. Every other
   // reader of a document already tolerates this.
   const blocks = parseDocument(page.content) as BlockNoteBlock[]
-  const body = blocks.flatMap((b) => blockToMarkdownLines(b)).join('\n\n')
+  const body = blocks.flatMap((b) => blockToMarkdownLines(b, 0, href)).join('\n\n')
   return `# ${page.title || 'Untitled'}\n\n${body}\n`
 }
 

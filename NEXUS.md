@@ -114,6 +114,26 @@ through one `dayFromToday()` that asks the app for the hour rather than
 assuming 4. **A test that only passes for twenty hours a day is a test that
 lies for four**, and this one had been lying since the setting shipped.
 
+**An attachment is a file, not a row.** A pasted image is written into
+`data/files/` under the SHA-256 of its own bytes and referenced from the
+document by a `nexus-file://vault/<name>` URL. Three things follow, and all
+three are why: the same screenshot in ten notes is one file; a stored file is
+never rewritten, so no backup can copy one mid-write; and a URL can be cached
+forever, because the name is a function of the contents. The alternative was a
+blob column, which keeps `nexus.db` self-contained at the cost of pushing every
+image through the launch snapshot ten times over — the snapshot being the thing
+that made the vault trustworthy in the first place.
+
+**Nothing in the store is ever deleted automatically.** Not on trashing a page,
+not on emptying the trash. `Settings → Attachments` says how much nothing points
+at and deletes it on request, and that is the only code in Nexus that removes a
+file the user did not remove. It is deliberate: a snapshot taken last week
+refers to attachments a sweep today would call unreferenced, and restoring it
+has to find its pictures. `repo.getReferencedAttachments()` scans **every** page
+including the trash for the same reason — a trashed page is one Restore away
+from being read, and reclaiming against a set that skipped it would empty a note
+of its images behind your back.
+
 **The inbox is a page, not a table.** One ordinary page, pointed at by the
 `inbox.pageId` setting, holding checkbox blocks like any other page. That
 means a captured task is already in `tasks`, already searchable, already
@@ -338,9 +358,19 @@ the rotation is exercised directly: `npm run check:backup`.
 
 This exists because **the mirror is not a backup.** It is one-way and lossy on
 the way out — a callout or a toggle comes back as a plain paragraph and a
-table as nothing at all — so the database file is the only complete copy of a
-vault. Before this, the only copies ever taken were the ones a destructive
-migration made for itself.
+table as nothing at all — so the database file is the only complete copy of
+everything you have written. Before this, the only copies ever taken were the
+ones a destructive migration made for itself.
+
+**Since attachments, the database is no longer the whole vault.** The vault is
+`nexus.db` *plus* `data/files/`, and the snapshot covers the first. That is not
+an oversight: attachments are content-addressed and never rewritten or
+auto-deleted, so a snapshot cannot go stale against them — the file a
+month-old snapshot names is still there, byte for byte, unless someone
+deliberately reclaimed it. What it does mean is that **a full backup is a copy
+of `data/`, not of the database inside it**, and that reclaiming space is the
+one action that can make an old snapshot incomplete. Settings says so where the
+button is.
 
 Three things about it are load-bearing and easy to undo by accident:
 
@@ -405,6 +435,19 @@ per page with the page's tags and typed properties as YAML frontmatter, plus
 a `_nexus-index.md` table of contents. Deliberately **one-way**: edits made to
 those files are never read back. The point is that any assistant, editor or
 backup tool can read the vault as ordinary files.
+
+**Attachments are copied in, not linked to.** A page's images land in
+`<mirror>/_files/<name>`, and the Markdown links to them relative to the page's
+own file — `../_files/…` for a page one folder deep, because every Markdown
+reader resolves a link relative to the document. Copying costs a second set of
+bytes and buys the thing the mirror is for: a folder that is still complete
+after being moved, synced to another machine, or committed to git. The copies
+go in the manifest under a ` file:` key prefix (a UUID cannot produce one), so
+the rule that the mirror only deletes files it recorded writing still holds.
+On a scoped sync the previous set of copies is carried forward untouched — the
+pages that were not re-read might still be using any of it — so an image removed
+from a note stays copied until the next full pass. Wasted bytes for a while,
+never a missing picture.
 
 `scheduleSync(pageId?)` runs after every mutation, debounced. **The argument
 is the whole performance contract**: naming the page a mutation touched keeps
@@ -546,7 +589,10 @@ Six sections, each a thin view over the same page/property model:
   saves on one page coalesce into a single "edited" entry (see
   `EDIT_COALESCE_MINUTES` in `repo.ts`) so typing doesn't bury every other
   event.
-- **Settings** — data folder location, import/export, keyboard shortcuts.
+- **Settings** — data folder location, snapshots and restore, attachments
+  (what is stored, what nothing points at, and the one button that deletes
+  it), the day-start hour, the vault mirror, import/export, keyboard
+  shortcuts.
 
 This mapping is a starting structure, not locked — renaming or regrouping a
 view doesn't touch the data model underneath it.

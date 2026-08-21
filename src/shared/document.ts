@@ -8,6 +8,7 @@
  * and a second copy of this parsing is exactly how the two drift apart.
  */
 
+import { attachmentName } from './attachments'
 import type { LinkTarget } from './types'
 
 interface DocumentNode {
@@ -265,4 +266,30 @@ export function extractLinkTargets(blocks: unknown[]): LinkTarget[] {
   })
 
   return Array.from(targets, ([targetPageId, context]) => ({ targetPageId, context }))
+}
+
+/**
+ * Every attachment a document references, by stored name.
+ *
+ * Read off `props.url`, which is where BlockNote's `image`, `video`, `audio`
+ * and `file` blocks all keep theirs — one rule rather than a list of block
+ * types, so a block type added later is covered without this being touched.
+ * URLs on other schemes are skipped: pasting the address of an image on the
+ * web is not an attachment and there is nothing of ours to point at.
+ *
+ * This is what makes reclaiming space safe. Every caller of it — the mirror
+ * deciding what to copy, Settings counting what nothing points at — has to
+ * agree exactly on which names are still in use, and a second copy of this
+ * walk in either of them is how a sweep ends up deleting a picture that a
+ * page is still showing.
+ */
+export function extractAttachmentNames(blocks: unknown[]): string[] {
+  const names = new Set<string>()
+
+  walk(blocks, (block) => {
+    const name = attachmentName(block.props?.url)
+    if (name) names.add(name)
+  })
+
+  return [...names]
 }

@@ -5,6 +5,7 @@ import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
 import { getDataDir, getBackupInfo, getDbPath, closeDatabase, initDatabase } from './database'
+import * as files from './files'
 import { restoreBackup } from './backup'
 import { flushAllRenderers } from './flush'
 import type { PropertyType, CaptureTarget } from '../shared/types'
@@ -674,6 +675,42 @@ export function registerIpcHandlers(): void {
       return problem || null
     } catch (e) {
       rethrow('shell:openPath', e)
+    }
+  })
+
+  /**
+   * Store bytes the renderer has just been handed by a paste or a drop.
+   *
+   * The bytes cross IPC once and are written in main, rather than the renderer
+   * writing them itself: the store's rules — the digest, the atomic rename,
+   * the name shape — live in one process, and a renderer that could write into
+   * `data/files` could write a name that the protocol handler would then have
+   * to be trusted to refuse.
+   */
+  ipcMain.handle('files:store', (_, bytes: Uint8Array, originalName: string) => {
+    try {
+      return files.storeAttachment(getDataDir(), bytes, originalName)
+    } catch (e) {
+      rethrow('files:store', e)
+    }
+  })
+  ipcMain.handle('files:stats', () => {
+    try {
+      return files.stats(getDataDir(), repo.getReferencedAttachments())
+    } catch (e) {
+      rethrow('files:stats', e)
+    }
+  })
+  ipcMain.handle('files:reclaim', () => {
+    try {
+      // The set is recomputed here rather than taken from the caller: a stats
+      // call from a minute ago is a set that has not seen the page written
+      // since, and reclaiming against a stale set deletes pictures that are on
+      // screen. It is a full scan, and this is the one place it is worth it.
+      const { deleted, bytes } = files.reclaim(getDataDir(), repo.getReferencedAttachments())
+      return { deleted: deleted.length, bytes }
+    } catch (e) {
+      rethrow('files:reclaim', e)
     }
   })
 

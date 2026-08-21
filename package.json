@@ -12,11 +12,12 @@
     "check:migration": "ELECTRON_RUN_AS_NODE=1 electron scripts/check-migration.mjs",
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "check:app": "electron-vite build && xvfb-run -a node scripts/check-app.mjs",
-    "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:app",
+    "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:files && npm run check:app",
     "check:backup": "node scripts/check-backup.mjs",
     "dist": "electron-vite build && electron-builder --linux",
     "dist:dir": "electron-vite build && electron-builder --linux dir",
-    "update": "npm run dist && sudo dpkg -i dist/nexus_*_amd64.deb"
+    "update": "npm run dist && sudo dpkg -i dist/nexus_*_amd64.deb",
+    "check:files": "node scripts/check-files.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.24.2",

@@ -270,6 +270,26 @@ export interface MirrorResult {
   total: number
 }
 
+/** One file in the attachment store, as the renderer sees it. */
+export interface StoredAttachment {
+  /** `<sha256>.<ext>` — the name on disk and in the URL. */
+  name: string
+  /** `nexus-file://vault/<name>`, which is what goes into the document. */
+  url: string
+  size: number
+  /** True when these exact bytes were already stored, so nothing was written. */
+  deduplicated: boolean
+}
+
+/** What Settings shows about the attachment store. */
+export interface AttachmentStats {
+  folder: string
+  count: number
+  bytes: number
+  unreferencedCount: number
+  unreferencedBytes: number
+}
+
 export interface NexusAPI {
   /**
    * One-way export of the vault to a Markdown tree on disk, so any assistant,
@@ -472,6 +492,18 @@ export interface NexusAPI {
   shell: {
     /** Resolves to null on success, or a message describing why it did not open. */
     openPath(target: string): Promise<string | null>
+  }
+  files: {
+    /**
+     * Store bytes pasted or dropped into a page, and resolve with the URL the
+     * document should carry. The same bytes stored twice give the same URL and
+     * write nothing the second time.
+     */
+    store(bytes: Uint8Array, originalName: string): Promise<StoredAttachment>
+    /** What the store holds, and how much of it nothing points at any more. */
+    stats(): Promise<AttachmentStats>
+    /** Delete every attachment no page refers to. Only ever on request. */
+    reclaim(): Promise<{ deleted: number; bytes: number }>
   }
   io: {
     exportPageMarkdown(pageId: string): Promise<string>
