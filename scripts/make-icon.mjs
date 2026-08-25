@@ -2,12 +2,12 @@
  * Regenerates build/icon.png — the desktop-entry icon electron-builder packs
  * into the AppImage and the .deb.
  *
- * The icon was originally drawn by hand at 512px and its colours were taken
- * from DESIGN.md, which still carries the pre-restyle palette. The app itself
- * moved to the current one in `src/renderer/design/tokens.css`, so the icon on
- * the desktop drifted a shade away from the app it launches. Committing the
- * drawing as a script means the next palette change is `npm run icon`, not an
- * archaeology session.
+ * The icon was originally drawn by hand at 512px, and every colour change since
+ * has been a pixel remap of that one bitmap — which is why its neutrals still
+ * traced DESIGN.md's pre-restyle greys through the emerald recolour, a shade
+ * off the app they launch. Committing the drawing as a script means the next
+ * palette change is `npm run icon` against the tokens, not another remap of a
+ * remap.
  *
  * The colours below are the three tokens the mark uses, copied from tokens.css.
  * No dependencies: rasterised with 4x4 supersampling and written out through
@@ -23,9 +23,9 @@ const SIZE = 512;
 const SAMPLES = 4; // per axis
 
 // --- palette (src/renderer/design/tokens.css) ---------------------------
-const BG = [0x0f, 0x10, 0x13]; // --nx-bg          — the tile
-const SUNKEN = [0x0b, 0x0c, 0x0e]; // --nx-surface-sunken — inside the diamond
-const ACCENT = [0xd4, 0xa8, 0x6a]; // --nx-accent      — the mark itself
+const BG = [0x0f, 0x11, 0x0f]; // --nx-bg             — the tile
+const SUNKEN = [0x0b, 0x0c, 0x0b]; // --nx-surface-sunken — inside the diamond
+const ACCENT = [0x69, 0xb4, 0x8a]; // --nx-accent         — the mark itself
 
 // --- geometry (measured off the original 512px icon) --------------------
 const RADIUS = 104; // rounded-square corner
