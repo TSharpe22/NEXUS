@@ -473,3 +473,11 @@ button.nx-home__entry:hover {
   font-family: var(--nx-font-mono);
   color: var(--nx-text-muted);
 }
+
+/* Shown only while the wall date and the logical day disagree — between
+   midnight and the day-start hour. It is the one place the setting explains
+   itself, so it is dim but not hidden. */
+.nx-home__logical {
+  margin-top: 2px;
+  color: var(--nx-text-dim);
+}

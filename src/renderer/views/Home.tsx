@@ -10,7 +10,8 @@ import type {
 } from '@shared/types'
 import { STALE_DAYS, dayOfYear, fromISO, isOlderThan, isoWeek } from '@shared/date-range'
 import { documentPreview } from '@shared/document'
-import { useAppStore, useToday } from '../store/app-store'
+import { useAppStore, useToday, useWallToday } from '../store/app-store'
+import { dayStartLabel } from '@shared/day'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
@@ -464,11 +465,16 @@ function Stat({ value, label }: { value: string; label: string }) {
 // ------------------------------------------------------------------
 
 function DayHeader() {
-  // The logical day, so the header agrees with everything under it: at 1am
-  // this still reads yesterday, which is the entry the panel below is showing.
-  // Recomputed per render rather than held in state — a date cached at mount
-  // is wrong for anyone who leaves the app open overnight.
-  const now = fromISO(useToday())
+  // The wall clock, not the logical day. This used to render the logical day
+  // "so the header agrees with everything under it", which meant moving the
+  // day-start hour appeared to change the app's clock: set it to 6pm at 5pm
+  // and the header read yesterday, with nothing on screen admitting why. The
+  // day-start hour decides where a note is filed. It does not decide what day
+  // it is, and the one line below is where the difference gets explained.
+  const wall = useWallToday()
+  const logical = useToday()
+  const dayStartHour = useAppStore((s) => s.prefs.dayStartHour)
+  const now = fromISO(wall)
   const { day, total } = dayOfYear(now)
   const quarter = Math.floor(now.getMonth() / 3) + 1
 
@@ -480,6 +486,13 @@ function DayHeader() {
       <div className="nx-type-data">
         week {isoWeek(now)} · Q{quarter} · {day} / {total}
       </div>
+      {logical !== wall && (
+        <div className="nx-type-data nx-home__logical">
+          still filing under{' '}
+          {fromISO(logical).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+          {' · '}the day starts at {dayStartLabel(dayStartHour)}
+        </div>
+      )}
     </div>
   )
 }
