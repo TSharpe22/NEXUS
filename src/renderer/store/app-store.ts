@@ -404,11 +404,25 @@ export const useAppStore = create<AppState>((set, get) => ({
     return result
   },
 
+  /**
+   * A content-only patch leaves `pages` alone, and that is the whole point of
+   * the branch.
+   *
+   * Every autosave calls this, so rebuilding the array unconditionally handed
+   * a new identity to everything selecting `pages` — the folder tree, Home,
+   * the command palette — every 600ms while a sentence was being typed. Worse,
+   * it handed the open page a new object, which walked down through
+   * `activeEntry` into a fresh `page` prop for the editor and the properties
+   * panel: the save the typing triggered re-rendered the editor doing the
+   * typing. Nothing about a body change is visible in a list that does not
+   * carry bodies.
+   */
   patchPage: (id, patch) =>
     set((state) => {
       const { content, ...rest } = patch
+      const touchesList = Object.keys(rest).length > 0
       return {
-        pages: state.pages.map((p) => (p.id === id ? { ...p, ...rest } : p)),
+        pages: touchesList ? state.pages.map((p) => (p.id === id ? { ...p, ...rest } : p)) : state.pages,
         pageContent:
           content === undefined ? state.pageContent : { ...state.pageContent, [id]: content }
       }

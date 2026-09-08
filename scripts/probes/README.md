@@ -14,8 +14,10 @@ Build first (`npm run build`), then:
 | `quit.mjs` | Does an edit typed inside the autosave debounce survive closing the window, and `app.quit()`? Does a second launch get its own window on the same vault? |
 | `scale.mjs` | Frame timings for Home and the capture box at a seeded vault. |
 | `graph.mjs` | Does the graph settle, fit its panel, and stay interactive? Prints the drawn extent against the panel. |
+| `typing.mjs` | What does a keystroke cost in a vault that is actually in use? Long tasks and dropped frames through a typing burst. |
 | `blocks.mjs` | Does the block menu open where you are typing? Every block type, empty and with a word in it. This is the reproduction for "blocks respond poorly". |
 | `roundtrip.mjs` | Export → import: block types, ids, checkbox state, task projection, filename collisions. |
 
-`SEED_PAGES` sets the vault size (default 1500 for `scale`, 400 for `graph`).
-`SCREENSHOT_DIR` sets where shots land.
+`SEED_PAGES` sets the vault size (default 400 for `graph` and `typing`).
+`KEYSTROKES` is `typing.mjs`'s burst length. `SCREENSHOT_DIR` sets where shots
+land.

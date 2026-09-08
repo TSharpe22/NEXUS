@@ -89,6 +89,14 @@ driver does dozens of times a day.
   could not find a sentence you had written. It now runs both matchers — the
   index first, with the excerpt it matched on, then the fuzzy titles the
   index's whole-word matching passes over.
+- **The autosave stopped re-rendering the editor doing the typing.**
+  `patchPage` rebuilt the `pages` array on every content save, so the save your
+  typing triggered handed a new object to the folder tree, the properties panel
+  and the editor, 600ms after every pause. Measured on a 1500-page vault with
+  `scripts/probes/typing.mjs`: three dropped frames in a twelve-second burst,
+  worst 117ms, down to none, worst 17ms. Small vaults never felt it, which is
+  why this was not the answer to Wave 1 — but it was real, and it was the
+  autosave feeding itself.
 
 ## Wave 2 — Phase 1 (schema v11)
 

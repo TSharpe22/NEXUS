@@ -27,7 +27,19 @@ export function Notes() {
   const folders = useAppStore((s) => s.folders)
   const loaded = useAppStore((s) => s.loaded)
   const activePageId = useAppStore((s) => s.activePageId)
-  const pageContent = useAppStore((s) => s.pageContent)
+  /**
+   * Whether the open page's body has arrived — not the body itself.
+   *
+   * Selecting `pageContent` subscribed this view to a map that every autosave
+   * rewrites, so typing re-rendered the folder tree, the properties panel and
+   * the editor on the beat of its own saves. The body is read off the store
+   * without subscribing (below): the editor mounts with it once and is the
+   * source of every version after, so handing it back a newer string does
+   * nothing but cost a render.
+   */
+  const contentReady = useAppStore(
+    (s) => activePageId !== null && s.pageContent[activePageId] !== undefined
+  )
   const activeTagFilter = useAppStore((s) => s.activeTagFilter)
   const setActivePageId = useAppStore((s) => s.setActivePageId)
   const createPage = useAppStore((s) => s.createPage)
@@ -64,10 +76,10 @@ export function Notes() {
    * the first keystroke save that emptiness over the real page.
    */
   const activePage: Page | null = useMemo(() => {
-    if (!activeEntry) return null
-    const content = pageContent[activeEntry.id]
+    if (!activeEntry || !contentReady) return null
+    const content = useAppStore.getState().pageContent[activeEntry.id]
     return content === undefined ? null : { ...activeEntry, content }
-  }, [activeEntry, pageContent])
+  }, [activeEntry, contentReady])
 
   const isTrashed = !!activeEntry && trashed.some((p) => p.id === activeEntry.id)
 
