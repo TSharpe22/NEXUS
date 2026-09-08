@@ -529,7 +529,7 @@ function tickToday(): void {
   if (now !== current) useAppStore.setState({ today: now })
 }
 
-// The only timer in the renderer, and it is meant to stay the only one:
+// The only interval in the renderer, and it is meant to stay the only one:
 // everything else here moves when the user or the main process moves it.
 setInterval(tickToday, TICK_MS)
 // An interval does not fire while the machine is asleep, and a laptop closed
