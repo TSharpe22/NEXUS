@@ -47,13 +47,35 @@ bug: the app had features with no reachable way to use them.
   wall date; the logical day is named in a line underneath, but only during
   the hours the two actually disagree.
 
-## Wave 1 — the editor
+## Wave 1 — the editor (shipped)
 
-**Open, and blocked on a reproduction.** "Blocks respond poorly" is reported
-from daily use and is not yet diagnosed. The documented suspect — `@tiptap/*`
-resolving off the 2.11.5 pin, which makes custom blocks render but silently
-refuse text — has been **eliminated**: the installed tree resolves 2.11.5 on
-every path. Needs: which block type, what was typed, what happened instead.
+**Diagnosed and fixed.** "Blocks respond poorly" was one specific thing, and
+it is the reason the report was so hard to put into words: it was not slow and
+it did not break — a menu simply did not come when called, in two blocks out
+of seven, and only after you had started writing in them.
+
+Typing `/` in a `callout` or a `toggle` that already had text inserted a
+literal slash and opened nothing. So did `[[`, which meant a callout was a
+block you could not link out of. Empty, both blocks behaved; that is what made
+it feel intermittent rather than broken.
+
+ProseMirror routes a typed character through `handleTextInput`, which is the
+only thing BlockNote's suggestion plugin listens to. For the built-in blocks it
+always does. For a custom React block spec it stops once the block has content,
+and there is nothing thrown and nothing logged when it does. `Editor.tsx` now
+watches for the two trigger characters in those two block types and calls
+`editor.openSuggestionMenu` — the editor's own public opener, the one the side
+menu's "+" button uses — rather than reaching into the plugin. This build
+exists because the last one died fighting the editor's internals; the fix had
+to be something BlockNote offers on purpose.
+
+`scripts/probes/blocks.mjs` is the reproduction that was missing, and asks
+every block type the same question twice: empty, and with a word in it. Every
+row reads `true / true` now; callout and toggle read `true / false` before.
+`check-app.mjs` asserts the same thing so it cannot come back.
+
+**The suspect that was eliminated stays eliminated.** `@tiptap/*` resolves
+2.11.5 on every path; the pin was not the problem.
 
 ## Wave 2 — Phase 1 (schema v11)
 

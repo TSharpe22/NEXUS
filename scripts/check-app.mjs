@@ -123,6 +123,49 @@ check(
   (callout?.content ?? []).map((c) => c.text).join('') === 'Watch the units.',
   JSON.stringify(doc.map((b) => [b.type, (b.content ?? []).map((c) => c.text).join('')]))
 )
+// The menus have to be reachable from *inside* the block, not only from an
+// empty one. ProseMirror stops routing typed characters through
+// `handleTextInput` — the only thing BlockNote's suggestion plugin listens to
+// — once a custom React block spec has content, so a callout with a word in it
+// swallowed "/" and "[[" as literal text: no menu, no error, nothing logged.
+// This was "blocks respond poorly", and `scripts/probes/blocks.mjs` walks
+// every block type through the same question.
+const menuShowing = () =>
+  page.evaluate(() => !!document.querySelector('[class*="bn-suggestion-menu"], [role="listbox"]'))
+
+// A space first, so what follows is typed into a callout that already has
+// text — which is the whole case. Each menu is closed by backspacing its
+// trigger away rather than with Escape: moving the caret back past the trigger
+// is what the plugin itself treats as "closed", and it leaves the block clean
+// for the next one.
+await page.keyboard.type(' ', { delay: 20 })
+await sleep(200)
+
+// With a query, not bare: this early in the suite the only live page is the
+// one being edited, and a picker excludes the page it is on — so an empty
+// query has nothing to draw and the menu renders nothing at all. "zz" matches
+// no title, which leaves the "create a page called zz" row, and a row is what
+// proves the menu opened.
+await page.keyboard.type('[[zz', { delay: 60 })
+await sleep(900)
+check('a [[link]] can be started from inside a callout that already has text',
+  await page.evaluate(() => !!document.querySelector('.nx-link-menu')))
+for (let i = 0; i < 4; i++) await page.keyboard.press('Backspace')
+await sleep(400)
+
+await page.keyboard.type('/', { delay: 40 })
+await sleep(800)
+check('and the block menu opens there too', await menuShowing())
+await page.keyboard.press('Backspace')
+await sleep(200)
+await page.keyboard.press('Backspace')
+await sleep(900)
+
+doc = await firstDoc()
+check('the callout is back to the text the rest of the suite reads',
+  (doc.find((b) => b.type === 'callout')?.content ?? []).map((c) => c.text).join('') === 'Watch the units.',
+  JSON.stringify(doc.map((b) => [b.type, (b.content ?? []).map((c) => c.text).join('')])))
+
 await page.screenshot({ path: SHOT + '/04-callout.png' })
 
 await page.keyboard.press('ArrowDown')
