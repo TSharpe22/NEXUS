@@ -89,6 +89,13 @@ driver does dozens of times a day.
   could not find a sentence you had written. It now runs both matchers — the
   index first, with the excerpt it matched on, then the fuzzy titles the
   index's whole-word matching passes over.
+- **Browsing by type came back.** Tables owned two things and only one of them
+  was re-homed when it left: type *management* went to Settings, and type
+  *browsing* went nowhere. For a fortnight there was no way to ask "show me
+  every Book", which is the question a type exists to answer. `TypeFilter` is
+  a rail of type chips beside the tag chips, over the page list the store
+  already holds — no new query, and nothing that Phase 4's view engine has to
+  keep.
 - **The autosave stopped re-rendering the editor doing the typing.**
   `patchPage` rebuilt the `pages` array on every content save, so the save your
   typing triggered handed a new object to the folder tree, the properties panel

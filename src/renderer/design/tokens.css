@@ -351,3 +351,18 @@ button {
   font-size: 11.5px;
   line-height: 16px;
 }
+
+/* A type chip. Neutral rather than one of the four semantic colours: a type is
+   not a tag, and the two sit on the same rail — colour is what tells them
+   apart at a glance. The accent fill on selection is shared with tags, since
+   "this is filtering the list" means the same thing on either rail. */
+.nx-tag-chip--type {
+  --nx-tag-color: var(--nx-border-2);
+  --nx-tag-tint: transparent;
+  padding-right: 8px;
+}
+
+.nx-tag-chip--type.is-active {
+  background: var(--nx-accent);
+  border-color: var(--nx-accent);
+}

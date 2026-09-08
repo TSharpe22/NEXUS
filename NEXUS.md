@@ -79,8 +79,12 @@ The current app is `src/main` + `src/renderer` with `views/`, `design/` and
   (`View` in `store/app-store.ts`) match what's on screen. Tables and Activity
   were removed: Tables is scheduled for demolition by `PHASES.md` phase 4,
   which rebuilds it as a view over the view engine, and polishing a screen due
-  to be replaced is work thrown away twice. What Tables uniquely owned — type
-  management — moved to Settings rather than leaving with it.
+  to be replaced is work thrown away twice. Tables owned two things, and both
+  had to be re-homed rather than leave with it: **type management** went to
+  Settings, and **browsing by type** went to the Notes list as a rail of type
+  chips beside the tag chips (`TypeFilter`). The second was missed the first
+  time round, and for a fortnight there was no way left in the app to ask
+  "show me every Book" — which is the question a type exists to answer.
 - **State**: Zustand. No router — a single `activeView` string switches
   between the four nav sections.
 - **Fonts**: IBM Plex Mono + Chakra Petch, self-hosted via `@fontsource`
@@ -302,15 +306,14 @@ substitutes for the other.
   A type's actual schema. Rows are added by the user via "+ Add property"
   on a page (Notes) — the moment you define a property on one page of a
   type, every other page of that type gets a slot for it. The architecture
-  is created by using the app, not decided in advance by the codebase.
-  Tables is a generic browser over this: pick a type, see a table whose
-  columns are exactly that type's property_definitions — it is not a
-  separate task subsystem with hardcoded status values.
+  is created by using the app, not decided in advance by the codebase. This
+  is a schema the user grows, not a task subsystem with hardcoded status
+  values.
   `key` is a slug of the name and is what values are stored against, so
   renaming a property is display-only and never strands what pages hold; a
   second name that slugifies onto an existing key is refused rather than
   silently retyping the first. `sort_order` is the panel order, and drives
-  the Tables column order and the mirror's frontmatter order.
+  the mirror's frontmatter order.
 
 ### Migrations
 
@@ -406,8 +409,8 @@ renderer is how the two would drift.
 
 The renderer's store holds `pages` as `PageListItem` — every column of a page
 **except** `content`. The body is by far the largest column and almost nothing
-outside the editor reads it: the sidebar, the command palette, Tables and Home
-all want a title, a type and a folder. `refresh()` runs after most mutations,
+outside the editor reads it: the sidebar, the command palette and Home all
+want a title, a type and a folder. `refresh()` runs after most mutations,
 so shipping every page's whole document across IPC each time was what made
 small actions — adding a tag, renaming a folder — feel chunky. At 1500 pages
 that payload was 14.3 MB; it is now 0.33 MB.
@@ -634,7 +637,10 @@ Six sections, each a thin view over the same page/property model:
   local time (writing at 11pm would otherwise file under tomorrow).
   Creating a page picks (or creates) a type inline; the list is a folder tree (drag a page or a folder
   onto a folder to move it, expansion persists across restarts), filterable
-  by the tag chips above it and by search — searching also matches folder
+  by the type chips and the tag chips above it and by search — the two chip
+  rails are separate axes on purpose: a type is what a page *is*, a tag is
+  what it is about, and either alone answers a question the other cannot.
+  Searching also matches folder
   names, and forces open any folder holding a match so nothing hides behind
   a collapsed ancestor. Trash stays a flat list. Opening a page shows the
   BlockNote editor in a centred reading column with its tag chips under the

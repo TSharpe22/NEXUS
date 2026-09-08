@@ -1351,6 +1351,79 @@ await page.evaluate(() => {
 })
 await sleep(400)
 
+// --------------------------------------------------------- type filter
+log('\n— browsing by type —')
+// Tables was where "show me every Book" was asked, and it left with Phase 4
+// scheduled to replace it. Type management moved to Settings; this is the
+// other half of what Tables owned, put back on the list the pages are already
+// on. The fixture is built and torn down here: nothing else in the suite has
+// two types in use at once, and the rail is deliberately absent until one
+// does — a single chip that matches every page is not a filter.
+const typeFixture = await page.evaluate(async () => {
+  const type = await window.api.types.create('Book', null)
+  const made = []
+  for (const title of ['The Beginning of Infinity', 'Thinking in Systems']) {
+    const p = await window.api.pages.create(type.id)
+    await window.api.pages.update(p.id, { title })
+    made.push(p.id)
+  }
+  await window.nexus.store.getState().refresh()
+  return { typeId: type.id, pageIds: made, total: window.nexus.store.getState().pages.length }
+})
+await sleep(600)
+
+const typeChips = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')].map((el) =>
+    el.textContent.trim()))
+check('type chips appear once a second type is in use', typeChips.length >= 2, JSON.stringify(typeChips))
+check('and one of them is the type just made', typeChips.some((t) => t.startsWith('Book')),
+  JSON.stringify(typeChips))
+
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')]
+    .find((el) => el.textContent.trim().startsWith('Book'))
+    ?.click()
+})
+await sleep(600)
+
+const narrowed = await page.evaluate(() => {
+  const s = window.nexus.store.getState()
+  const byTitle = new Map(s.pages.map((p) => [p.title || 'Untitled', p.type_id]))
+  const shown = [...document.querySelectorAll('.nx-tree-row__title')].map((t) => t.textContent.trim())
+  return { shown, types: shown.map((t) => byTitle.get(t) ?? null), filter: s.activeTypeFilter }
+})
+check('clicking a type chip filters the list to it', narrowed.filter.includes(typeFixture.typeId),
+  JSON.stringify(narrowed.filter))
+check('every row left is of that type',
+  narrowed.shown.length === 2 && narrowed.types.every((t) => t === typeFixture.typeId),
+  JSON.stringify(narrowed.shown))
+check('and the list is shorter than the vault', narrowed.shown.length < typeFixture.total,
+  `${narrowed.shown.length} of ${typeFixture.total}`)
+
+await page.evaluate(() => window.nexus.store.getState().clearTypeFilter())
+await sleep(400)
+const restored = await page.evaluate(() =>
+  document.querySelectorAll('.nx-tree-row__title').length)
+check('clearing the filter puts the list back', restored > narrowed.shown.length,
+  `${restored} rows`)
+
+// A type deleted while it was filtering must not go on filtering from a state
+// nothing can clear — `refresh` drops ids that no longer exist.
+await page.evaluate(async (fx) => {
+  const s = window.nexus.store.getState()
+  s.toggleTypeFilter(fx.typeId)
+  for (const id of fx.pageIds) await window.api.pages.hardDelete(id)
+  await window.api.types.remove(fx.typeId)
+  await s.refresh()
+}, typeFixture)
+await sleep(600)
+check('a deleted type stops filtering the list',
+  (await page.evaluate(() => window.nexus.store.getState().activeTypeFilter.length)) === 0)
+check('and its chip is gone with it',
+  !(await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')].some((el) =>
+      el.textContent.trim().startsWith('Book')))))
+
 log('\n— types live in Settings —')
 // Tables and Activity are gone. Types used to be managed from two places,
 // neither of which said "types": created from a magic entry in the Notes type

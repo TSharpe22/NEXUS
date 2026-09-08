@@ -13,6 +13,7 @@ import { relativeTime } from '../hooks/use-relative-time'
 import { journalDateLabel } from '@shared/journal-date'
 import { FolderTree } from './FolderTree'
 import { TagFilter } from './TagFilter'
+import { TypeFilter } from './TypeFilter'
 import './Notes.css'
 
 export function Notes() {
@@ -41,6 +42,7 @@ export function Notes() {
     (s) => activePageId !== null && s.pageContent[activePageId] !== undefined
   )
   const activeTagFilter = useAppStore((s) => s.activeTagFilter)
+  const activeTypeFilter = useAppStore((s) => s.activeTypeFilter)
   const setActivePageId = useAppStore((s) => s.setActivePageId)
   const createPage = useAppStore((s) => s.createPage)
   const duplicatePage = useAppStore((s) => s.duplicatePage)
@@ -134,6 +136,14 @@ export function Notes() {
       source = source.filter((p) => allowed.has(p.id))
     }
 
+    // Types narrow the same list rather than opening a screen of their own —
+    // "every Book" and "every Book tagged reading" are the same question asked
+    // with one more chip, not two different views.
+    if (!showTrash && activeTypeFilter.length > 0) {
+      const allowed = new Set(activeTypeFilter)
+      source = source.filter((p) => (p.type_id ? allowed.has(p.type_id) : false))
+    }
+
     const q = query.trim().toLowerCase()
     if (!q) return source
 
@@ -152,9 +162,10 @@ export function Notes() {
     return source.filter(
       (p) => matchedIds.has(p.id) || (p.folder_id ? matchingFolderIds.has(p.folder_id) : false)
     )
-  }, [showTrash, trashed, pages, query, taggedPageIds, folders, searchResults])
+  }, [showTrash, trashed, pages, query, taggedPageIds, activeTypeFilter, folders, searchResults])
 
-  const filtering = query.trim().length > 0 || activeTagFilter.length > 0
+  const filtering =
+    query.trim().length > 0 || activeTagFilter.length > 0 || activeTypeFilter.length > 0
 
   // The same helper the entry's title is built from, so the button and the
   // page it opens can never disagree about today's date.
@@ -294,6 +305,7 @@ export function Notes() {
             </div>
           )}
 
+          {!showTrash && <TypeFilter />}
           {!showTrash && <TagFilter />}
         </div>
 

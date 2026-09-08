@@ -73,6 +73,15 @@ interface AppState {
   expandedFolderIds: string[]
   /** Tag ids the Notes list is filtered by. A page matches if it has any of them. */
   activeTagFilter: string[]
+  /**
+   * Type ids the Notes list is filtered by; any of them matches.
+   *
+   * A separate axis from tags, and it exists because removing Tables took the
+   * only way to ask "show me every Book" with it. That question is what a type
+   * is *for*, and the Notes list already holds every page and its `type_id` —
+   * it was one filter short of answering it.
+   */
+  activeTypeFilter: string[]
   /** Tags on the page currently open in the editor. */
   activePageTags: Tag[]
 
@@ -170,6 +179,8 @@ interface AppState {
   deleteTag: (id: string) => Promise<void>
   toggleTagFilter: (tagId: string) => void
   clearTagFilter: () => void
+  toggleTypeFilter: (typeId: string) => void
+  clearTypeFilter: () => void
 }
 
 /** How long "saved" stays on screen before the indicator goes quiet again. */
@@ -204,6 +215,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   expandedFolderIds: readExpandedFolders(),
   activeTagFilter: [],
+  activeTypeFilter: [],
   activePageTags: [],
 
   saveStatus: 'idle',
@@ -297,7 +309,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       prefs,
       loaded: true,
       // Drop filters pointing at tags that no longer exist.
-      activeTagFilter: state.activeTagFilter.filter((id) => tags.some((t) => t.id === id))
+      activeTagFilter: state.activeTagFilter.filter((id) => tags.some((t) => t.id === id)),
+      // Same for a type deleted while it was filtering the list.
+      activeTypeFilter: state.activeTypeFilter.filter((id) => types.some((t) => t.id === id))
     }))
     // `prefs` has just come off disk, and the hour it carries may not be the
     // default the store started with — the first boot after this line runs is
@@ -517,7 +531,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         : [...state.activeTagFilter, tagId]
     })),
 
-  clearTagFilter: () => set({ activeTagFilter: [] })
+  clearTagFilter: () => set({ activeTagFilter: [] }),
+
+  toggleTypeFilter: (typeId) =>
+    set((state) => ({
+      activeTypeFilter: state.activeTypeFilter.includes(typeId)
+        ? state.activeTypeFilter.filter((id) => id !== typeId)
+        : [...state.activeTypeFilter, typeId]
+    })),
+
+  clearTypeFilter: () => set({ activeTypeFilter: [] })
 }))
 
 /**
