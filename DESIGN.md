@@ -40,18 +40,18 @@ Shared dark neutral base across all projects:
 |---|---|---|
 | success | `#7fae7a` | active, synced, healthy |
 | info | `#7ea3c9` | neutral system messages |
-| warning | `#c9a26b` *(NEXUS only — see below)* | pending, needs attention |
+| warning | `#cfa262` *(NEXUS only)* | pending, needs attention |
 | critical | `#d9604f` | error, failed, destructive |
 
-**Per-project brand accent** — each project gets its own accent, used for its logotype, primary nav highlight, and primary progress/emphasis. Distinct from the shared semantic tokens above (a brand accent can visually double as `warning`/`success` within its own app, as NEXUS's amber does, but never redefine `critical`).
+**Per-project brand accent** — each project gets its own accent, used for its logotype, primary nav highlight, and primary progress/emphasis. Distinct from the shared semantic tokens above (a brand accent sits close to `success` when it is green, as NEXUS's emerald does — hold them apart on lightness — but never redefine `critical`).
 
 | Project | Accent | Value | Reads as |
 |---|---|---|---|
-| NEXUS | Amber | `#c9a26b` | warm instrument panel, calm attention |
+| NEXUS | Emerald | `#69b48a` | cool instrument glass, live and steady |
 | Kairos | Signal blue | `#3f8ce8` | live/active market, analytical — its own hue, not the shared `info` blue |
 | *(next project)* | — | — | pick per formula below |
 
-**Accent formula for new projects:** `oklch(65–72% 0.08–0.12 <hue>)`. Keep lightness and chroma in that band so every project's accent feels like the same family at a glance; vary only hue, at least ~40° away from hues already in use (amber ≈ 70°, signal blue ≈ 230°).
+**Accent formula for new projects:** `oklch(65–72% 0.08–0.12 <hue>)`. Keep lightness and chroma in that band so every project's accent feels like the same family at a glance; vary only hue, at least ~40° away from hues already in use (emerald ≈ 158°, signal blue ≈ 230°).
 
 ## Spacing & radius
 

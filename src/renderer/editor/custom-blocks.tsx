@@ -56,9 +56,14 @@ function ToggleBlock({
   )
 }
 
+/**
+ * The `amber` key is stored inside saved callout blocks, so it keeps its name
+ * even though the accent is no longer amber — it resolves to the warning token,
+ * which is where that amber went. Renaming the key would orphan existing notes.
+ */
 const CALLOUT_COLORS = {
-  amber: ['var(--nx-accent)', 'var(--nx-accent-tint)'],
-  success: ['var(--nx-success)', 'rgba(127, 174, 122, 0.12)'],
+  amber: ['var(--nx-warning)', 'var(--nx-warning-tint)'],
+  success: ['var(--nx-success)', 'rgba(105, 147, 101, 0.12)'],
   info: ['var(--nx-info)', 'rgba(126, 163, 201, 0.12)'],
   critical: ['var(--nx-critical)', 'var(--nx-critical-tint)']
 } as const
