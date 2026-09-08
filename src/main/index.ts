@@ -1,10 +1,10 @@
-import { app, BrowserWindow, net, protocol, shell } from 'electron'
+import { app, BrowserWindow, net, protocol, screen, shell } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
 import { initDatabase, closeDatabase, getDataDir } from './database'
 import { registerIpcHandlers } from './ipc'
-import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex } from './repo'
+import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex, getSetting, setSetting } from './repo'
 import { flushPending as flushMirror } from './mirror'
 import { flushRenderer } from './flush'
 import { attachmentPath, mimeFor } from './files'
@@ -12,10 +12,78 @@ import { ATTACHMENT_SCHEME, attachmentName } from '../shared/attachments'
 
 let mainWindow: BrowserWindow | null = null
 
+/** Where the window was last left. One row in `settings`, as JSON. */
+const SETTING_WINDOW = 'window.bounds'
+
+interface StoredBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+  maximized: boolean
+}
+
+/**
+ * The window comes back where it was left.
+ *
+ * A fixed 1280×820 every launch is a small thing that has to be undone every
+ * single morning, which is the definition of the friction this app exists to
+ * remove. Bounds live in `settings` beside the vault rather than in a file of
+ * their own: there is one window per vault, and a vault carried to another
+ * machine carrying its own geometry is the behaviour you want.
+ */
+function readBounds(): StoredBounds | null {
+  const raw = getSetting(SETTING_WINDOW)
+  if (!raw) return null
+  try {
+    const parsed = JSON.parse(raw) as Partial<StoredBounds>
+    if (
+      typeof parsed.x !== 'number' ||
+      typeof parsed.y !== 'number' ||
+      typeof parsed.width !== 'number' ||
+      typeof parsed.height !== 'number'
+    )
+      return null
+
+    // A monitor that is no longer plugged in would otherwise open the window
+    // somewhere nobody can reach it. `getDisplayMatching` always answers with
+    // a real display, so the test is whether the saved rectangle actually
+    // overlaps the one it is nearest to.
+    const bounds = { x: parsed.x, y: parsed.y, width: parsed.width, height: parsed.height }
+    const area = screen.getDisplayMatching(bounds).workArea
+    const overlaps =
+      bounds.x < area.x + area.width &&
+      bounds.x + bounds.width > area.x &&
+      bounds.y < area.y + area.height &&
+      bounds.y + bounds.height > area.y
+    if (!overlaps) return null
+
+    return { ...bounds, maximized: parsed.maximized === true }
+  } catch {
+    return null
+  }
+}
+
+function rememberBounds(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  const maximized = win.isMaximized()
+  // `getNormalBounds` is the un-maximized rectangle, which is what a window
+  // restored out of maximized has to go back to.
+  const { x, y, width, height } = win.getNormalBounds()
+  try {
+    setSetting(SETTING_WINDOW, JSON.stringify({ x, y, width, height, maximized }))
+  } catch {
+    // The vault may already be closing. Losing the geometry of one session is
+    // not worth a crash on the way out.
+  }
+}
+
 function createWindow(): void {
+  const stored = readBounds()
   const win = new BrowserWindow({
-    width: 1280,
-    height: 820,
+    ...(stored ? { x: stored.x, y: stored.y } : {}),
+    width: stored?.width ?? 1280,
+    height: stored?.height ?? 820,
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: 'hiddenInset',
@@ -31,7 +99,21 @@ function createWindow(): void {
   })
   mainWindow = win
 
+  if (stored?.maximized) win.maximize()
+
   win.on('ready-to-show', () => win.show())
+
+  // Debounced, because a drag fires these continuously and each one is a write
+  // to the vault.
+  let geometryTimer: ReturnType<typeof setTimeout> | undefined
+  const scheduleRemember = (): void => {
+    clearTimeout(geometryTimer)
+    geometryTimer = setTimeout(() => rememberBounds(win), 400)
+  }
+  win.on('resize', scheduleRemember)
+  win.on('move', scheduleRemember)
+  win.on('maximize', scheduleRemember)
+  win.on('unmaximize', scheduleRemember)
 
   // A window closes in two steps now: the first `close` is held back while the
   // renderer writes out whatever it still has pending, and the second — after
@@ -45,6 +127,10 @@ function createWindow(): void {
     event.preventDefault()
     if (flushing) return
     flushing = true
+    // While the database is still open — `will-quit` closes it, and that runs
+    // after every window has gone.
+    clearTimeout(geometryTimer)
+    rememberBounds(win)
     void flushRenderer(win).finally(() => {
       flushed = true
       win.close()

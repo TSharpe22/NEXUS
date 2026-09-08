@@ -708,6 +708,12 @@ could not find a sentence you had written, which in a note-taking application
 is the search not working. The body never crosses IPC to do it: `pages` still
 carries no `content`, and the excerpt comes back from SQLite's own `snippet()`.
 
+**The window comes back where it was left.** `window.bounds` in `settings`,
+written debounced on resize/move/maximize and once more on the way out while
+the database is still open. A saved rectangle that no longer overlaps any
+display is discarded rather than used, so unplugging a monitor cannot open
+Nexus somewhere unreachable.
+
 This mapping is a starting structure, not locked — renaming or regrouping a
 view doesn't touch the data model underneath it.
 

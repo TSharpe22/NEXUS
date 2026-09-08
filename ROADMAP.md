@@ -104,6 +104,38 @@ driver does dozens of times a day.
   worst 117ms, down to none, worst 17ms. Small vaults never felt it, which is
   why this was not the answer to Wave 1 — but it was real, and it was the
   autosave feeding itself.
+- **The window comes back where it was left.** It opened 1280×820 wherever the
+  window manager felt like, every launch.
+
+## Wave 1c — found, not fixed
+
+Each of these is a decision rather than a bug, which is why they are written
+down instead of built.
+
+- **There is no capture from outside the app, and none from inside it either
+  unless you are on Home.** No global shortcut, no tray, and the capture box
+  lives on one screen. The daily action Nexus is *for* — get the thought down
+  before it goes — costs a window switch and a nav click, and if you are mid-
+  sentence in Notes it costs leaving the page you are writing. This is the
+  largest remaining gap and it needs two calls: which key, and whether Nexus
+  runs in the background to answer it.
+- **Five keyboard shortcuts, three of which are BlockNote's.** Nothing for
+  capture, today's entry, or reaching a view without going through the palette.
+  "Keyboard-first where practical" is a stated principle with almost nothing
+  behind it.
+- **A page cannot be exported on its own.** `io.exportPageMarkdown` and
+  `io.exportPageJSON` are implemented, tested, and reachable from nothing —
+  Settings exports the whole vault or nothing. Same bug shape as Wave 0.
+- **`tags.setColor` and `search.rebuildIndex` are also unreachable.** Colours
+  are assigned round-robin and cannot be changed; a drifted index cannot be
+  repaired from the app that owns it.
+- **Collapsing a toggle counts as editing the page.** `open` lives in
+  `block.props`, so folding one away writes the document, bumps `updated_at`,
+  logs an edit, moves the page to the top of every recency list and out of
+  Home's stale panel. Reading should not be writing. The fix is for the
+  autosave to ignore a change that only moved an `open` prop.
+- **`scripts/probes/README.md` lists two probes that do not exist**
+  (`scale.mjs`, `roundtrip.mjs`) and misses the two that do.
 
 ## Wave 2 — Phase 1 (schema v11)
 
