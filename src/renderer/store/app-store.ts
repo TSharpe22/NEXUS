@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
+import { localDateISO } from '@shared/journal-date'
 
-export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'settings'
+export type View = 'home' | 'notes' | 'tracker' | 'settings'
 
 /**
  * The nav sections, in the order they appear.
@@ -19,10 +20,8 @@ export type View = 'home' | 'notes' | 'tables' | 'tracker' | 'activity' | 'setti
 export const VIEW_META: Record<View, { label: string; hint: string }> = {
   home: { label: 'Home', hint: 'Overview and graph' },
   notes: { label: 'Notes', hint: 'Write and edit pages' },
-  tables: { label: 'Tables', hint: 'Browse pages by type' },
   tracker: { label: 'Tracker', hint: "What's due, week by week" },
-  activity: { label: 'Activity', hint: 'What changed, when' },
-  settings: { label: 'Settings', hint: 'Data, import and export' }
+  settings: { label: 'Settings', hint: 'Types, data, import and export' }
 }
 
 export const VIEW_ORDER = Object.keys(VIEW_META) as View[]
@@ -35,7 +34,6 @@ export type TrackerMode = 'week' | 'quarter' | 'habits'
 interface AppState {
   activeView: View
   activePageId: string | null
-  tableTypeId: string | null
   /**
    * Which of Tracker's three modes is showing. In the store rather than in
    * `Tracker` so Home's habit panel can land on Habits — a link that dumps you
@@ -102,6 +100,17 @@ interface AppState {
    */
   today: string
 
+  /**
+   * The calendar date on the wall clock, which is not always `today`.
+   *
+   * Home's header shows this one. Rendering the logical day there made moving
+   * the day-start hour look like the app's clock had been changed: set the
+   * start to 6pm at 5pm and the header read yesterday's date, with no way to
+   * tell that was deliberate. The logical day decides what gets filed where;
+   * it does not get to decide what day it is.
+   */
+  wallToday: string
+
   setActiveView: (view: View) => void
   setDayStartHour: (hour: number) => Promise<void>
   setTaskSection: (name: string) => Promise<void>
@@ -116,7 +125,6 @@ interface AppState {
   loadPageContent: (id: string) => Promise<void>
   /** Navigate to a page from anywhere: switches to Notes and selects it. */
   openPage: (id: string) => void
-  setTableTypeId: (id: string | null) => void
   setTrackerMode: (mode: TrackerMode) => void
   setSaveStatus: (status: SaveStatus) => void
 
@@ -184,7 +192,6 @@ function readExpandedFolders(): string[] {
 export const useAppStore = create<AppState>((set, get) => ({
   activeView: 'home',
   activePageId: null,
-  tableTypeId: null,
   trackerMode: 'week',
 
   pages: [],
@@ -203,6 +210,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   prefs: { dayStartHour: DEFAULT_DAY_START_HOUR, taskSection: 'Tasks' },
   today: logicalDateISO(DEFAULT_DAY_START_HOUR),
+  wallToday: localDateISO(),
 
   setActiveView: (view) => set({ activeView: view }),
 
@@ -254,7 +262,6 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().pageContent[id] !== undefined) return
     set((state) => ({ pageContent: { ...state.pageContent, [id]: page.content } }))
   },
-  setTableTypeId: (id) => set({ tableTypeId: id }),
   setTrackerMode: (mode) => set({ trackerMode: mode }),
   setSaveStatus: (status) => {
     // "saved" is a confirmation, not a state to sit in. Left latched, the
@@ -393,8 +400,6 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   deleteType: async (id) => {
     const result = await window.api.types.remove(id)
-    const { tableTypeId } = get()
-    if (tableTypeId === id) set({ tableTypeId: null })
     await get().refresh()
     return result
   },
@@ -524,9 +529,14 @@ const TICK_MS = 60_000
  * for nothing.
  */
 function tickToday(): void {
-  const { prefs, today: current } = useAppStore.getState()
+  const { prefs, today: current, wallToday: currentWall } = useAppStore.getState()
   const now = logicalDateISO(prefs.dayStartHour)
+  const wall = localDateISO()
+  // Two dates, one tick. They move at different moments — the wall date turns
+  // over at midnight and the logical one at the day-start hour — and between
+  // those two instants they disagree, which is the whole point of the setting.
   if (now !== current) useAppStore.setState({ today: now })
+  if (wall !== currentWall) useAppStore.setState({ wallToday: wall })
 }
 
 // The only interval in the renderer, and it is meant to stay the only one:
@@ -551,4 +561,9 @@ export function useToday(): string {
 /** The same, for code outside a component. */
 export function today(): string {
   return useAppStore.getState().today
+}
+
+/** The calendar date, for the one place that shows a clock rather than a day. */
+export function useWallToday(): string {
+  return useAppStore((s) => s.wallToday)
 }

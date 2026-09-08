@@ -7,18 +7,14 @@ import { CommandPalette } from './design/CommandPalette'
 import { ConfirmHost } from './design/Confirm'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
-import { Tables } from './views/Tables'
 import { Tracker } from './views/Tracker'
-import { Activity } from './views/Activity'
 import { Settings } from './views/Settings'
 import './App.css'
 
 const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   home: Home,
   notes: Notes,
-  tables: Tables,
   tracker: Tracker,
-  activity: Activity,
   settings: Settings
 }
 

@@ -347,7 +347,7 @@ check(
 )
 
 // Blurring a field you never touched used to write, and every write logs —
-// which buried the Activity feed under rows recording no change at all.
+// which buried the activity log under rows recording no change at all.
 const propEvents = () =>
   page.evaluate(() =>
     window.api.activity.getRecent(300).then((rows) => rows.filter((r) => r.message.includes('difficulty')).length)
@@ -652,7 +652,7 @@ check(
   (await propsOf(catalysisId)).find((p) => p.key === 'related')?.value_relation === null
 )
 
-// Put it back — the rest of the run reads it from Tables and the mirror.
+// Put it back — the mirror's frontmatter assertions read it.
 await openRelation()
 await sleep(400)
 await page.keyboard.type('Reaction', { delay: 30 })
@@ -1177,8 +1177,8 @@ check('clicking a day hands over to Notes',
 await nav('Tracker')
 await sleep(500)
 
-// The fixture type goes too: Tables defaults to the alphabetically first
-// type, and a stray "Habit" would quietly retarget every assertion below it.
+// The fixture type goes too — a stray "Habit" would be picked up by the habit
+// assertions in the Types section below and make them pass for the wrong reason.
 await page.evaluate(async (habit) => {
   for (const id of habit.pages) await window.api.pages.hardDelete(id)
   await window.api.types.remove(habit.typeId)
@@ -1186,8 +1186,8 @@ await page.evaluate(async (habit) => {
 check('the habit fixture left no type behind',
   (await page.evaluate(() => window.api.habits.candidates())).length === 0)
 
-// Both fixtures go: they are pages of type Note, and the Tables section below
-// asserts on how many rows that type has.
+// Both fixtures go: they are pages of type Note, and the panels below count
+// what that type holds.
 await page.evaluate(async (id) => {
   window.api.pages.hardDelete(id)
   const capture = (await window.api.pages.getAll()).find((p) => p.title === 'Task capture')
@@ -1270,110 +1270,99 @@ await page.evaluate(() => {
 })
 await sleep(400)
 
-log('\n— other views —')
-await nav('Tables')
-await sleep(900)
-check(
-  'Tables shows a column for the new property',
-  // innerText reflects CSS text-transform, so headers come back uppercased.
-  (await page.evaluate(() => [...document.querySelectorAll('.nx-table th')].map((e) => e.innerText))).some((h) =>
-    /difficulty/i.test(h)
-  )
-)
-check(
-  'Tables resolves a relation to the target title',
-  (await page.evaluate(() =>
-    [...document.querySelectorAll('.nx-table tbody tr')]
-      .map((r) => r.innerText)
-      .join(' | ')
-  )).includes('Reaction kinetics'),
-  await page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.innerText).join(' | '))
-)
-await page.screenshot({ path: SHOT + '/07-tables.png' })
+log('\n— types live in Settings —')
+// Tables and Activity are gone. Types used to be managed from two places,
+// neither of which said "types": created from a magic entry in the Notes type
+// dropdown, renamed and deleted from Tables. A property could only be defined
+// from a page's own panel, so a type you had no page of could not grow one —
+// which is what made "make a habit" impossible without knowing the trick.
+check('reached Settings', (await nav('Settings')) === 'OK')
+await sleep(800)
+check('Settings has a Types panel', await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-panel__title')].some((t) => t.textContent.trim() === 'Types')))
 
-// Sorting: the view was a static dump ordered by last-modified, with no way to
-// ask it anything.
-const tableTitles = () =>
-  page.evaluate(() => [...document.querySelectorAll('.nx-table tbody tr')].map((r) => r.querySelector('td').innerText.trim()))
-const clickHeader = (name) =>
-  page.evaluate((n) => {
-    const th = [...document.querySelectorAll('.nx-table th')].find((e) => new RegExp('^' + n, 'i').test(e.innerText))
-    if (!th) return 'HEADER_NOT_FOUND'
-    th.click()
+const clickTypeButton = (label) =>
+  page.evaluate((l) => {
+    const btn = [...document.querySelectorAll('.nx-panel button')].find((b) => b.textContent.trim() === l)
+    if (!btn) return 'NOT_FOUND'
+    btn.click()
     return 'OK'
-  }, name)
-
-const defaultOrder = await tableTitles()
-check('rows start newest-first', defaultOrder.length === 2, JSON.stringify(defaultOrder))
-
-check('name header is a sort control', (await clickHeader('name')) === 'OK')
-await sleep(400)
-// The default order happens to start with Catalysis too, so assert the header
-// state as well rather than trusting a coincidence.
-check('sorted by name ascending', (await tableTitles())[0] === 'Catalysis', JSON.stringify(await tableTitles()))
-check(
-  'the name column reports ascending',
-  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
-    'ascending'
-)
-
-await clickHeader('name')
-await sleep(400)
-check('clicking again reverses it', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
-check(
-  'the sorted column is marked',
-  (await page.evaluate(() => document.querySelector('.nx-table th.nx-th--sorted')?.getAttribute('aria-sort'))) ===
-    'descending'
-)
-
-await clickHeader('name')
-await sleep(400)
-check('a third click returns to the default order', JSON.stringify(await tableTitles()) === JSON.stringify(defaultOrder))
-check('no column is marked sorted', (await page.evaluate(() => !document.querySelector('.nx-table th.nx-th--sorted'))))
-
-// Only one of the two pages has a Difficulty, so this is the blanks-last rule:
-// the filled row leads in both directions.
-await clickHeader('difficulty')
-await sleep(400)
-check('ascending puts the filled cell first', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
-await clickHeader('difficulty')
-await sleep(400)
-check('descending keeps blanks last', (await tableTitles())[0] === 'Reaction kinetics', JSON.stringify(await tableTitles()))
-await clickHeader('difficulty')
-await sleep(400)
-
-// Filtering matches what the cells show, not just the title — so a relation's
-// target or a property value finds its row.
-const typeFilter = async (text) => {
-  await page.evaluate(() => {
-    const input = document.querySelector('.nx-tables__filter')
-    input.focus()
-    input.select()
-  })
-  await page.keyboard.press('Backspace')
-  if (text) await page.keyboard.type(text, { delay: 25 })
-  await sleep(500)
+  }, label)
+const confirmIn = (label) =>
+  page.evaluate((l) => {
+    const btn = [...document.querySelectorAll('.nx-confirm button')].find((b) => b.textContent.trim() === l)
+    if (!btn) return 'NOT_FOUND'
+    btn.click()
+    return 'OK'
+  }, label)
+const typeInto = async (selector, text) => {
+  await page.evaluate((sel) => document.querySelector(sel)?.focus(), selector)
+  await page.keyboard.type(text, { delay: 20 })
 }
-await typeFilter('catal')
-check('filtering by title', JSON.stringify(await tableTitles()) === JSON.stringify(['Catalysis']), JSON.stringify(await tableTitles()))
-await typeFilter('medium')
-check('filtering by a property value', JSON.stringify(await tableTitles()) === JSON.stringify(['Reaction kinetics']), JSON.stringify(await tableTitles()))
-await typeFilter('nothing here')
-check('a filter that matches nothing says so', (await page.evaluate(() => document.body.innerText)).includes('Nothing matches that filter'))
-await typeFilter('')
-check('clearing the filter restores every row', (await tableTitles()).length === 2)
-await page.screenshot({ path: SHOT + '/07b-tables-sorted.png' })
 
-
-await nav('Activity')
+// A habit is a type with a date and a checkbox. Made in one step here, because
+// four steps across three views is the bug.
+check('the New type control is there', (await clickTypeButton('New type')) === 'OK')
+await sleep(300)
+await typeInto('.nx-types__create .nx-input', 'Ritual')
+check('create as habit', (await clickTypeButton('Create as habit')) === 'OK')
 await sleep(900)
-check('Activity has rows', (await page.evaluate(() => document.querySelectorAll('.nx-table tbody tr').length)) > 0)
-const editRows = await page.evaluate(
-  () => [...document.querySelectorAll('.nx-table tbody tr')].filter((r) => r.innerText.includes('Edited')).length
-)
-// One row per page per editing session, not one per debounced save.
-check('edit events are coalesced', editRows <= 3, `${editRows} "Edited" rows`)
-await page.screenshot({ path: SHOT + '/08-activity.png' })
+
+const ritual = await page.evaluate(async () => (await window.api.types.list()).find((t) => t.name === 'Ritual'))
+check('the type was created from Settings', !!ritual, JSON.stringify(ritual))
+const ritualDefs = await page.evaluate((id) => window.api.types.getPropertyDefinitions(id), ritual?.id)
+check('and it arrives with the two properties a habit needs',
+  ritualDefs.filter((d) => d.property_type === 'date').length === 1 &&
+  ritualDefs.filter((d) => d.property_type === 'boolean').length === 1,
+  JSON.stringify(ritualDefs.map((d) => [d.name, d.property_type])))
+check('so the tracker recognises it as a habit',
+  (await page.evaluate(() => window.api.habits.candidates())).some((c) => c.typeName === 'Ritual'))
+
+// The other half: a property added to a type that has no pages at all, which
+// the page-panel route could not reach.
+check('add property', (await clickTypeButton('Add property')) === 'OK')
+await sleep(300)
+await typeInto('.nx-types__create .nx-input', 'Streak')
+await page.evaluate(() => {
+  const select = document.querySelector('.nx-types__create .nx-select')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+  setter.call(select, 'number')
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+})
+check('add', (await clickTypeButton('Add')) === 'OK')
+await sleep(700)
+check('a property can be defined on a type with no pages',
+  (await page.evaluate((id) => window.api.types.getPropertyDefinitions(id), ritual.id))
+    .some((d) => d.name === 'Streak' && d.property_type === 'number'))
+
+// Rename and delete followed the type here from Tables.
+check('rename', (await clickTypeButton('Rename')) === 'OK')
+await sleep(300)
+await page.evaluate(() => {
+  const input = document.querySelector('.nx-types__detail .nx-input')
+  input.focus()
+  input.select()
+})
+await page.keyboard.type('Ritual renamed', { delay: 20 })
+await page.keyboard.press('Enter')
+await sleep(800)
+check('a type can be renamed from Settings',
+  (await page.evaluate(() => window.api.types.list())).some((t) => t.name === 'Ritual renamed'))
+
+check('delete', (await clickTypeButton('Delete')) === 'OK')
+await sleep(400)
+check('deleting asks first', await page.evaluate(() => !!document.querySelector('.nx-confirm')))
+check('confirmed', (await confirmIn('Delete type')) === 'OK')
+await sleep(900)
+check('and the type is gone',
+  !(await page.evaluate(() => window.api.types.list())).some((t) => t.name === 'Ritual renamed'))
+
+// The Activity view is gone; the log it read is not, and coalescing is what
+// kept it readable. Asserted through the API now rather than through a table.
+const activityRows = await page.evaluate(() => window.api.activity.getRecent(300))
+check('the activity log still records what changed', activityRows.length > 0)
+const editRows = activityRows.filter((r) => /edited/i.test(r.event_type) || /Edited/.test(r.message)).length
+check('edit events are still coalesced', editRows <= 6, `${editRows} edit rows`)
 
 await nav('Settings')
 await sleep(600)

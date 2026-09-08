@@ -17,6 +17,8 @@
 >   before proposing an alternative; most are already argued and rejected.
 > - **`STRUCTURE.md`** — the first sketch. Superseded by the three above; kept
 >   for the reasoning behind the initial direction.
+> - **`ROADMAP.md`** — the near-term order of work: what has to be true before
+>   Phase 1 starts, and the calls made along the way.
 
 ---
 
@@ -73,10 +75,14 @@ The current app is `src/main` + `src/renderer` with `views/`, `design/` and
   content DOM, so the block cannot be typed into and text aimed at it lands in
   the following block instead. Nothing throws and nothing logs. If toggle or
   callout ever stop accepting text, check the resolved tiptap version first.
-- **Nav**: six views — Home, Notes, Tables, Tracker, Activity, Settings. The
-  names in the code (`View` in `store/app-store.ts`) match what's on screen.
+- **Nav**: four views — Home, Notes, Tracker, Settings. The names in the code
+  (`View` in `store/app-store.ts`) match what's on screen. Tables and Activity
+  were removed: Tables is scheduled for demolition by `PHASES.md` phase 4,
+  which rebuilds it as a view over the view engine, and polishing a screen due
+  to be replaced is work thrown away twice. What Tables uniquely owned — type
+  management — moved to Settings rather than leaving with it.
 - **State**: Zustand. No router — a single `activeView` string switches
-  between the six nav sections.
+  between the four nav sections.
 - **Fonts**: IBM Plex Mono + Chakra Petch, self-hosted via `@fontsource`
   packages (no Google Fonts CDN call — keeps the app fully offline-capable).
 
@@ -128,6 +134,14 @@ day-start hour went on answering yesterday until an unrelated write happened
 to wake it, which is exactly the late-night session the setting exists for.
 The focus listener is the other half: an interval does not fire across a
 sleeping laptop, and the app comes back owing a day.
+
+**The setting decides where a note is filed, not what day it is.** Home's
+header shows the wall-clock date (`wallToday` in the store, ticked by the same
+ticker). It used to show the logical day "so the header agrees with everything
+under it", which meant setting the start hour to 6pm at 5pm made the app look
+like its clock had been changed — yesterday's date, no explanation. Between
+midnight and the day-start hour the two disagree, and that is the one moment
+the header says so, in a line under the date.
 
 **The inbox is a page, not a table.** One ordinary page, pointed at by the
 `inbox.pageId` setting, holding checkbox blocks like any other page. That
@@ -211,7 +225,9 @@ substitutes for the other.
   when — so the projector carries it across a reprojection.
 - `activity_log` — `id, page_id, event_type, message, created_at`. Written
   whenever a page is created/edited/property-changed. Backs the Activity view
-  and Home's recent-activity widget.
+  and read through `activity:getRecent`. There is no Activity view any more;
+  the log is still written, because the record is cheap and the feed belongs
+  in the view engine phase 4 builds rather than in a screen of its own.
 - `types` — user-created, not predetermined. The only seeded row is a base
   "Note" type with no properties — everything else (Directive, Book, Trade
   Log, whatever) is created from the Notes page-creation flow or wherever
@@ -548,16 +564,6 @@ Six sections, each a thin view over the same page/property model:
   a property name to rename it. The two altitudes are kept apart: the × on a
   row clears that page's value, while removing the property from the type
   lives in the rename state, since it clears the value from every page.
-- **Tables** — pick any user-created type, see a table of its pages with
-  columns generated from that type's property_definitions. Any column sorts,
-  typed by the property's own type, cycling ascending → descending → back to
-  the default newest-first; empty cells sink to the bottom in both directions,
-  since a property added today is empty on every page that predates it. The
-  filter box matches what the cells show rather than only the title, so a
-  relation's target or one of a page's tags finds its row. Both reset when the
-  type changes. Types can be renamed and deleted here, and a type's template is
-  picked here from among its own pages; deleting a type re-homes its pages onto
-  Note rather than deleting them.
 - **Tracker** — what is due, in a window of time. Three modes over the same
   data: *Week* (every day of the week, empty ones included, because the shape
   of the week is part of what you're reading), *Quarter* (only the days
@@ -582,11 +588,24 @@ Six sections, each a thin view over the same page/property model:
   gap is known, and deliberately left open until there is enough real use to
   say what belongs on such a list.
 
-- **Activity** — chronological feed from `activity_log`. Consecutive content
-  saves on one page coalesce into a single "edited" entry (see
-  `EDIT_COALESCE_MINUTES` in `repo.ts`) so typing doesn't bury every other
-  event.
-- **Settings** — data folder location, import/export, keyboard shortcuts.
+- **Settings** — types, data folder location, import/export, keyboard
+  shortcuts.
+
+  **Types are managed here, and only here.** Before this they had no home at
+  all: a type could be *created* only from a magic `__new__` entry inside the
+  type dropdown in the Notes sidebar, and *renamed or deleted* only from
+  Tables — two places, neither of which said "types". Worse, a property could
+  only be defined from a page's own properties panel, so a type you had no
+  page of could not grow one, and "make a habit" (a type carrying a date and a
+  checkbox) was unreachable without knowing the trick. The panel does the
+  lot: create, rename, delete, pick a template, add and remove properties, and
+  a one-step **Create as habit** that defines both properties at once. It sits
+  in Settings because a type is configuration — it describes the vault rather
+  than living in it.
+
+  Consecutive content saves on one page still coalesce in `activity_log` into
+  a single "edited" entry (`EDIT_COALESCE_MINUTES` in `repo.ts`); nothing
+  renders that feed today.
 
 This mapping is a starting structure, not locked — renaming or regrouping a
 view doesn't touch the data model underneath it.
