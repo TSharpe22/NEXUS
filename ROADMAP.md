@@ -77,6 +77,19 @@ row reads `true / true` now; callout and toggle read `true / false` before.
 **The suspect that was eliminated stays eliminated.** `@tiptap/*` resolves
 2.11.5 on every path; the pin was not the problem.
 
+## Wave 1b — the deep dive (shipped)
+
+Looking for what else was shaped like Wave 0 — a capability the app had and
+no reachable way to use — turned up four more, all of them things a daily
+driver does dozens of times a day.
+
+- **⌘K searches what pages say.** It ran Fuse over titles alone, in memory,
+  while a full-text index of every body sat in the main process reachable only
+  from the Notes sidebar's own filter box. The one global way into a vault
+  could not find a sentence you had written. It now runs both matchers — the
+  index first, with the excerpt it matched on, then the fuzzy titles the
+  index's whole-word matching passes over.
+
 ## Wave 2 — Phase 1 (schema v11)
 
 In this order, and the order is the point:

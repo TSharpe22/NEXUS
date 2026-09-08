@@ -1505,8 +1505,47 @@ check('every nav section is reachable from the palette',
   navLabels.every((label) => paletteViews.some((item) => item.includes(label))),
   `nav ${JSON.stringify(navLabels)} vs palette ${JSON.stringify(paletteViews)}`)
 
+// The palette searches what pages say, not only what they are called. It
+// matched titles alone until this assertion existed: the one global way into
+// the vault could not find a sentence you had written.
+const bodyOnly = await page.evaluate(async () => {
+  const uid = () => crypto.randomUUID()
+  const p = await window.api.pages.create()
+  await window.api.pages.update(p.id, {
+    title: 'Unrelated heading',
+    content: JSON.stringify([
+      {
+        id: uid(),
+        type: 'paragraph',
+        props: {},
+        content: [{ type: 'text', text: 'the phrase is bathysphere and it is nowhere in the title', styles: {} }],
+        children: []
+      }
+    ])
+  })
+  await window.nexus.store.getState().refresh()
+  return p.id
+})
+await page.evaluate(() => {
+  const input = document.querySelector('.nx-palette [cmdk-input]')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(input, 'bathysphere')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+})
+await sleep(900)
+const bodyHit = await page.evaluate((id) => {
+  const items = [...document.querySelectorAll('[cmdk-item]')]
+  const hit = items.find((el) => el.getAttribute('data-value') === `page-${id}`)
+  return { found: !!hit, snippet: hit?.querySelector('.nx-palette__hit-snippet')?.textContent ?? null }
+}, bodyOnly)
+check('the palette finds a page by a word only its body carries', bodyHit.found)
+check('and shows the sentence it matched on', /bathysphere/.test(bodyHit.snippet || ''), JSON.stringify(bodyHit.snippet))
+
 await page.screenshot({ path: SHOT + '/10-palette.png' })
 await page.keyboard.press('Escape')
+await sleep(300)
+await page.evaluate((id) => window.api.pages.hardDelete(id), bodyOnly)
+await page.evaluate(() => window.nexus.store.getState().refresh())
 
 // ---------------------------------------------------------------- journal
 log('\n— journal —')

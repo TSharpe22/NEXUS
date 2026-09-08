@@ -89,3 +89,31 @@
   font-size: 13px;
   text-align: center;
 }
+
+/* A hit is two lines when the match was in the body: what the page is called,
+   and the sentence that matched. The item itself is a row of two columns
+   (label and shortcut hint), so the hit stacks inside its own column. */
+.nx-palette__hit {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.nx-palette__hit-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-palette__hit-snippet {
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  color: var(--nx-text-dim);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}

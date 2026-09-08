@@ -692,6 +692,16 @@ Six sections, each a thin view over the same page/property model:
   a single "edited" entry (`EDIT_COALESCE_MINUTES` in `repo.ts`); nothing
   renders that feed today.
 
+**⌘K searches what pages say, not only what they are called.** The palette
+runs two matchers over one list: the FTS index in the main process, through
+the same `useSearch` hook the Notes sidebar uses, and Fuse over the titles
+already in the store. The index answers first and carries the excerpt it
+matched on; Fuse fills in the half-remembered names FTS's whole-word matching
+passes over. Before this it was Fuse alone — the one global way into a vault
+could not find a sentence you had written, which in a note-taking application
+is the search not working. The body never crosses IPC to do it: `pages` still
+carries no `content`, and the excerpt comes back from SQLite's own `snippet()`.
+
 This mapping is a starting structure, not locked — renaming or regrouping a
 view doesn't touch the data model underneath it.
 
