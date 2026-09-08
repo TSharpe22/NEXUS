@@ -80,3 +80,64 @@
 .nx-settings__restore-row:last-child {
   border-bottom: none;
 }
+
+/* Types — the panel that replaced Tables as the place a type is managed. */
+.nx-types__note {
+  margin-bottom: 12px;
+}
+
+.nx-types__create {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0 12px;
+  flex-wrap: wrap;
+}
+
+.nx-types__create .nx-input {
+  flex: 1 1 180px;
+  min-width: 0;
+}
+
+.nx-types__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--nx-border);
+}
+
+.nx-types__detail {
+  padding-top: 4px;
+}
+
+.nx-types__props {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* A chip per property: name, format, and the × that takes it off the type. */
+.nx-types__prop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  border: 1px solid var(--nx-border);
+  border-radius: 2px;
+}
+
+.nx-types__remove {
+  background: none;
+  border: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.nx-types__remove:hover {
+  color: var(--nx-critical);
+}

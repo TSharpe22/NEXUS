@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
+import { TypesPanel } from './TypesPanel'
 import { confirmDialog } from '../design/Confirm'
 import { dayStartLabel } from '@shared/day'
 import { relativeTime } from '../hooks/use-relative-time'
@@ -161,6 +162,8 @@ export function Settings() {
 
   return (
     <div className="nx-settings">
+      <TypesPanel />
+
       <Panel title="Data">
         <div className="nx-settings__row">
           <div>
