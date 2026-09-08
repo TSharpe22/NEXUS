@@ -1615,6 +1615,65 @@ check('an hour outside the clock is clamped rather than stored',
   (await page.evaluate(() => window.api.prefs.setDayStartHour(99))) === 23)
 await page.evaluate(() => window.api.prefs.setDayStartHour(4))
 
+// The day has to turn over on its own. `useToday()` computed the date inside a
+// Zustand selector, and a selector only re-runs when something writes to the
+// store — there is not one timer in the renderer besides the one this checks —
+// so a window left open past the day-start hour went on marking yesterday's
+// row until some unrelated action happened to wake it. Driven by moving the
+// renderer's clock a day forward and then touching nothing: no click, no
+// keystroke, no write.
+check('reached the tracker', (await nav('Tracker')) === 'OK')
+await page.evaluate(() => {
+  const week = [...document.querySelectorAll('.nx-tracker__mode')].find((b) => /week/i.test(b.innerText))
+  week.click()
+})
+await sleep(900)
+const todayLabel = () =>
+  page.evaluate(
+    () => document.querySelector('.nx-tracker__day--today .nx-tracker__day-label')?.innerText ?? ''
+  )
+const dayBefore = await todayLabel()
+const rolledTo = await page.evaluate(() => {
+  const Real = Date
+  const AHEAD = 24 * 60 * 60 * 1000
+  window.__realDate = Real
+  window.Date = class extends Real {
+    constructor(...args) {
+      if (args.length === 0) super(Real.now() + AHEAD)
+      else super(...args)
+    }
+    static now() {
+      return Real.now() + AHEAD
+    }
+  }
+  const d = new Date()
+  if (d.getHours() < 4) d.setDate(d.getDate() - 1)
+  const pad = (n) => String(n).padStart(2, '0')
+  // The interval is 60s and does not fire across a sleeping laptop at all, so
+  // the focus the app gets on waking is the other half of the ticker.
+  window.dispatchEvent(new Event('focus'))
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+})
+await sleep(900)
+const dayAfter = await todayLabel()
+check('the tracker marks the new day with nothing else touched',
+  dayAfter !== dayBefore && dayAfter.includes(String(Number(rolledTo.slice(8, 10)))),
+  `${JSON.stringify(dayBefore)} → ${JSON.stringify(dayAfter)} for ${rolledTo}`)
+
+// Put the clock back, and check the marker follows that too — everything
+// downstream reads the same value.
+await page.evaluate(() => {
+  window.Date = window.__realDate
+  window.dispatchEvent(new Event('focus'))
+})
+await sleep(900)
+check('and moves back when the clock does', (await todayLabel()) === dayBefore,
+  `${JSON.stringify(await todayLabel())} vs ${JSON.stringify(dayBefore)}`)
+
+// Back where this section found the app: everything below captures from Home.
+await nav('Home')
+await sleep(600)
+
 // ---------------------------------------------------------------- inbox
 log('\n— the inbox —')
 check('there is no inbox until something needs one',
