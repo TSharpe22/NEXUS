@@ -238,6 +238,10 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
                     // Days either side of the year keep the grid rectangular
                     // without pretending to be part of it.
                     const outside = date < from || date > to
+                    // A day that has not happened cannot have been done. The
+                    // grid draws the whole year, so without this every future
+                    // square in it took a click and recorded one.
+                    const future = date > today
                     const classes = [
                       'nx-habits__cell',
                       outside && 'nx-habits__cell--outside',
@@ -251,11 +255,15 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
                       <button
                         key={date}
                         className={classes}
-                        disabled={outside}
+                        disabled={outside || future}
                         title={`${dayLabel(date)}${
                           entry ? (entry.done ? ' · done' : ' · not done') : ' · no entry'
-                        } — click to ${entry?.done ? 'clear' : 'mark done'}${
-                          entry ? ', ⌘/Ctrl-click to open the page' : ''
+                        }${
+                          future
+                            ? ' · not yet'
+                            : ` — click to ${entry?.done ? 'clear' : 'mark done'}${
+                                entry ? ', ⌘/Ctrl-click to open the page' : ''
+                              }`
                         }`}
                         onClick={(e) => void toggle(date, entry, e.metaKey || e.ctrlKey)}
                       />

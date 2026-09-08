@@ -17,8 +17,14 @@ import { useToday } from '../store/app-store'
  * `habits.candidates()` looks for.
  */
 
-/** Days drawn per habit. */
-export const STRIP_DAYS = 21
+/**
+ * Days drawn per habit.
+ *
+ * Two weeks. Three was what fitted the panel, not what could be read: at 21
+ * squares in a row nobody can tell which one is Tuesday, and the strip stops
+ * being a calendar and becomes a texture.
+ */
+export const STRIP_DAYS = 14
 
 /**
  * Days fetched per habit. The strip shows three weeks but the streak counts
@@ -26,6 +32,9 @@ export const STRIP_DAYS = 21
  * would cap every habit at 21 days.
  */
 const HISTORY_DAYS = 365
+
+/** Mon…Sun initials, indexed by `Date.getDay()` (Sunday is 0). */
+const WEEKDAY_INITIALS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 interface Strip {
   typeId: string
@@ -133,9 +142,11 @@ export function HabitStrips({ onOpen }: Props) {
           </div>
           <div className="nx-home__habit-strip">
             {strip.days.map((day) => (
+              <div className="nx-home__habit-col" key={day.date}>
               <button
-                key={day.date}
-                className={`nx-home__habit-day nx-home__habit-day--${day.state}`}
+                className={`nx-home__habit-day nx-home__habit-day--${day.state}${
+                  day.date === today ? ' nx-home__habit-day--today' : ''
+                }`}
                 title={`${day.date} — ${
                   day.state === 'done' ? 'done' : day.state === 'missed' ? 'not done' : 'no entry'
                 } — click to ${day.state === 'done' ? 'clear' : 'mark done'}${
@@ -154,6 +165,13 @@ export function HabitStrips({ onOpen }: Props) {
                     .then(() => setVersion((v) => v + 1))
                 }}
               />
+              {/* A square with no day on it is a texture, not a calendar: you
+                  could click any box at any time with nothing saying which day
+                  you had just claimed. */}
+              <span className="nx-home__habit-tick nx-type-data">
+                {WEEKDAY_INITIALS[fromISO(day.date).getDay()]}
+              </span>
+              </div>
             ))}
           </div>
         </div>

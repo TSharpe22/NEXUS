@@ -1340,6 +1340,49 @@ export function checkInHabit(
   return { date, done, pageId }
 }
 
+/**
+ * Give a habit's check-in a day when the person ticking it did not.
+ *
+ * A check-in is a page carrying *both* a date and the checkbox — the grid
+ * joins on the date, so a page whose box is ticked and whose date is empty
+ * records nothing the grid can place, and ticking the checkbox in the
+ * properties panel appeared to do nothing at all. It did something; it just
+ * had nowhere to draw it.
+ *
+ * Rather than let that keep happening, ticking the checkbox of a habit-shaped
+ * type on a page with no date stamps the logical day onto it. Returns the date
+ * it stamped, or null when it left the page alone — which is every ordinary
+ * property write, and any page that already carries a date.
+ */
+export function stampHabitDate(pageId: string, key: string): string | null {
+  const db = getDb()
+
+  const page = db.prepare('SELECT type_id FROM pages WHERE id = ?').get(pageId) as
+    | { type_id: string }
+    | undefined
+  if (!page || page.type_id === 'note') return null
+
+  const defs = db
+    .prepare('SELECT key, property_type FROM property_definitions WHERE type_id = ?')
+    .all(page.type_id) as { key: string; property_type: string }[]
+
+  // Only the checkbox of a type that is actually a habit, and only the one the
+  // grid reads — the first date and the first checkbox, same as every other
+  // reader picks.
+  const booleanKey = defs.find((d) => d.property_type === 'boolean')?.key
+  const dateKey = defs.find((d) => d.property_type === 'date')?.key
+  if (!dateKey || !booleanKey || key !== booleanKey) return null
+
+  const existing = db
+    .prepare('SELECT value_date FROM properties WHERE page_id = ? AND key = ?')
+    .get(pageId, dateKey) as { value_date: string | null } | undefined
+  if (existing?.value_date) return null
+
+  const date = logicalDateISO(getDayStartHour())
+  setProperty(pageId, dateKey, 'date', date)
+  return date
+}
+
 export function getHabitDays(
   typeId: string,
   dateKey: string,

@@ -119,6 +119,16 @@ date and tick its checkbox. A grid you cannot mark is a report, not a tracker.
 The write still goes through `createPage`/`setProperty` like everything else,
 so there is still no habit table and no habit engine.
 
+**A check-in is a page carrying *both* a date and the checkbox**, because the
+grid joins on the date. Ticking the checkbox in the properties panel used to
+record a day the grid could not place — the box went on and nothing on Home
+changed — so `properties:set` stamps the logical day onto a habit page that has
+no date yet (`repo.stampHabitDate`). Home's strip is two weeks, not three:
+at 21 squares in a row nobody can tell which one is Tuesday, so each square
+carries its weekday initial and today is outlined. A future day cannot be
+ticked at all — the year grid draws the whole year, and without that every day
+still to come took a click.
+
 **The seeded `Note` type is never a habit candidate.** It is the type that
 means "no type" — every page without one lands there — so a date and a
 checkbox defined on it once turned the whole vault into a habit row nobody

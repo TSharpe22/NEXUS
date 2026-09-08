@@ -364,10 +364,13 @@ button.nx-home__entry:hover {
   overflow-y: auto;
 }
 
+/* Name and strip on one line. Stacked, the name read as a heading over a
+   block of squares and the eye had to travel down to answer "which habit is
+   this row?" — which is the only question the panel is for. */
 .nx-home__habit {
   display: flex;
-  flex-direction: column;
-  gap: 5px;
+  align-items: center;
+  gap: var(--nx-space-3);
 }
 
 .nx-home__habit-head {
@@ -375,6 +378,8 @@ button.nx-home__entry:hover {
   align-items: baseline;
   justify-content: space-between;
   gap: var(--nx-space-2);
+  flex: 0 0 120px;
+  min-width: 0;
 }
 
 .nx-home__habit-name {
@@ -384,14 +389,46 @@ button.nx-home__entry:hover {
   white-space: nowrap;
 }
 
+/* Under 640px the name goes back above the strip: 120px of label plus
+   fourteen legible squares does not fit a collapsed column. */
+@media (max-width: 640px) {
+  .nx-home__habit {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+  }
+
+  .nx-home__habit-head {
+    flex: 0 0 auto;
+  }
+}
+
 .nx-home__streak--live {
   color: var(--nx-accent);
 }
 
 .nx-home__habit-strip {
   display: grid;
-  grid-template-columns: repeat(21, minmax(0, 1fr));
+  grid-template-columns: repeat(14, minmax(0, 1fr));
   gap: 3px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* A square and the weekday it stands for. */
+.nx-home__habit-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+}
+
+.nx-home__habit-tick {
+  text-align: center;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--nx-text-dim);
 }
 
 /* Three states rather than two: a day with no entry is a different claim
@@ -480,4 +517,10 @@ button.nx-home__entry:hover {
 .nx-home__logical {
   margin-top: 2px;
   color: var(--nx-text-dim);
+}
+
+/* Today reads as the live end of the strip whatever its state — otherwise the
+   only way to find it is to count backwards from the right. */
+.nx-home__habit-day--today {
+  border-color: var(--nx-accent);
 }

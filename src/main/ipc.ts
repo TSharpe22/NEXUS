@@ -430,6 +430,9 @@ export function registerIpcHandlers(): void {
     (_, pageId: string, key: string, type: PropertyType, value: string | number | null) => {
       try {
         const result = repo.setProperty(pageId, key, type, value)
+        // Ticking a habit's checkbox on a page with no date recorded a day the
+        // grid could not place, so it looked like nothing happened.
+        if (type === 'boolean' && value === 'true') repo.stampHabitDate(pageId, key)
         mirror.scheduleSync(pageId)
         return result
       } catch (e) {

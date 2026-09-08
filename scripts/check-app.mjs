@@ -1156,11 +1156,18 @@ await page.screenshot({ path: SHOT + '/13-habits.png' })
 // you could not record one — the only way in was to make the page by hand.
 check('a day with no entry is still clickable, because that is how one is made',
   await page.evaluate(() =>
-    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => !c.disabled).length > 300))
-check('only days outside the year are inert',
-  await page.evaluate(() =>
-    [...document.querySelectorAll('.nx-habits__cell')].every(
-      (c) => !c.disabled || c.classList.contains('nx-habits__cell--outside'))))
+    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => !c.disabled).length > 30))
+// A day that has not happened cannot have been done. Without this the grid
+// drew a whole year of squares and every future one took a click.
+check('a future day is not clickable', await page.evaluate(() => {
+  const cells = [...document.querySelectorAll('.nx-habits__cell')]
+    .filter((c) => !c.classList.contains('nx-habits__cell--outside'))
+  const todayIndex = cells.findIndex((c) => c.classList.contains('nx-habits__cell--today'))
+  if (todayIndex === -1) return 'NO_TODAY'
+  return cells.slice(todayIndex + 1).every((c) => c.disabled)
+}))
+check('and today still is', await page.evaluate(() =>
+  document.querySelector('.nx-habits__cell--today')?.disabled === false))
 check('and a cell says what it recorded and what a click will do',
   await page.evaluate(() => {
     const title = document.querySelector('.nx-habits__cell--done')?.getAttribute('title') ?? ''
@@ -1860,7 +1867,7 @@ check('and the panel goes back to saying how to fill it',
 log('\n— home: habits and staleness —')
 // The tracker section deleted its own Habit fixture on the way out, so this
 // builds a fresh one — and dates it today, since the tracker's March pages
-// would fall outside a three-week strip anyway.
+// would fall outside a two-week strip anyway.
 const homeHabit = await page.evaluate(async () => {
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
@@ -1879,14 +1886,43 @@ await sleep(500)
 await nav('Home')
 await sleep(1400)
 
-check('a habit draws a three-week strip',
-  (await page.evaluate(() => document.querySelectorAll('.nx-home__habit-strip')[0]?.children.length)) === 21)
+check('a habit draws a two-week strip',
+  (await page.evaluate(() => document.querySelectorAll('.nx-home__habit-strip')[0]?.children.length)) === 14)
 check('the day just marked reads as done',
   await page.evaluate(() => {
     const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
-    return !!strip?.lastElementChild?.className.includes('--done')
+    return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day')?.className.includes('--done')
+  }))
+// A square with no day on it is a texture, not a calendar.
+check('each square says which weekday it is',
+  await page.evaluate(() => {
+    const ticks = [...document.querySelectorAll('.nx-home__habit-strip')[0]?.children ?? []]
+      .map((c) => c.querySelector('.nx-home__habit-tick')?.textContent)
+    return ticks.length === 14 && ticks.every((t) => /^[MTWFS]$/.test(t ?? ''))
+  }),
+  await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-home__habit-strip')[0]?.children ?? []]
+      .map((c) => c.querySelector('.nx-home__habit-tick')?.textContent).join('')))
+check('and today is marked at the end of the strip',
+  await page.evaluate(() => {
+    const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
+    return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day--today')
   }))
 check('and the streak counts it', /1d/.test(await panelText('Habits')))
+
+// Ticking the checkbox on a page with no date recorded a day the grid could
+// not place — the box went on, and Home never changed. The date is stamped
+// for you now.
+const stamped = await page.evaluate(async (typeId) => {
+  const p = await window.api.pages.create(typeId)
+  await window.api.pages.update(p.id, { title: 'Run, undated' })
+  await window.api.properties.set(p.id, 'done', 'boolean', 'true')
+  const props = await window.api.properties.getForPage(p.id)
+  return { pageId: p.id, date: props.find((x) => x.key === 'day')?.value_date ?? null }
+}, homeHabit.typeId)
+check('ticking a habit checkbox with no date stamps today onto it',
+  stamped.date === dayFromToday(0), `${stamped.date} vs ${dayFromToday(0)}`)
+await page.evaluate((id) => window.api.pages.hardDelete(id), stamped.pageId)
 
 check('a page touched today is not called stale',
   !/Ideas for the mirror format/.test(await panelText('Stale')))
