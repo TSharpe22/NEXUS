@@ -1894,6 +1894,11 @@ check('the day just marked reads as done',
     return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day')?.className.includes('--done')
   }))
 // A square with no day on it is a texture, not a calendar.
+check('the weekday label sits above its square',
+  await page.evaluate(() => {
+    const col = document.querySelectorAll('.nx-home__habit-strip')[0]?.firstElementChild
+    return col?.firstElementChild?.classList.contains('nx-home__habit-tick') === true
+  }))
 check('each square says which weekday it is',
   await page.evaluate(() => {
     const ticks = [...document.querySelectorAll('.nx-home__habit-strip')[0]?.children ?? []]
@@ -1908,7 +1913,10 @@ check('and today is marked at the end of the strip',
     const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
     return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day--today')
   }))
-check('and the streak counts it', /1d/.test(await panelText('Habits')))
+// The streak number is gone from Home: the strip already shows the run, and
+// the Tracker's grid is where a count belongs. What Home owes is the marks.
+check('Home shows no streak number, only the marks',
+  !/\b\d+d\b/.test(await panelText('Habits')), await panelText('Habits'))
 
 // Ticking the checkbox on a page with no date recorded a day the grid could
 // not place — the box went on, and Home never changed. The date is stamped

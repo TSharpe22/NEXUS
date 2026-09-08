@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import type { HabitCandidate, HabitDay } from '@shared/types'
 import { addDays, eachDay, fromISO } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
-import { streaks } from './HabitGrid'
 import { useToday } from '../store/app-store'
 
 /**
@@ -44,7 +43,6 @@ interface Strip {
   booleanKey: string
   /** One entry per drawn day, oldest first. */
   days: { date: string; state: 'done' | 'missed' | 'blank'; pageId: string | null }[]
-  current: number
 }
 
 function buildStrip(candidate: HabitCandidate, history: HabitDay[], today: string): Strip {
@@ -65,8 +63,7 @@ function buildStrip(candidate: HabitCandidate, history: HabitDay[], today: strin
         state: !day ? 'blank' : day.done ? 'done' : 'missed',
         pageId: day?.pageId ?? null
       }
-    }),
-    current: streaks(history, today).current
+    })
   }
 }
 
@@ -133,16 +130,15 @@ export function HabitStrips({ onOpen }: Props) {
         <div key={strip.typeId} className="nx-home__habit">
           <div className="nx-home__habit-head">
             <span className="nx-home__habit-name">{strip.typeName}</span>
-            <span
-              className={`nx-type-data ${strip.current > 0 ? 'nx-home__streak--live' : ''}`}
-              title={strip.current > 0 ? 'Days in a row, ending today' : 'No run going'}
-            >
-              {strip.current > 0 ? `${strip.current}d` : '—'}
-            </span>
           </div>
           <div className="nx-home__habit-strip">
             {strip.days.map((day) => (
               <div className="nx-home__habit-col" key={day.date}>
+              {/* Above the square: the label is what you read first to find
+                  the day you mean, so it comes before the thing you click. */}
+              <span className="nx-home__habit-tick nx-type-data">
+                {WEEKDAY_INITIALS[fromISO(day.date).getDay()]}
+              </span>
               <button
                 className={`nx-home__habit-day nx-home__habit-day--${day.state}${
                   day.date === today ? ' nx-home__habit-day--today' : ''
@@ -165,12 +161,6 @@ export function HabitStrips({ onOpen }: Props) {
                     .then(() => setVersion((v) => v + 1))
                 }}
               />
-              {/* A square with no day on it is a texture, not a calendar: you
-                  could click any box at any time with nothing saying which day
-                  you had just claimed. */}
-              <span className="nx-home__habit-tick nx-type-data">
-                {WEEKDAY_INITIALS[fromISO(day.date).getDay()]}
-              </span>
               </div>
             ))}
           </div>

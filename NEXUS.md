@@ -125,7 +125,12 @@ record a day the grid could not place — the box went on and nothing on Home
 changed — so `properties:set` stamps the logical day onto a habit page that has
 no date yet (`repo.stampHabitDate`). Home's strip is two weeks, not three:
 at 21 squares in a row nobody can tell which one is Tuesday, so each square
-carries its weekday initial and today is outlined. A future day cannot be
+carries its weekday initial above it and today is outlined. The squares are a
+fixed size packed against the habit's name with the slack left on the right —
+stretched across the panel they made a row's width depend on the panel's, and
+left a sliver of a fifteenth column at the edge. Home carries no streak count:
+the marks are the point there, and the number belongs on the Tracker's grid
+next to the year it is counted over. A future day cannot be
 ticked at all — the year grid draws the whole year, and without that every day
 still to come took a click.
 
