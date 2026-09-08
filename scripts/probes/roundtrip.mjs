@@ -52,5 +52,24 @@ log('\nre-imported block types:', JSON.stringify(r.types))
 log('every block has an id:', r.everyBlockHasAnId)
 log('checkbox states preserved:', JSON.stringify(r.checked))
 log('tasks projected from the import:', JSON.stringify(r.tasks))
+// A body that repeats its own title. Import skipped the title by value, so
+// every later "# Notes" went with it — a document quietly shorter than the one
+// that was exported.
+const rep = await page.evaluate(async () => {
+  const uid = () => crypto.randomUUID()
+  const head = (text) => ({ id: uid(), type: 'heading', props: { level: 1 }, content: [{ type: 'text', text, styles: {} }], children: [] })
+  const para = (text) => ({ id: uid(), type: 'paragraph', props: {}, content: [{ type: 'text', text, styles: {} }], children: [] })
+  const doc = [head('Notes'), para('first'), head('Notes'), para('second')]
+  const p = await window.api.pages.create()
+  await window.api.pages.update(p.id, { title: 'Notes', content: JSON.stringify(doc) })
+  const md = await window.api.io.exportPageMarkdown(p.id)
+  const back = JSON.parse((await window.api.io.importMarkdown(md, 'Notes.md')).content)
+  return { md, types: back.map((b) => b.type), texts: back.map((b) => b.content[0]?.text ?? '') }
+})
+log('\na title repeated in the body:\n' + rep.md.split('\n').map((l) => '  | ' + l).join('\n'))
+log('re-imported:', JSON.stringify(rep.texts))
+const kept = rep.texts.join('|') === 'Notes|first|Notes|second'
+log(`${kept ? ' ok  ' : 'FAIL '} every line survives a title that recurs in the body`)
+
 await app.close()
-process.exit(0)
+process.exit(kept ? 0 : 1)

@@ -83,8 +83,12 @@ export function exportPageMarkdown(pageId: string): string {
 export function exportPageJSON(pageId: string): string {
   const page = repo.getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
+  // `parseDocument` rather than a bare JSON.parse, for the same reason the
+  // markdown export uses it: one unparseable body threw and took the export of
+  // that page down with it, when an empty document is a better answer than no
+  // file at all.
   return JSON.stringify(
-    { title: page.title, icon: page.icon, content: JSON.parse(page.content || '[]') },
+    { title: page.title, icon: page.icon, content: parseDocument(page.content) },
     null,
     2
   )
@@ -144,14 +148,19 @@ function importedBlock(
  */
 export function importMarkdown(content: string, filename: string): Page {
   const lines = content.split('\n')
-  const titleLine = lines.find((l) => l.startsWith('# '))
-  const title = titleLine ? titleLine.slice(2).trim() : filename.replace(/\.md$/, '')
+  // By position, not by value. Skipping every line equal to the title dropped
+  // any line in the body that repeated it — a note whose H1 is "Notes" lost
+  // each "# Notes" heading further down, silently, on the way in.
+  const titleIndex = lines.findIndex((l) => l.startsWith('# '))
+  const title =
+    titleIndex >= 0 ? lines[titleIndex].slice(2).trim() : filename.replace(/\.md$/, '')
 
   const blocks: BlockNoteBlock[] = []
   let fence: string[] | null = null
 
-  for (const raw of lines) {
-    if (raw === titleLine) continue
+  for (let i = 0; i < lines.length; i++) {
+    if (i === titleIndex) continue
+    const raw = lines[i]
     const line = raw.replace(/\s+$/, '')
 
     // A fenced code block runs until its closing fence; blank lines and

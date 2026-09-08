@@ -87,6 +87,21 @@ interface AppState {
    */
   prefs: Preferences
 
+  /**
+   * What day it is, by `prefs.dayStartHour`.
+   *
+   * A value in the store rather than a date each reader works out for itself.
+   * `useToday()` used to compute it inside a selector, and a selector only
+   * re-runs when something writes to the store — so a window left open past
+   * the day-start hour went on answering yesterday until some unrelated action
+   * happened to wake it: the journal button opening the entry for the day
+   * before, the tracker marking the wrong row, overdue a day out. That is the
+   * late-night session `shared/day.ts` was written for, so it was the one case
+   * the feature did not cover. Computing it in a selector was also impure —
+   * two components rendering in the same pass could be handed different days.
+   */
+  today: string
+
   setActiveView: (view: View) => void
   setDayStartHour: (hour: number) => Promise<void>
   setTaskSection: (name: string) => Promise<void>
@@ -187,12 +202,17 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveStatus: 'idle',
 
   prefs: { dayStartHour: DEFAULT_DAY_START_HOUR, taskSection: 'Tasks' },
+  today: logicalDateISO(DEFAULT_DAY_START_HOUR),
 
   setActiveView: (view) => set({ activeView: view }),
 
   setDayStartHour: async (hour) => {
     const stored = await window.api.prefs.setDayStartHour(hour)
     set((state) => ({ prefs: { ...state.prefs, dayStartHour: stored } }))
+    // Moving the hour can move the day — at 1am, going from 4 to midnight
+    // makes it today rather than yesterday, and the views must not wait for
+    // the next tick to hear about it.
+    tickToday()
   },
 
   setTaskSection: async (name) => {
@@ -272,6 +292,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Drop filters pointing at tags that no longer exist.
       activeTagFilter: state.activeTagFilter.filter((id) => tags.some((t) => t.id === id))
     }))
+    // `prefs` has just come off disk, and the hour it carries may not be the
+    // default the store started with — the first boot after this line runs is
+    // the only chance to notice before the next tick.
+    tickToday()
   },
 
   openTodayEntry: async () => {
@@ -489,6 +513,30 @@ export function usePageById(id: string | null): PageListItem | null {
 }
 
 
+/** How often the day is re-checked. A minute is finer than any view needs. */
+const TICK_MS = 60_000
+
+/**
+ * Recompute the day, and write it only when it has actually changed.
+ *
+ * Zustand notifies on every `setState`, so a ticker that wrote the same string
+ * once a minute would re-render every view that reads the store, all night,
+ * for nothing.
+ */
+function tickToday(): void {
+  const { prefs, today: current } = useAppStore.getState()
+  const now = logicalDateISO(prefs.dayStartHour)
+  if (now !== current) useAppStore.setState({ today: now })
+}
+
+// The only interval in the renderer, and it is meant to stay the only one:
+// everything else here moves when the user or the main process moves it.
+setInterval(tickToday, TICK_MS)
+// An interval does not fire while the machine is asleep, and a laptop closed
+// at 11pm and opened the next morning is exactly the window this covers — the
+// app comes back to focus owing a day.
+window.addEventListener('focus', tickToday)
+
 /**
  * What day it is, according to the day-start hour.
  *
@@ -497,10 +545,10 @@ export function usePageById(id: string | null): PageListItem | null {
  * disagreed with the person still working. This is the one answer they share.
  */
 export function useToday(): string {
-  return useAppStore((s) => logicalDateISO(s.prefs.dayStartHour))
+  return useAppStore((s) => s.today)
 }
 
 /** The same, for code outside a component. */
 export function today(): string {
-  return logicalDateISO(useAppStore.getState().prefs.dayStartHour)
+  return useAppStore.getState().today
 }

@@ -13,37 +13,56 @@
      sunken wells and below raised panels. Previously panels were *darker*
      than the page behind them, which read as holes rather than cards and
      was a good part of why the UI looked muddy.
-     ---------------------------------------------------------------- */
-  --nx-bg: #0f1013;
-  --nx-surface: #16181d;
-  --nx-surface-raised: #1c1f25;
-  --nx-surface-sunken: #0b0c0e;
 
-  --nx-border: #23262e;
-  --nx-border-2: #2e323c;
+     The greys carry a faint green cast — hue 155 at three quarters of their
+     original chroma — where they used to lean violet. Lightness is untouched
+     across the whole set, so every contrast ratio holds to within 0.05 of
+     what it was; the shell reads as instrument glass rather than as a tint.
+     ---------------------------------------------------------------- */
+  --nx-bg: #0f110f;
+  --nx-surface: #151917;
+  --nx-surface-raised: #1c201d;
+  --nx-surface-sunken: #0b0c0b;
+
+  --nx-border: #222824;
+  --nx-border-2: #2d342f;
 
   /* Text. A genuine mid-grey for secondary text — the old --nx-text-dim was
-     dark enough against the panel to sit under 3:1 contrast. */
-  --nx-text: #e6e7ec;
-  --nx-text-muted: #9b9ead;
-  --nx-text-dim: #71747f;
+     dark enough against the panel to sit under 3:1 contrast. Cast at half
+     the strength of the surfaces: enough to belong to them, not enough to
+     read as coloured type. */
+  --nx-text: #e6e8e6;
+  --nx-text-muted: #9aa19c;
+  --nx-text-dim: #717672;
 
-  --nx-row-line: #1b1e24;
-  --nx-row-hover: #1f232a;
+  --nx-row-line: #1b1f1c;
+  --nx-row-hover: #1f2421;
 
-  /* Status */
-  --nx-success: #7fae7a;
+  /* Status.
+
+     Success stays leaf green but sits deeper than the accent emerald below.
+     The two are only 16° apart in hue, so lightness is what keeps a
+     "success" tag legibly different from an "accent" one — they are two of
+     the four colours the tag system offers and must not collapse into one.
+
+     Warning is the amber this app used to be built around. It is no longer
+     the brand colour, but it is still the only warm signal in the set, so it
+     keeps a token of its own rather than borrowing the accent's. */
+  --nx-success: #699365;
   --nx-info: #7ea3c9;
+  --nx-warning: #cfa262;
+  --nx-warning-tint: rgba(207, 162, 98, 0.12);
   --nx-critical: #d9604f;
   --nx-critical-tint: rgba(217, 96, 79, 0.12);
 
-  /* Accent — amber, kept as the identity but spent sparingly: selection,
-     links, focus, and the wordmark. Not on every label. */
-  --nx-accent: #d4a86a;
-  --nx-accent-hover: #e3bb84;
-  --nx-accent-pressed: #b98e52;
-  --nx-accent-tint: rgba(212, 168, 106, 0.14);
-  --nx-accent-tint-soft: rgba(212, 168, 106, 0.07);
+  /* Accent — emerald, kept as the identity but spent sparingly: selection,
+     links, focus, and the wordmark. Not on every label. oklch(71% 0.098 158),
+     inside the band DESIGN.md reserves for per-project accents. */
+  --nx-accent: #69b48a;
+  --nx-accent-hover: #82c59e;
+  --nx-accent-pressed: #509a72;
+  --nx-accent-tint: rgba(105, 180, 138, 0.14);
+  --nx-accent-tint-soft: rgba(105, 180, 138, 0.07);
 
   /* Typography */
   --nx-font-sans: 'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
@@ -257,7 +276,7 @@ button {
 }
 .nx-tag-chip--success {
   --nx-tag-color: var(--nx-success);
-  --nx-tag-tint: rgba(127, 174, 122, 0.08);
+  --nx-tag-tint: rgba(105, 147, 101, 0.08);
 }
 .nx-tag-chip--critical {
   --nx-tag-color: var(--nx-critical);
