@@ -16,6 +16,7 @@ import {
   mkdirSync,
   readFileSync,
   writeFileSync,
+  copyFileSync,
   unlinkSync,
   rmdirSync,
   readdirSync
@@ -23,6 +24,9 @@ import {
 import { dirname, join, resolve, sep } from 'path'
 import * as repo from './repo'
 import { exportPageMarkdown } from './io'
+import { attachmentPath } from './files'
+import { getDataDir } from './database'
+import { extractAttachmentNames, parseDocument } from '../shared/document'
 import type { Page, PageLocation, Folder } from '../shared/types'
 
 const SETTING_ENABLED = 'mirror.enabled'
@@ -32,6 +36,22 @@ const SETTING_LAST_SYNC = 'mirror.lastSyncAt'
 /** Manifest key for the generated index. The space keeps it out of UUID space. */
 const INDEX_KEY = ' index'
 const INDEX_FILENAME = '_nexus-index.md'
+
+/**
+ * Attachments are copied in, not linked to.
+ *
+ * The mirror exists so that any assistant, editor or backup tool can read the
+ * vault as ordinary files, and a folder whose pictures are absolute paths into
+ * `~/.config/nexus` stops being that the moment it is moved, synced to another
+ * machine or committed to git. Copying costs a second set of bytes on disk and
+ * buys a tree that is complete on its own.
+ *
+ * The manifest keys them under a prefix that cannot collide with a page's
+ * UUID, for the same reason the index does — the mirror only ever deletes
+ * files it recorded writing, and an attachment copy has to be one of them.
+ */
+const FILES_DIRNAME = '_files'
+const FILE_KEY_PREFIX = ' file:'
 
 const DEBOUNCE_MS = 1500
 
@@ -259,7 +279,14 @@ function renderPage(page: Page, relPath: string, typeName: string): string {
   front.push(`path: ${yamlString(relPath)}`)
   front.push('---', '')
 
-  return front.join('\n') + '\n' + exportPageMarkdown(page.id)
+  // Relative to this page's own file, not to the mirror root: a page nested
+  // two folders deep needs `../../_files/…`, and a reader that resolves links
+  // relative to the document — every Markdown viewer — would otherwise look
+  // for the picture in the wrong directory.
+  const up = '../'.repeat(relPath.split('/').length - 1)
+  return (
+    front.join('\n') + '\n' + exportPageMarkdown(page.id, (name) => `${up}${FILES_DIRNAME}/${name}`)
+  )
 }
 
 /**
@@ -352,6 +379,19 @@ export function syncNow(only?: string[]): MirrorResult {
     for (const id of paths.keys()) dirty.add(id)
   }
 
+  // Attachment copies live in the same manifest as pages, under keys a UUID
+  // cannot produce. On a full pass this is rebuilt from what the documents
+  // actually reference; on a scoped one the previous set is carried forward
+  // untouched, because the pages that were not re-read might still be using
+  // any of it. So a picture removed from a note is copied until the next full
+  // pass — wasted bytes for a while, never a missing image.
+  const desiredFiles = new Map<string, string>()
+  if (only) {
+    for (const [key, relPath] of previous) {
+      if (key.startsWith(FILE_KEY_PREFIX)) desiredFiles.set(key, relPath)
+    }
+  }
+
   let written = 0
   // Every page not in `dirty` is one this sync deliberately left alone.
   let unchanged = paths.size - dirty.size
@@ -375,6 +415,27 @@ export function syncNow(only?: string[]): MirrorResult {
     written++
   }
 
+  const dataDir = getDataDir()
+  // Copy an attachment beside the notes, once. Content-addressed, so a file
+  // already there is byte-identical by construction and there is nothing to
+  // compare — unlike a page, whose contents change under a stable name.
+  const copyAttachment = (name: string): void => {
+    const relPath = `${FILES_DIRNAME}/${name}`
+    desiredFiles.set(`${FILE_KEY_PREFIX}${name}`, relPath)
+
+    const source = attachmentPath(dataDir, name)
+    if (!source || !existsSync(source)) return // Reclaimed, or never stored.
+    try {
+      const absolute = assertInsideRoot(root, join(root, relPath))
+      if (existsSync(absolute)) return
+      mkdirSync(dirname(absolute), { recursive: true })
+      copyFileSync(source, absolute)
+      written++
+    } catch {
+      // One unreadable attachment is not a reason to abandon the sync.
+    }
+  }
+
   for (const pageId of dirty) {
     const relPath = paths.get(pageId)
     if (!relPath) continue
@@ -382,6 +443,7 @@ export function syncNow(only?: string[]): MirrorResult {
     const page = repo.getPageById(pageId)
     if (!page) continue
     writeIfChanged(relPath, renderPage(page, relPath, typeNames.get(page.type_id) ?? 'Note'))
+    for (const name of extractAttachmentNames(parseDocument(page.content))) copyAttachment(name)
   }
 
   // The index names every page and its path, so any title or path change
@@ -390,6 +452,8 @@ export function syncNow(only?: string[]): MirrorResult {
 
   // Remove files this mirror previously wrote that are no longer wanted —
   // pages deleted, renamed, or moved elsewhere in the tree.
+  for (const [key, relPath] of desiredFiles) desired.set(key, relPath)
+
   const desiredPaths = new Set(desired.values())
   let deleted = 0
 

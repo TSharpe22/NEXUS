@@ -47,7 +47,26 @@ export function Editor({ page, children }: EditorProps) {
 
   const editor = useCreateBlockNote({
     schema: nexusSchema,
-    initialContent: parseInitialContent(page.content)
+    initialContent: parseInitialContent(page.content),
+    /**
+     * Where a pasted or dropped file goes.
+     *
+     * Without this BlockNote's image, video, audio and file blocks can only
+     * hold a URL somebody typed, and a screenshot on the clipboard has nowhere
+     * to land — the paste was silently dropped. Returning a URL string is the
+     * whole contract: the block stores it, and `nexus-file://` is served back
+     * by the main process out of the attachment store.
+     *
+     * Deliberately not a data URL. A screenshot inlined as base64 lands in
+     * `pages.content`, which is the column every page list, every mirror pass
+     * and every full-text reindex reads — one 2MB paste would cost more than
+     * the whole rest of a vault.
+     */
+    uploadFile: async (file: File) => {
+      const bytes = new Uint8Array(await file.arrayBuffer())
+      const stored = await window.api.files.store(bytes, file.name)
+      return stored.url
+    }
   })
 
   const saveContent = useDebounce(async () => {

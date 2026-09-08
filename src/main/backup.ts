@@ -3,9 +3,15 @@
  *
  * The vault mirror is not a backup: it is one-way, and lossy on the way out
  * (a callout or a toggle comes back as a plain paragraph, a table as nothing).
- * The database file is the only complete copy of a vault, and until this
- * existed the only copies ever taken were the ones a destructive migration
- * made for itself.
+ * The database file is the only complete copy of everything written, and until
+ * this existed the only copies ever taken were the ones a destructive
+ * migration made for itself.
+ *
+ * It is not the whole vault, though — attachments live beside it in
+ * `data/files/` (see `files.ts`) and are not snapshotted. They do not need to
+ * be: they are content-addressed, never rewritten, and never deleted except by
+ * an explicit reclaim, so a snapshot taken a month ago still finds every file
+ * it names. A full backup is a copy of `data/`, not of the database in it.
  *
  * Imports no `electron`, so it can be exercised against a throwaway directory:
  * `npm run check:backup`.

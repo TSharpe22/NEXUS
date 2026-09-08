@@ -10,6 +10,7 @@ import type {
 } from '@shared/types'
 import { STALE_DAYS, dayOfYear, fromISO, isOlderThan, isoWeek } from '@shared/date-range'
 import { documentPreview } from '@shared/document'
+import { formatBytes } from '@shared/format'
 import { useAppStore, useToday, useWallToday } from '../store/app-store'
 import { dayStartLabel } from '@shared/day'
 import { Panel } from '../design/Panel'
@@ -37,12 +38,6 @@ import './Home.css'
  * stale from `pages`. The one thing Home added to the model is the pin, and
  * that is a flag on a page rather than a table of its own.
  */
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-}
 
 const CAPTURE_TARGETS: { value: CaptureTarget; label: string; hint: string }[] = [
   { value: 'page', label: 'New page', hint: 'A page of its own, ready to type or link' },
