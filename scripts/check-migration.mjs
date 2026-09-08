@@ -316,7 +316,15 @@ stranded.exec(`
     VALUES ('pr2', 'src', 'status', 'select', 'active');
 `)
 
-applySchema(stranded, () => null)
+// The repair rewrites values the user typed, so it takes a copy of the file
+// first — the same invariant the legacy rebuild has always honoured, and the
+// one this step used to skip.
+let repairBackups = 0
+applySchema(stranded, () => {
+  repairBackups++
+  return '/tmp/fake-backup'
+})
+check('the relation repair backs the file up before rewriting it', repairBackups, 1)
 const moved = stranded.prepare('SELECT * FROM properties WHERE id = ?').get('pr1')
 check('relation moved into value_relation', moved.value_relation, 'dst')
 check('relation cleared out of value_text', moved.value_text, null)
@@ -324,8 +332,14 @@ const untouched = stranded.prepare('SELECT * FROM properties WHERE id = ?').get(
 check('a non-relation property is left alone', untouched.value_text, 'active')
 check('schema version stamped', stranded.pragma('user_version', { simple: true }), SCHEMA_VERSION)
 
-// Running it again must not undo the repair or move anything else.
-applySchema(stranded, () => null)
+// Running it again must not undo the repair, move anything else, or spend a
+// second backup on a file with nothing left to rewrite.
+repairBackups = 0
+applySchema(stranded, () => {
+  repairBackups++
+  return null
+})
+check('and takes no second backup once there is nothing stranded', repairBackups, 0)
 check('re-running leaves the relation in place', stranded.prepare('SELECT value_relation FROM properties WHERE id = ?').get('pr1').value_relation, 'dst')
 stranded.pragma('foreign_keys = ON')
 check('foreign keys still satisfied after the repair', stranded.pragma('foreign_key_check'), [])
@@ -468,6 +482,82 @@ check('and leaves the unpinned page alone',
 v9.pragma('foreign_keys = ON')
 check('foreign keys satisfied', v9.pragma('foreign_key_check'), [])
 v9.close()
+
+// ------------------------------------------------------------------
+// A migration that dies halfway leaves the file it started with.
+//
+// The v9 rebuild drops `links` and renames its replacement into place. Run as
+// bare statements, SQLite commits each one as it goes, so a throw between the
+// two left a vault with no `links` table and `user_version` still at 8 — and
+// the next launch, finding no table to rebuild, skipped the step and stamped
+// the current version over a database missing a table.
+//
+// The throw is injected by removing `properties`, which the last statement of
+// the rebuild reads: it fires after the drop and the rename, which is the gap
+// that matters. A real file always has that table — this stands in for the
+// crash, the full disk or the killed process that a migration has to survive.
+// ------------------------------------------------------------------
+console.log('\nv8 file whose v9 rebuild dies after the drop:')
+const tornPath = join(dir, 'torn.db')
+const torn = new Database(tornPath)
+torn.pragma('foreign_keys = OFF')
+applySchema(torn, () => null)
+torn.exec(`
+  DROP TABLE links;
+  DROP TABLE properties;
+  CREATE TABLE links (
+    id              TEXT PRIMARY KEY,
+    source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    context         TEXT,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(source_page_id, target_page_id)
+  );
+  INSERT INTO pages (id, type_id, title, content) VALUES ('a','note','A','[]');
+  INSERT INTO pages (id, type_id, title, content) VALUES ('b','note','B','[]');
+  INSERT INTO links (id, source_page_id, target_page_id, context) VALUES ('old','a','b','saw it');
+`)
+torn.pragma('user_version = 8')
+
+let tornThrew = false
+try {
+  applySchema(torn, () => null)
+} catch {
+  tornThrew = true
+}
+check('the interrupted migration fails rather than reporting success', tornThrew, true)
+check('the file still reports the version it started at',
+  torn.pragma('user_version', { simple: true }), 8)
+check('links is still there', torn.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='links'`).get().c, 1)
+check('in the shape it had', torn.pragma('table_info(links)').map((c) => c.name),
+  ['id', 'source_page_id', 'target_page_id', 'context', 'created_at'])
+check('holding the row it held', torn.prepare(`SELECT context FROM links WHERE id = 'old'`).get().context, 'saw it')
+check('and the half-built replacement is gone',
+  torn.prepare(`SELECT count(*) c FROM sqlite_master WHERE name='links_v9'`).get().c, 0)
+
+// Put back the table the injection removed — a crash would not have taken it —
+// and the next launch picks the migration up from the version on the file.
+torn.exec(`
+  CREATE TABLE properties (
+    id              TEXT PRIMARY KEY,
+    page_id         TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    key             TEXT NOT NULL,
+    type            TEXT NOT NULL,
+    value_text      TEXT,
+    value_number    REAL,
+    value_date      TEXT,
+    value_relation  TEXT,
+    UNIQUE(page_id, key)
+  );
+`)
+applySchema(torn, () => null)
+check('the next launch completes the rebuild', torn.pragma('table_info(links)').map((c) => c.name).includes('source'), true)
+check('and the mention survived both attempts',
+  torn.prepare(`SELECT source, context FROM links WHERE id = 'old'`).get(), { source: 'mention', context: 'saw it' })
+check('the file reaches the current version', torn.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+torn.pragma('foreign_keys = ON')
+check('foreign keys satisfied', torn.pragma('foreign_key_check'), [])
+torn.close()
 
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)

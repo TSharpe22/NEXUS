@@ -250,6 +250,24 @@ function isLegacySchema(): boolean {
   return tableExists('pages') && !columnExists('pages', 'content')
 }
 
+/**
+ * Whether the v6 repair has anything to move.
+ *
+ * The step is gated on the stored version, but the version alone cannot tell a
+ * v5 vault full of relations from a file that has never been written to — and
+ * the difference decides whether a backup is worth taking before it runs.
+ */
+function hasStrandedRelations(): boolean {
+  if (!columnExists('properties', 'value_relation')) return false
+  const row = db
+    .prepare(
+      `SELECT count(*) AS c FROM properties
+        WHERE type = 'relation' AND value_relation IS NULL AND value_text IS NOT NULL`
+    )
+    .get() as { c: number }
+  return row.c > 0
+}
+
 /** Block types the current schema knows how to render. */
 const KNOWN_BLOCK_TYPES = new Set([
   'paragraph',
@@ -536,6 +554,10 @@ function migratePropertyValues(): void {
  * forward if that's what it turns out to be. Returns the path of the backup
  * written before any destructive step, or null when nothing needed migrating.
  *
+ * All or nothing: every step runs inside one transaction, so a file is either
+ * on the version it started at or on the current one, never on something in
+ * between that the next launch would mistake for either.
+ *
  * The caller is responsible for pragmas; foreign keys must be OFF on entry
  * (a table rebuild drops and recreates tables other tables reference) and are
  * the caller's to switch back on afterwards.
@@ -547,142 +569,173 @@ export function applySchema(
   db = database
 
   const version = db.pragma('user_version', { simple: true }) as number
+  const legacy = version < SCHEMA_VERSION && isLegacySchema()
+  // The v6 step rewrites property values in place, and used to do it with no
+  // copy of the file anywhere — `backup` was only ever called on the legacy
+  // path, so the one step that rewrites what the user typed was the one step
+  // with nothing to go back to. Gated on there actually being something to
+  // rewrite, because a brand-new file is at version 0 as well and a copy of an
+  // empty vault is a backup taken of nothing.
+  const repairsV6 = !legacy && version < 6 && hasStrandedRelations()
+
+  // Both backups are taken before the transaction opens: `backupDatabase`
+  // checkpoints the write-ahead log first, and a checkpoint cannot run inside
+  // a transaction.
   let backupPath: string | null = null
+  if (legacy) backupPath = backup('legacy schema')
+  else if (repairsV6) backupPath = backup('relation repair')
 
-  if (version < SCHEMA_VERSION && isLegacySchema()) {
-    backupPath = backup('legacy schema')
-    migrateFromV1()
-  }
+  // Every step below runs in one transaction.
+  //
+  // The v9 rebuild is four statements with the file holding no `links` table
+  // between the third and the fourth, and `db.exec` commits each one as it
+  // goes. A crash or a throw in that gap left a vault with no `links` table
+  // and `user_version` still at 8 — and the next launch, finding no table to
+  // rebuild, skipped the step and stamped 10 over a database missing a table.
+  //
+  // `PRAGMA user_version` is itself transactional, which is the property that
+  // makes this work: a migration that dies halfway rolls the version back with
+  // everything else, so the file still reports the version it started at and
+  // the next launch retries from there.
+  //
+  // `db.transaction()` nests through SAVEPOINT, so `migrateFromV1()`'s own
+  // transaction needs no change. `PRAGMA foreign_keys` is the one thing that
+  // has to stay outside — it is a no-op inside a transaction — and the caller
+  // in `database.ts` already sets it around this call.
+  const migrate = db.transaction(() => {
+    if (legacy) migrateFromV1()
 
-  // v9. `links` grows a source discriminator, which SQLite cannot add to an
-  // existing UNIQUE constraint without rebuilding the table.
-  //
-  // The rows are copied across rather than dropped and re-derived. They look
-  // derived, and for anything this build wrote they are — but a file coming
-  // from the first build has links that were extracted by the *old* app from
-  // its own block rows, and nothing in the migrated document is guaranteed to
-  // still produce them. Re-deriving would quietly delete backlinks the user
-  // could see yesterday, which is not a migration's job. Everything carried
-  // over is a mention; relations had no way to make a link before now.
-  //
-  // The second statement is the other half: every relation already stored
-  // gets its link immediately, so an existing vault shows relation backlinks
-  // on first launch rather than only after each property is touched again.
-  // Ids are opaque, and this file stays free of any dependency, so they come
-  // from randomblob rather than from uuid.
-  if (tableExists('links') && !columnExists('links', 'source')) {
+    // v9. `links` grows a source discriminator, which SQLite cannot add to an
+    // existing UNIQUE constraint without rebuilding the table.
+    //
+    // The rows are copied across rather than dropped and re-derived. They look
+    // derived, and for anything this build wrote they are — but a file coming
+    // from the first build has links that were extracted by the *old* app from
+    // its own block rows, and nothing in the migrated document is guaranteed to
+    // still produce them. Re-deriving would quietly delete backlinks the user
+    // could see yesterday, which is not a migration's job. Everything carried
+    // over is a mention; relations had no way to make a link before now.
+    //
+    // The second statement is the other half: every relation already stored
+    // gets its link immediately, so an existing vault shows relation backlinks
+    // on first launch rather than only after each property is touched again.
+    // Ids are opaque, and this file stays free of any dependency, so they come
+    // from randomblob rather than from uuid.
+    if (tableExists('links') && !columnExists('links', 'source')) {
+      db.exec(`
+        CREATE TABLE links_v9 (
+          id              TEXT PRIMARY KEY,
+          source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+          target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+          source          TEXT NOT NULL DEFAULT 'mention',
+          property_key    TEXT NOT NULL DEFAULT '',
+          context         TEXT,
+          created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(source_page_id, target_page_id, source, property_key)
+        );
+
+        INSERT OR IGNORE INTO links_v9 (id, source_page_id, target_page_id, source, property_key, context, created_at)
+          SELECT id, source_page_id, target_page_id, 'mention', '', context, created_at FROM links;
+
+        DROP TABLE links;
+        ALTER TABLE links_v9 RENAME TO links;
+
+        INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
+          SELECT lower(hex(randomblob(16))), pr.page_id, pr.value_relation, 'relation', pr.key, NULL, datetime('now')
+            FROM properties pr
+            JOIN pages p ON p.id = pr.value_relation
+           WHERE pr.type = 'relation'
+             AND pr.value_relation IS NOT NULL AND pr.value_relation <> '';
+      `)
+    }
+
+    db.exec(CURRENT_SCHEMA)
+
+    // v3. `folders` is created by CURRENT_SCHEMA above, so the column's
+    // reference target exists by the time this runs. Additive, so a v2 file
+    // needs no backup and no table rebuild.
+    if (!columnExists('pages', 'folder_id')) {
+      db.exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_pages_folder ON pages(folder_id)')
+
+    // v4. Contentless-by-choice: the index stores its own copy of the text so
+    // a query needs no join back to `pages` to rank. Additive, and derived —
+    // `repo.rebuildSearchIndex()` refills it from `pages` on next startup.
     db.exec(`
-      CREATE TABLE links_v9 (
-        id              TEXT PRIMARY KEY,
-        source_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-        target_page_id  TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
-        source          TEXT NOT NULL DEFAULT 'mention',
-        property_key    TEXT NOT NULL DEFAULT '',
-        context         TEXT,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-        UNIQUE(source_page_id, target_page_id, source, property_key)
+      CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
+        page_id UNINDEXED,
+        title,
+        body,
+        tokenize = "unicode61 remove_diacritics 2"
+      );
+    `)
+
+    // v5. General key/value settings, and the vault mirror's manifest.
+    //
+    // `mirror_files` deliberately has no foreign key to `pages`: the row must
+    // outlive the page it describes, otherwise deleting a page would drop the
+    // manifest row before the mirror could clean up the orphaned file on disk.
+    // The mirror only ever deletes paths recorded here, so a file the user put
+    // in the folder themselves is never touched.
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT
       );
 
-      INSERT OR IGNORE INTO links_v9 (id, source_page_id, target_page_id, source, property_key, context, created_at)
-        SELECT id, source_page_id, target_page_id, 'mention', '', context, created_at FROM links;
-
-      DROP TABLE links;
-      ALTER TABLE links_v9 RENAME TO links;
-
-      INSERT OR IGNORE INTO links (id, source_page_id, target_page_id, source, property_key, context, created_at)
-        SELECT lower(hex(randomblob(16))), pr.page_id, pr.value_relation, 'relation', pr.key, NULL, datetime('now')
-          FROM properties pr
-          JOIN pages p ON p.id = pr.value_relation
-         WHERE pr.type = 'relation'
-           AND pr.value_relation IS NOT NULL AND pr.value_relation <> '';
+      CREATE TABLE IF NOT EXISTS mirror_files (
+        page_id  TEXT PRIMARY KEY,
+        rel_path TEXT NOT NULL
+      );
     `)
-  }
 
-  db.exec(CURRENT_SCHEMA)
+    // v6. Relation values written into `value_text` by the old `setProperty`
+    // move to `value_relation`, which is where every reader looks for them.
+    // Guarded on the stored version rather than run every startup: it is a data
+    // repair, not a structural step, and there is nothing to re-repair once a
+    // file has been through it.
+    if (version < 6) {
+      db.exec(`
+        UPDATE properties
+           SET value_relation = value_text, value_text = NULL
+         WHERE type = 'relation' AND value_relation IS NULL AND value_text IS NOT NULL
+      `)
+    }
 
-  // v3. `folders` is created by CURRENT_SCHEMA above, so the column's
-  // reference target exists by the time this runs. Additive, so a v2 file
-  // needs no backup and no table rebuild.
-  if (!columnExists('pages', 'folder_id')) {
-    db.exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_folder ON pages(folder_id)')
+    // v7. A type's default template. ON DELETE SET NULL so deleting the template
+    // page leaves the type intact and simply un-templated, rather than cascading
+    // into the type and taking every page of it along. Additive and idempotent,
+    // so it lands on a file already stamped 6 by the step above.
+    if (!columnExists('types', 'template_page_id')) {
+      db.exec(
+        `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
+      )
+    }
 
-  // v4. Contentless-by-choice: the index stores its own copy of the text so
-  // a query needs no join back to `pages` to rank. Additive, and derived —
-  // `repo.rebuildSearchIndex()` refills it from `pages` on next startup.
-  db.exec(`
-    CREATE VIRTUAL TABLE IF NOT EXISTS page_fts USING fts5(
-      page_id UNINDEXED,
-      title,
-      body,
-      tokenize = "unicode61 remove_diacritics 2"
-    );
-  `)
+    // v8. `tasks` is created by CURRENT_SCHEMA above, so nothing structural is
+    // left to do here. Like `page_fts` it is derived — `repo.ensureTaskIndex()`
+    // fills it from `pages` at startup when it is missing or empty, which is
+    // also how an existing file picks up every checkbox already written.
 
-  // v5. General key/value settings, and the vault mirror's manifest.
-  //
-  // `mirror_files` deliberately has no foreign key to `pages`: the row must
-  // outlive the page it describes, otherwise deleting a page would drop the
-  // manifest row before the mirror could clean up the orphaned file on disk.
-  // The mirror only ever deletes paths recorded here, so a file the user put
-  // in the folder themselves is never touched.
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS settings (
-      key   TEXT PRIMARY KEY,
-      value TEXT
-    );
+    // v10. Pinning. `CURRENT_SCHEMA` above only creates `pages` when it is
+    // absent, so an existing file needs these two explicitly. Additive and
+    // idempotent; every page in an existing vault starts unpinned.
+    //
+    // `pinned_at` is what orders the list — a pin the user added today belongs
+    // below one they have kept for a month, and `updated_at` cannot answer that
+    // because editing a page would reshuffle the pins.
+    if (!columnExists('pages', 'is_pinned')) {
+      db.exec('ALTER TABLE pages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0')
+    }
+    if (!columnExists('pages', 'pinned_at')) {
+      db.exec('ALTER TABLE pages ADD COLUMN pinned_at TEXT')
+    }
+    db.exec('CREATE INDEX IF NOT EXISTS idx_pages_pinned ON pages(is_pinned)')
 
-    CREATE TABLE IF NOT EXISTS mirror_files (
-      page_id  TEXT PRIMARY KEY,
-      rel_path TEXT NOT NULL
-    );
-  `)
-
-  // v6. Relation values written into `value_text` by the old `setProperty`
-  // move to `value_relation`, which is where every reader looks for them.
-  // Guarded on the stored version rather than run every startup: it is a data
-  // repair, not a structural step, and there is nothing to re-repair once a
-  // file has been through it.
-  if (version < 6) {
-    db.exec(`
-      UPDATE properties
-         SET value_relation = value_text, value_text = NULL
-       WHERE type = 'relation' AND value_relation IS NULL AND value_text IS NOT NULL
-    `)
-  }
-
-  // v7. A type's default template. ON DELETE SET NULL so deleting the template
-  // page leaves the type intact and simply un-templated, rather than cascading
-  // into the type and taking every page of it along. Additive and idempotent,
-  // so it lands on a file already stamped 6 by the step above.
-  if (!columnExists('types', 'template_page_id')) {
-    db.exec(
-      `ALTER TABLE types ADD COLUMN template_page_id TEXT REFERENCES pages(id) ON DELETE SET NULL`
-    )
-  }
-
-  // v8. `tasks` is created by CURRENT_SCHEMA above, so nothing structural is
-  // left to do here. Like `page_fts` it is derived — `repo.ensureTaskIndex()`
-  // fills it from `pages` at startup when it is missing or empty, which is
-  // also how an existing file picks up every checkbox already written.
-
-  // v10. Pinning. `CURRENT_SCHEMA` above only creates `pages` when it is
-  // absent, so an existing file needs these two explicitly. Additive and
-  // idempotent; every page in an existing vault starts unpinned.
-  //
-  // `pinned_at` is what orders the list — a pin the user added today belongs
-  // below one they have kept for a month, and `updated_at` cannot answer that
-  // because editing a page would reshuffle the pins.
-  if (!columnExists('pages', 'is_pinned')) {
-    db.exec('ALTER TABLE pages ADD COLUMN is_pinned INTEGER NOT NULL DEFAULT 0')
-  }
-  if (!columnExists('pages', 'pinned_at')) {
-    db.exec('ALTER TABLE pages ADD COLUMN pinned_at TEXT')
-  }
-  db.exec('CREATE INDEX IF NOT EXISTS idx_pages_pinned ON pages(is_pinned)')
-
-  db.pragma(`user_version = ${SCHEMA_VERSION}`)
+    db.pragma(`user_version = ${SCHEMA_VERSION}`)
+  })
+  migrate()
 
   return backupPath
 }
