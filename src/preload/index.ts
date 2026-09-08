@@ -102,7 +102,9 @@ const api: NexusAPI = {
   habits: {
     candidates: () => ipcRenderer.invoke('habits:candidates'),
     days: (typeId, dateKey, booleanKey, from, to) =>
-      ipcRenderer.invoke('habits:days', typeId, dateKey, booleanKey, from, to)
+      ipcRenderer.invoke('habits:days', typeId, dateKey, booleanKey, from, to),
+    checkIn: (typeId, dateKey, booleanKey, date, done) =>
+      ipcRenderer.invoke('habits:checkIn', typeId, dateKey, booleanKey, date, done)
   },
   tasks: {
     inRange: (from, to) => ipcRenderer.invoke('tasks:inRange', from, to),

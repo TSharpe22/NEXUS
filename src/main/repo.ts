@@ -1255,6 +1255,11 @@ export function getHabitCandidates(): HabitCandidate[] {
          FROM types t
          JOIN property_definitions d ON d.type_id = t.id
         WHERE d.property_type IN ('date', 'boolean')
+          -- Note is the type that means "no type": every page without one
+          -- lands here, so a date and a checkbox defined on it once turns the
+          -- whole vault into a habit and fills the grid with a row nobody
+          -- asked for. A habit is something you decided to track.
+          AND t.id <> 'note'
         ORDER BY t.name, d.sort_order`
     )
     .all() as { type_id: string; type_name: string; key: string; property_type: string }[]
@@ -1283,6 +1288,58 @@ export function getHabitCandidates(): HabitCandidate[] {
  * written — so the day counts as done if any of them says so, and holds the
  * id of the one the grid opens.
  */
+/**
+ * Record a habit's day, making the page that holds it when there isn't one.
+ *
+ * The grid was read-only. A cell opened the page behind it, and a day with no
+ * page did nothing at all — so a habit could be defined, drawn, and never
+ * ticked. Recording one meant making a page by hand, setting its date property
+ * and ticking its checkbox, which is not something anyone does daily.
+ *
+ * A check-in is still only a page of that type carrying those two properties.
+ * There is no habit table and no habit engine: this writes through the same
+ * `createPage` and `setProperty` as every other path, so the search index,
+ * link graph and task projection stay current for free.
+ */
+export function checkInHabit(
+  typeId: string,
+  dateKey: string,
+  booleanKey: string,
+  date: string,
+  done: boolean
+): HabitDay {
+  const db = getDb()
+
+  // Oldest first, so a day that somehow has two pages keeps marking the one
+  // the grid already draws rather than silently starting a second record.
+  const existing = db
+    .prepare(
+      `SELECT p.id AS id
+         FROM pages p
+         JOIN properties d ON d.page_id = p.id AND d.key = ? AND d.type = 'date'
+        WHERE p.is_deleted = 0 AND p.type_id = ? AND d.value_date = ?
+        ORDER BY p.created_at
+        LIMIT 1`
+    )
+    .get(dateKey, typeId, date) as { id: string } | undefined
+
+  let pageId = existing?.id
+  if (!pageId) {
+    const typeName =
+      (db.prepare('SELECT name FROM types WHERE id = ?').get(typeId) as { name: string } | undefined)
+        ?.name ?? 'Habit'
+    const page = createPage(typeId)
+    pageId = page.id
+    // Titled for the day it records, so the page is findable as itself rather
+    // than as one of a hundred identically named rows.
+    updatePage(pageId, { title: `${typeName} — ${date}` })
+    setProperty(pageId, dateKey, 'date', date)
+  }
+
+  setProperty(pageId, booleanKey, 'boolean', done ? 'true' : 'false')
+  return { date, done, pageId }
+}
+
 export function getHabitDays(
   typeId: string,
   dateKey: string,

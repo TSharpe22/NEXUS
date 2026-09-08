@@ -1151,25 +1151,33 @@ await page.evaluate(() => {
 await sleep(700)
 await page.screenshot({ path: SHOT + '/13-habits.png' })
 
-// A cell is a way into the page that recorded the day, and a day with no
-// entry is not a link to anywhere.
-check('a day with no entry is not clickable',
+// Every day inside the year takes a click now. The grid used to disable any
+// day with no page, which meant the view that shows a habit was the one place
+// you could not record one — the only way in was to make the page by hand.
+check('a day with no entry is still clickable, because that is how one is made',
   await page.evaluate(() =>
-    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => c.disabled).length > 300))
-check('a recorded day is',
+    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => !c.disabled).length > 300))
+check('only days outside the year are inert',
   await page.evaluate(() =>
-    [...document.querySelectorAll('.nx-habits__cell')].filter((c) => !c.disabled).length === 3))
-check('and it says what it recorded',
-  await page.evaluate(() =>
-    /· done$/.test(document.querySelector('.nx-habits__cell--done')?.getAttribute('title') ?? '')),
+    [...document.querySelectorAll('.nx-habits__cell')].every(
+      (c) => !c.disabled || c.classList.contains('nx-habits__cell--outside'))))
+check('and a cell says what it recorded and what a click will do',
+  await page.evaluate(() => {
+    const title = document.querySelector('.nx-habits__cell--done')?.getAttribute('title') ?? ''
+    return /· done/.test(title) && /click to clear/.test(title)
+  }),
   await page.evaluate(() => document.querySelector('.nx-habits__cell--done')?.getAttribute('title')))
 
-await page.evaluate(() => document.querySelector('.nx-habits__cell--done').click())
+// Modifier-click is the way into the page behind a day. These fixture pages
+// were made through the API, so the sidebar's list never learned about them
+// and cannot render one — but the cell still has to hand the app over to
+// Notes, which is the part this owns.
+await page.evaluate(() => {
+  const cell = document.querySelector('.nx-habits__cell--done')
+  cell.dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }))
+})
 await sleep(900)
-// These fixture pages were made through the API, so the sidebar's list never
-// learned about them and cannot render one — but the cell still has to hand
-// the app over to Notes, which is the part this owns.
-check('clicking a day hands over to Notes',
+check('modifier-clicking a day hands over to Notes',
   await page.evaluate(() =>
     document.querySelector('.nx-nav-item--selected')?.textContent.trim() === 'Notes'),
   await page.evaluate(() => document.querySelector('.nx-nav-item--selected')?.textContent.trim()))
@@ -1318,6 +1326,33 @@ check('and it arrives with the two properties a habit needs',
 check('so the tracker recognises it as a habit',
   (await page.evaluate(() => window.api.habits.candidates())).some((c) => c.typeName === 'Ritual'))
 
+// The grid used to be read-only — a day with no page could not even be
+// clicked, so a habit could be defined, drawn, and never ticked. A check-in
+// makes the page that records it, and unticking leaves that page in place
+// saying the day was missed, which is not the same claim as no entry at all.
+const ritualCheck = await page.evaluate(async ([id, defs, date]) => {
+  const dateKey = defs.find((d) => d.property_type === 'date').key
+  const boolKey = defs.find((d) => d.property_type === 'boolean').key
+  const marked = await window.api.habits.checkIn(id, dateKey, boolKey, date, true)
+  const afterMark = await window.api.habits.days(id, dateKey, boolKey, date, date)
+  await window.api.habits.checkIn(id, dateKey, boolKey, date, false)
+  const afterClear = await window.api.habits.days(id, dateKey, boolKey, date, date)
+  return { marked, afterMark, afterClear }
+}, [ritual.id, ritualDefs, dayFromToday(0)])
+check('a habit can be checked in from the grid', ritualCheck.afterMark[0]?.done === true,
+  JSON.stringify(ritualCheck.afterMark))
+check('the check-in made the page that records the day', !!ritualCheck.marked.pageId)
+check('unticking keeps the day recorded as missed rather than blank',
+  ritualCheck.afterClear.length === 1 && ritualCheck.afterClear[0].done === false,
+  JSON.stringify(ritualCheck.afterClear))
+check('and it does not make a second page for the same day',
+  ritualCheck.afterClear[0]?.pageId === ritualCheck.marked.pageId)
+
+// Note is the type that means "no type". A date and a checkbox defined on it
+// once turned every page in the vault into a habit row.
+check('the base Note type is never offered as a habit',
+  !(await page.evaluate(() => window.api.habits.candidates())).some((c) => c.typeId === 'note'))
+
 // The other half: a property added to a type that has no pages at all, which
 // the page-panel route could not reach.
 check('add property', (await clickTypeButton('Add property')) === 'OK')
@@ -1348,6 +1383,15 @@ await page.keyboard.press('Enter')
 await sleep(800)
 check('a type can be renamed from Settings',
   (await page.evaluate(() => window.api.types.list())).some((t) => t.name === 'Ritual renamed'))
+
+// The check-in above left a page of this type behind; deleting the type
+// re-homes it onto Note rather than deleting it, so clear it explicitly.
+await page.evaluate(async (id) => {
+  for (const p of await window.api.pages.getAll()) {
+    if (p.type_id === id) await window.api.pages.hardDelete(p.id)
+  }
+}, ritual.id)
+await sleep(500)
 
 check('delete', (await clickTypeButton('Delete')) === 'OK')
 await sleep(400)

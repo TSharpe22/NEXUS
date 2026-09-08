@@ -110,6 +110,20 @@ those two. `repo.getHabitCandidates()` is the whole of the "is this a habit"
 logic — a type offering both. Anything that would need a table here is a sign
 the model has gone wrong rather than that the grid needs more.
 
+**The grid writes.** Clicking a day marks it done, or clears it, making the
+page that records the day when there isn't one (`repo.checkInHabit`);
+modifier-click opens that page. Before this the grid was read-only and any day
+without a page was `disabled`, so the view that shows a habit was the one place
+you could not record one — the only way in was to make a page by hand, set its
+date and tick its checkbox. A grid you cannot mark is a report, not a tracker.
+The write still goes through `createPage`/`setProperty` like everything else,
+so there is still no habit table and no habit engine.
+
+**The seeded `Note` type is never a habit candidate.** It is the type that
+means "no type" — every page without one lands there — so a date and a
+checkbox defined on it once turned the whole vault into a habit row nobody
+asked for.
+
 **A day starts when you say it does, not at midnight.** `day.startHour`
 (default 4am, in Settings) is the single number that decides what "today"
 means, and `src/shared/day.ts` is the only place that decides it. Everything

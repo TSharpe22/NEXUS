@@ -30,6 +30,9 @@ const HISTORY_DAYS = 365
 interface Strip {
   typeId: string
   typeName: string
+  /** The pair the strip was built from, so a click can write back through it. */
+  dateKey: string
+  booleanKey: string
   /** One entry per drawn day, oldest first. */
   days: { date: string; state: 'done' | 'missed' | 'blank'; pageId: string | null }[]
   current: number
@@ -42,6 +45,8 @@ function buildStrip(candidate: HabitCandidate, history: HabitDay[], today: strin
   return {
     typeId: candidate.typeId,
     typeName: candidate.typeName,
+    dateKey: candidate.dateKeys[0],
+    booleanKey: candidate.booleanKeys[0],
     days: eachDay(from, today).map((date) => {
       const day = byDate.get(date)
       return {
@@ -62,6 +67,9 @@ interface Props {
 
 export function HabitStrips({ onOpen }: Props) {
   const [strips, setStrips] = useState<Strip[] | null>(null)
+  // Bumped by a check-in so the strip redraws from the database rather than
+  // from an optimistic guess about what the write did.
+  const [version, setVersion] = useState(0)
   const today = useToday()
 
   useEffect(() => {
@@ -97,7 +105,7 @@ export function HabitStrips({ onOpen }: Props) {
     return () => {
       cancelled = true
     }
-  }, [today])
+  }, [today, version])
 
   if (strips === null) return <div className="nx-type-data">Loading…</div>
 
@@ -128,9 +136,23 @@ export function HabitStrips({ onOpen }: Props) {
               <button
                 key={day.date}
                 className={`nx-home__habit-day nx-home__habit-day--${day.state}`}
-                title={`${day.date} — ${day.state === 'done' ? 'done' : day.state === 'missed' ? 'not done' : 'no entry'}`}
-                disabled={!day.pageId}
-                onClick={() => day.pageId && onOpen(day.pageId)}
+                title={`${day.date} — ${
+                  day.state === 'done' ? 'done' : day.state === 'missed' ? 'not done' : 'no entry'
+                } — click to ${day.state === 'done' ? 'clear' : 'mark done'}${
+                  day.pageId ? ', ⌘/Ctrl-click to open the page' : ''
+                }`}
+                onClick={(e) => {
+                  // Read-only until now: a day with no page could not even be
+                  // clicked, so the panel that shows the habit was the one
+                  // place you could not record one.
+                  if ((e.metaKey || e.ctrlKey) && day.pageId) {
+                    onOpen(day.pageId)
+                    return
+                  }
+                  void window.api.habits
+                    .checkIn(strip.typeId, strip.dateKey, strip.booleanKey, day.date, day.state !== 'done')
+                    .then(() => setVersion((v) => v + 1))
+                }}
               />
             ))}
           </div>

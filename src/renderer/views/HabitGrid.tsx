@@ -82,6 +82,27 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
   const byDate = useMemo(() => new Map(days.map((d) => [d.date, d])), [days])
 
   /**
+   * Tick a day, or untick it.
+   *
+   * The grid used to be read-only: a cell opened the page behind it, and a day
+   * with no page was `disabled`, so the only way to record a habit was to make
+   * the page by hand from Notes. A grid you cannot mark is a report, not a
+   * tracker. Modifier-click still opens the page, for the days that have one.
+   */
+  const toggle = useCallback(
+    async (date: string, entry: HabitDay | undefined, open: boolean) => {
+      if (open && entry) {
+        onOpen(entry.pageId)
+        return
+      }
+      if (!typeId || !dateKey || !booleanKey) return
+      await window.api.habits.checkIn(typeId, dateKey, booleanKey, date, !entry?.done)
+      await load()
+    },
+    [typeId, dateKey, booleanKey, load, onOpen]
+  )
+
+  /**
    * Columns of seven, starting on the Monday on or before 1 January — so a
    * row is always the same weekday and the eye can read down a column as one
    * week, the way a wall calendar works.
@@ -230,9 +251,13 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
                       <button
                         key={date}
                         className={classes}
-                        disabled={!entry}
-                        title={`${dayLabel(date)}${entry ? (entry.done ? ' · done' : ' · not done') : ' · no entry'}`}
-                        onClick={() => entry && onOpen(entry.pageId)}
+                        disabled={outside}
+                        title={`${dayLabel(date)}${
+                          entry ? (entry.done ? ' · done' : ' · not done') : ' · no entry'
+                        } — click to ${entry?.done ? 'clear' : 'mark done'}${
+                          entry ? ', ⌘/Ctrl-click to open the page' : ''
+                        }`}
+                        onClick={(e) => void toggle(date, entry, e.metaKey || e.ctrlKey)}
                       />
                     )
                   })}

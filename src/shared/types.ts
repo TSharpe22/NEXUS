@@ -428,6 +428,14 @@ export interface NexusAPI {
       from: string,
       to: string
     ): Promise<HabitDay[]>
+    /** Tick or untick a day, making the page that records it if needed. */
+    checkIn(
+      typeId: string,
+      dateKey: string,
+      booleanKey: string,
+      date: string,
+      done: boolean
+    ): Promise<HabitDay>
   }
   tasks: {
     /** Tasks dated inside [from, to], both bounds inclusive, as YYYY-MM-DD. */

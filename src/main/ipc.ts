@@ -556,6 +556,25 @@ export function registerIpcHandlers(): void {
     }
   })
   ipcMain.handle(
+    'habits:checkIn',
+    (
+      _,
+      typeId: string,
+      dateKey: string,
+      booleanKey: string,
+      date: string,
+      done: boolean
+    ) => {
+      try {
+        const result = repo.checkInHabit(typeId, dateKey, booleanKey, String(date), !!done)
+        mirror.scheduleSync(result.pageId)
+        return result
+      } catch (e) {
+        rethrow('habits:checkIn', e)
+      }
+    }
+  )
+  ipcMain.handle(
     'habits:days',
     (_, typeId: string, dateKey: string, booleanKey: string, from: string, to: string) => {
       try {
