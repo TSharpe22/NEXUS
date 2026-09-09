@@ -11,6 +11,16 @@ import {
   setDueInDocument
 } from '@shared/document'
 import { statSync } from 'fs'
+import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
+import type {
+  FilterField,
+  FilterLeaf,
+  FilterNode,
+  ViewDef,
+  ViewDraft,
+  ViewLayout,
+  ViewSort
+} from '@shared/views'
 import type {
   Page,
   Property,
@@ -36,7 +46,8 @@ import type {
   DatedPage,
   HabitCandidate,
   HabitDay,
-  CaptureTarget
+  CaptureTarget,
+  ViewRow
 } from '../shared/types'
 
 const now = () => new Date().toISOString().replace('T', ' ').split('.')[0]
@@ -1494,6 +1505,26 @@ export function getPropertyDefinitions(typeId: string): PropertyDefinition[] {
     .all(typeId) as PropertyDefinition[]
 }
 
+/**
+ * Every property key defined anywhere, one row per key.
+ *
+ * The view builder needs a field list that is not scoped to a type, because a
+ * view need not name one — "everything with a status of reading" is a fair
+ * question whether or not one type owns `status`. Where two types define the
+ * same key with different formats the first name and format win, which is the
+ * same collision phase 1 exists to remove; until then a filter matches the
+ * value wherever it landed, so the disagreement costs a label, not a result.
+ */
+export function getAllPropertyDefinitions(): PropertyDefinition[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM property_definitions
+        GROUP BY key
+        ORDER BY name COLLATE NOCASE`
+    )
+    .all() as PropertyDefinition[]
+}
+
 function slugify(name: string): string {
   return (
     name
@@ -1880,6 +1911,448 @@ export function searchPagesForLink(query: string, excludePageId?: string): Page[
       'SELECT * FROM pages WHERE is_deleted = 0 AND id != ? AND title LIKE ? ORDER BY updated_at DESC LIMIT 20'
     )
     .all(exclude, `%${query}%`) as Page[]
+}
+
+// ============================================================
+// Views — a saved question about the vault
+//
+// The filter tree is defined in `shared/views.ts` and turned into SQL here,
+// in `compileFilter`, and nowhere else. That is the contract: no view
+// behaviour can exist that the saved shape cannot express, and no renderer
+// ever interprets a filter. `PHASES.md` phase 4 states it that way because
+// every later phase serialises this tree, and a second interpreter is how the
+// two would drift.
+// ============================================================
+
+interface Compiled {
+  sql: string
+  params: unknown[]
+}
+
+/** Matches everything. An empty group is a view that has not been narrowed. */
+const MATCH_ALL: Compiled = { sql: '1 = 1', params: [] }
+
+/** The columns a property value can live in, newest-typed first. */
+const VALUE_COLUMNS = ['pr.value_text', 'pr.value_number', 'pr.value_date', 'pr.value_relation']
+
+/** True when the property row holds something rather than existing empty. */
+const HAS_VALUE = `(
+  (pr.value_text IS NOT NULL AND pr.value_text <> '')
+  OR pr.value_number IS NOT NULL
+  OR (pr.value_date IS NOT NULL AND pr.value_date <> '')
+  OR (pr.value_relation IS NOT NULL AND pr.value_relation <> '')
+)`
+
+const propertyExists = (inner: string): string =>
+  `EXISTS (SELECT 1 FROM properties pr WHERE pr.page_id = p.id AND pr.key = ? AND ${inner})`
+
+/**
+ * A property value matched without knowing which column it is in.
+ *
+ * Deliberate rather than lazy: one key can be defined on two types with two
+ * different formats today — that collision is the whole subject of phase 1 —
+ * so asking `property_definitions` what type `status` is has no single answer.
+ * Comparing the value against every column has one: it matches wherever the
+ * value actually landed. SQLite compares across storage classes without
+ * erroring, so a text value tested against `value_number` is simply false.
+ */
+const valueMatchesAnyColumn = VALUE_COLUMNS.map((c) => `${c} = ?`).join(' OR ')
+
+function compileLeaf(leaf: FilterLeaf): Compiled {
+  const { field, cmp } = leaf
+  const value = leaf.value ?? null
+  const text = value === null ? '' : String(value)
+  const days = Number(value)
+
+  switch (field.kind) {
+    case 'type':
+      if (cmp === 'is') return { sql: 'p.type_id = ?', params: [text] }
+      if (cmp === 'not') return { sql: '(p.type_id IS NULL OR p.type_id <> ?)', params: [text] }
+      if (cmp === 'empty') return { sql: 'p.type_id IS NULL', params: [] }
+      if (cmp === 'notEmpty') return { sql: 'p.type_id IS NOT NULL', params: [] }
+      break
+
+    case 'folder':
+      // The root is not a folder, so "is" with nothing named means the root —
+      // which is where most of a young vault lives and would otherwise be the
+      // one place no filter could reach.
+      if (cmp === 'is')
+        return text ? { sql: 'p.folder_id = ?', params: [text] } : { sql: 'p.folder_id IS NULL', params: [] }
+      if (cmp === 'not')
+        return text
+          ? { sql: '(p.folder_id IS NULL OR p.folder_id <> ?)', params: [text] }
+          : { sql: 'p.folder_id IS NOT NULL', params: [] }
+      if (cmp === 'empty') return { sql: 'p.folder_id IS NULL', params: [] }
+      if (cmp === 'notEmpty') return { sql: 'p.folder_id IS NOT NULL', params: [] }
+      break
+
+    case 'title':
+      if (cmp === 'contains') return { sql: 'p.title LIKE ?', params: [`%${text}%`] }
+      if (cmp === 'is') return { sql: 'p.title = ?', params: [text] }
+      if (cmp === 'not') return { sql: 'p.title <> ?', params: [text] }
+      if (cmp === 'empty') return { sql: "(p.title IS NULL OR p.title = '')", params: [] }
+      if (cmp === 'notEmpty') return { sql: "(p.title IS NOT NULL AND p.title <> '')", params: [] }
+      break
+
+    case 'pinned':
+      if (cmp === 'is') return { sql: 'p.is_pinned = ?', params: [value === true || text === 'true' ? 1 : 0] }
+      break
+
+    case 'created':
+    case 'updated': {
+      const column = field.kind === 'created' ? 'p.created_at' : 'p.updated_at'
+      // `within` is a number of days, and for a timestamp it can only mean the
+      // past — these two columns are a record of what already happened. On a
+      // date property below it means the opposite, for the same reason.
+      if (cmp === 'within')
+        return {
+          sql: `${column} >= datetime('now', ?)`,
+          params: [`-${Number.isFinite(days) ? Math.abs(days) : 7} days`]
+        }
+      if (cmp === 'before') return { sql: `${column} < ?`, params: [text] }
+      if (cmp === 'after') return { sql: `${column} > ?`, params: [text] }
+      break
+    }
+
+    case 'tag': {
+      const any = 'EXISTS (SELECT 1 FROM page_tags pt WHERE pt.page_id = p.id)'
+      const one = 'EXISTS (SELECT 1 FROM page_tags pt WHERE pt.page_id = p.id AND pt.tag_id = ?)'
+      if (cmp === 'has') return { sql: one, params: [text] }
+      if (cmp === 'lacks') return { sql: `NOT ${one}`, params: [text] }
+      if (cmp === 'empty') return { sql: `NOT ${any}`, params: [] }
+      if (cmp === 'notEmpty') return { sql: any, params: [] }
+      break
+    }
+
+    case 'backlink': {
+      // Incoming, which is what the word means: "what points at this page".
+      // `empty` is how a vault answers "what have I written and never linked
+      // to anything" without a second query path.
+      const any = 'EXISTS (SELECT 1 FROM links l WHERE l.target_page_id = p.id)'
+      const from = 'EXISTS (SELECT 1 FROM links l WHERE l.target_page_id = p.id AND l.source_page_id = ?)'
+      if (cmp === 'is') return { sql: from, params: [text] }
+      if (cmp === 'empty') return { sql: `NOT ${any}`, params: [] }
+      if (cmp === 'notEmpty') return { sql: any, params: [] }
+      break
+    }
+
+    case 'property': {
+      const key = field.key ?? ''
+      if (!key) break
+
+      if (cmp === 'notEmpty') return { sql: propertyExists(HAS_VALUE), params: [key] }
+      if (cmp === 'empty') return { sql: `NOT ${propertyExists(HAS_VALUE)}`, params: [key] }
+
+      if (cmp === 'is')
+        return { sql: propertyExists(`(${valueMatchesAnyColumn})`), params: [key, ...VALUE_COLUMNS.map(() => value)] }
+      if (cmp === 'not')
+        return {
+          sql: `NOT ${propertyExists(`(${valueMatchesAnyColumn})`)}`,
+          params: [key, ...VALUE_COLUMNS.map(() => value)]
+        }
+      if (cmp === 'contains')
+        return { sql: propertyExists('pr.value_text LIKE ?'), params: [key, `%${text}%`] }
+
+      // A multi_select is a JSON array in `value_text`, so membership is a
+      // json_each over that array rather than a LIKE — "art" must not match
+      // "articles", and a substring test cannot tell the two apart.
+      if (cmp === 'has' || cmp === 'lacks') {
+        const member = `EXISTS (
+          SELECT 1 FROM properties pr, json_each(pr.value_text) je
+           WHERE pr.page_id = p.id AND pr.key = ? AND json_valid(pr.value_text) AND je.value = ?
+        )`
+        return { sql: cmp === 'has' ? member : `NOT ${member}`, params: [key, text] }
+      }
+
+      if (cmp === 'gt' || cmp === 'gte' || cmp === 'lt' || cmp === 'lte') {
+        const op = { gt: '>', gte: '>=', lt: '<', lte: '<=' }[cmp]
+        return { sql: propertyExists(`pr.value_number ${op} ?`), params: [key, Number(value)] }
+      }
+
+      if (cmp === 'before') return { sql: propertyExists('pr.value_date < ?'), params: [key, text] }
+      if (cmp === 'after') return { sql: propertyExists('pr.value_date > ?'), params: [key, text] }
+      // On a date property `within` looks forward: a date somebody put on an
+      // object is something they scheduled, and "due in the next week" is the
+      // question. Today counts, so the window opens at the start of today.
+      if (cmp === 'within')
+        return {
+          sql: propertyExists("pr.value_date >= date('now') AND pr.value_date <= date('now', ?)"),
+          params: [key, `+${Number.isFinite(days) ? Math.abs(days) : 7} days`]
+        }
+      break
+    }
+  }
+
+  // An unknown pairing is not an error and must not be one: a vault written by
+  // a later build can hold a comparator this one has never heard of, and the
+  // honest answer is to ignore that condition rather than to show nothing or
+  // to throw the whole view away.
+  console.warn(`[nexus] view filter: ignoring ${field.kind} ${cmp}`)
+  return MATCH_ALL
+}
+
+/**
+ * A filter tree as a WHERE fragment over `pages p`, with its parameters.
+ *
+ * Exported because `check-app.mjs` asserts against it directly — a compiler is
+ * far easier to trust when the SQL it emits can be read.
+ */
+export function compileFilter(node: FilterNode): Compiled {
+  if (!node || typeof node !== 'object') return MATCH_ALL
+
+  if (isFilterGroup(node)) {
+    const parts = (node.of ?? []).map(compileFilter).filter((c) => c.sql !== MATCH_ALL.sql)
+    if (parts.length === 0) return MATCH_ALL
+    return {
+      sql: `(${parts.map((p) => p.sql).join(node.op === 'or' ? ' OR ' : ' AND ')})`,
+      params: parts.flatMap((p) => p.params)
+    }
+  }
+
+  return compileLeaf(node)
+}
+
+/** One sort clause, and the parameters its expression needs. */
+function compileSort(sort: ViewSort[]): Compiled {
+  const parts: string[] = []
+  const params: unknown[] = []
+
+  for (const entry of sort ?? []) {
+    const direction = entry.direction === 'asc' ? 'ASC' : 'DESC'
+    let expression: string | null = null
+
+    switch (entry.field.kind) {
+      case 'title':
+        expression = 'p.title COLLATE NOCASE'
+        break
+      case 'created':
+        expression = 'p.created_at'
+        break
+      case 'updated':
+        expression = 'p.updated_at'
+        break
+      case 'pinned':
+        expression = 'p.is_pinned'
+        break
+      case 'type':
+        expression = 'p.type_id'
+        break
+      case 'folder':
+        expression = 'p.folder_id'
+        break
+      case 'property':
+        if (!entry.field.key) break
+        // COALESCE across the value columns, because which one holds the value
+        // is decided by the property's format and a key can carry two.
+        expression = `(SELECT COALESCE(pr.value_number, pr.value_date, pr.value_text, pr.value_relation)
+                         FROM properties pr WHERE pr.page_id = p.id AND pr.key = ?)`
+        params.push(entry.field.key)
+        break
+      default:
+        break
+    }
+
+    if (!expression) continue
+    // Empty sinks in both directions. A property added today is empty on every
+    // page written before it, and those rows are noise at the top of a list
+    // sorted by it in either direction.
+    parts.push(`(${expression}) IS NULL`)
+    parts.push(`(${expression}) ${direction}`)
+    if (entry.field.kind === 'property' && entry.field.key) params.push(entry.field.key)
+  }
+
+  parts.push('p.updated_at DESC')
+  return { sql: parts.join(', '), params }
+}
+
+function rowToView(row: Record<string, unknown>): ViewDef {
+  const parse = <T,>(raw: unknown, fallback: T): T => {
+    if (typeof raw !== 'string' || !raw) return fallback
+    try {
+      return JSON.parse(raw) as T
+    } catch {
+      // A view whose JSON will not parse is better shown unfiltered than not
+      // shown at all — the same call `parseDocument` makes for a body.
+      console.error('[nexus] could not parse a stored view; falling back')
+      return fallback
+    }
+  }
+
+  return {
+    id: String(row.id),
+    name: String(row.name ?? ''),
+    icon: (row.icon as string) ?? null,
+    filter: parse<FilterNode>(row.filter, EMPTY_FILTER),
+    sort: parse<ViewSort[]>(row.sort, []),
+    grouping: parse<FilterField | null>(row.grouping, null),
+    layout: (row.layout as ViewLayout) ?? 'table',
+    config: parse<Record<string, unknown>>(row.config, {}),
+    is_pinned: Number(row.is_pinned ?? 0),
+    sort_order: Number(row.sort_order ?? 0),
+    created_at: String(row.created_at ?? '')
+  }
+}
+
+export function listViews(): ViewDef[] {
+  return (
+    getDb()
+      .prepare('SELECT * FROM views ORDER BY sort_order ASC, created_at ASC')
+      .all() as Record<string, unknown>[]
+  ).map(rowToView)
+}
+
+export function getView(id: string): ViewDef | null {
+  const row = getDb().prepare('SELECT * FROM views WHERE id = ?').get(id) as
+    | Record<string, unknown>
+    | undefined
+  return row ? rowToView(row) : null
+}
+
+export function createView(draft: ViewDraft): ViewDef {
+  const db = getDb()
+  const id = uuidv4()
+  const next =
+    ((db.prepare('SELECT MAX(sort_order) AS m FROM views').get() as { m: number | null }).m ?? 0) + 1
+
+  db.prepare(
+    `INSERT INTO views (id, name, icon, filter, sort, grouping, layout, config, is_pinned, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    draft.name,
+    draft.icon ?? null,
+    JSON.stringify(draft.filter ?? EMPTY_FILTER),
+    JSON.stringify(draft.sort ?? []),
+    draft.grouping ? JSON.stringify(draft.grouping) : null,
+    draft.layout ?? 'table',
+    JSON.stringify(draft.config ?? {}),
+    draft.is_pinned ?? 0,
+    next
+  )
+
+  logActivity(null, 'view_created', `Made the view "${draft.name}"`)
+  return getView(id) as ViewDef
+}
+
+export function updateView(id: string, patch: ViewDraft): ViewDef | null {
+  const existing = getView(id)
+  if (!existing) return null
+
+  const merged: ViewDef = { ...existing, ...patch, id: existing.id, created_at: existing.created_at }
+  getDb()
+    .prepare(
+      `UPDATE views SET name = ?, icon = ?, filter = ?, sort = ?, grouping = ?, layout = ?,
+                        config = ?, is_pinned = ?, sort_order = ?
+        WHERE id = ?`
+    )
+    .run(
+      merged.name,
+      merged.icon,
+      JSON.stringify(merged.filter),
+      JSON.stringify(merged.sort),
+      merged.grouping ? JSON.stringify(merged.grouping) : null,
+      merged.layout,
+      JSON.stringify(merged.config),
+      merged.is_pinned,
+      merged.sort_order,
+      id
+    )
+  return getView(id)
+}
+
+export function deleteView(id: string): void {
+  getDb().prepare('DELETE FROM views WHERE id = ?').run(id)
+}
+
+/**
+ * Run a view: the pages it matches, each with its properties and its tags.
+ *
+ * One query for the rows and two for what hangs off them, regardless of how
+ * many rows come back — a board and a gallery of the same view read the same
+ * result, which is what makes grouping a layout concern rather than a second
+ * query path.
+ */
+export function runView(view: ViewDef, limit = 500): ViewRow[] {
+  const db = getDb()
+  const where = compileFilter(view.filter)
+  const order = compileSort(view.sort)
+
+  const rows = db
+    .prepare(
+      `SELECT ${LIST_COLUMNS} FROM pages p
+        WHERE p.is_deleted = 0 AND ${where.sql}
+        ORDER BY ${order.sql}
+        LIMIT ?`
+    )
+    .all(...where.params, ...order.params, limit) as PageListItem[]
+
+  if (rows.length === 0) return []
+
+  const placeholders = rows.map(() => '?').join(',')
+  const ids = rows.map((r) => r.id)
+
+  const props = db
+    .prepare(`SELECT * FROM properties WHERE page_id IN (${placeholders})`)
+    .all(...ids) as Property[]
+  const tagRows = db
+    .prepare(
+      `SELECT pt.page_id AS page_id, t.id AS id, t.name AS name, t.color AS color
+         FROM page_tags pt JOIN tags t ON t.id = pt.tag_id
+        WHERE pt.page_id IN (${placeholders})
+        ORDER BY t.name COLLATE NOCASE`
+    )
+    .all(...ids) as (Tag & { page_id: string })[]
+
+  const propsByPage = new Map<string, Property[]>()
+  for (const prop of props) {
+    const list = propsByPage.get(prop.page_id) ?? []
+    list.push(prop)
+    propsByPage.set(prop.page_id, list)
+  }
+
+  const tagsByPage = new Map<string, Tag[]>()
+  for (const { page_id, ...tag } of tagRows) {
+    const list = tagsByPage.get(page_id) ?? []
+    list.push(tag as Tag)
+    tagsByPage.set(page_id, list)
+  }
+
+  return rows.map((page) => ({
+    ...page,
+    properties: propsByPage.get(page.id) ?? [],
+    tags: tagsByPage.get(page.id) ?? []
+  }))
+}
+
+/** Run a view by id, for the IPC layer. */
+export function runViewById(id: string, limit?: number): ViewRow[] {
+  const view = getView(id)
+  if (!view) throw new Error(`View not found: ${id}`)
+  return runView(view, limit)
+}
+
+/**
+ * Run a filter that has not been saved, so the builder can say how many rows a
+ * condition would match before you commit to it. Same compiler, same shape —
+ * a preview that used a second code path would be a preview of nothing.
+ */
+export function previewView(draft: ViewDraft, limit?: number): ViewRow[] {
+  return runView(
+    {
+      id: 'preview',
+      name: draft.name ?? '',
+      icon: null,
+      filter: draft.filter ?? EMPTY_FILTER,
+      sort: draft.sort ?? [],
+      grouping: draft.grouping ?? null,
+      layout: draft.layout ?? 'table',
+      config: draft.config ?? {},
+      is_pinned: 0,
+      sort_order: 0,
+      created_at: ''
+    },
+    limit
+  )
 }
 
 // ============================================================

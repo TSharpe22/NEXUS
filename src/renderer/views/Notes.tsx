@@ -14,6 +14,7 @@ import { journalDateLabel } from '@shared/journal-date'
 import { FolderTree } from './FolderTree'
 import { TagFilter } from './TagFilter'
 import { TypeFilter } from './TypeFilter'
+import { SaveAsView } from './SaveAsView'
 import './Notes.css'
 
 export function Notes() {
@@ -307,6 +308,7 @@ export function Notes() {
 
           {!showTrash && <TypeFilter />}
           {!showTrash && <TagFilter />}
+          {!showTrash && <SaveAsView />}
         </div>
 
         <div className="nx-notes__list-scroll">

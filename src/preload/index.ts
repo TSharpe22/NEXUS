@@ -89,6 +89,7 @@ const api: NexusAPI = {
     rename: (id, name) => ipcRenderer.invoke('types:rename', id, name),
     remove: (id) => ipcRenderer.invoke('types:remove', id),
     getPropertyDefinitions: (typeId) => ipcRenderer.invoke('types:getPropertyDefinitions', typeId),
+    allProperties: () => ipcRenderer.invoke('types:allProperties'),
     defineProperty: (typeId, name, propertyType) =>
       ipcRenderer.invoke('types:defineProperty', typeId, name, propertyType),
     renameProperty: (definitionId, name) => ipcRenderer.invoke('types:renameProperty', definitionId, name),
@@ -117,6 +118,15 @@ const api: NexusAPI = {
   },
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
+  },
+  views: {
+    list: () => ipcRenderer.invoke('views:list'),
+    get: (id) => ipcRenderer.invoke('views:get', id),
+    create: (draft) => ipcRenderer.invoke('views:create', draft),
+    update: (id, patch) => ipcRenderer.invoke('views:update', id, patch),
+    remove: (id) => ipcRenderer.invoke('views:remove', id),
+    run: (id, limit) => ipcRenderer.invoke('views:run', id, limit),
+    preview: (draft, limit) => ipcRenderer.invoke('views:preview', draft, limit)
   },
   shell: {
     openPath: (target) => ipcRenderer.invoke('shell:openPath', target)

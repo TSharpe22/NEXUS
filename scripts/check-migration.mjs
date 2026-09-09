@@ -204,6 +204,26 @@ check('pages.is_pinned added', db.pragma('table_info(pages)').map((c) => c.name)
 check('pages.pinned_at added', db.pragma('table_info(pages)').map((c) => c.name).includes('pinned_at'), true)
 check('every migrated page starts unpinned',
   db.prepare('SELECT count(*) c FROM pages WHERE is_pinned <> 0 OR pinned_at IS NOT NULL').get().c, 0)
+// v11 — views. One additive table, and the second thing in the file that is
+// user data rather than a projection: a view is a question somebody wrote
+// down, and nothing can re-derive it. What matters is that a legacy file gains
+// the table, and that a view already in one survives being migrated again.
+check('views table added',
+  db.prepare(`SELECT count(*) c FROM sqlite_master WHERE type='table' AND name='views'`).get().c, 1)
+check('and a migrated file arrives with no views invented',
+  db.prepare('SELECT count(*) c FROM views').get().c, 0)
+check('views has the columns the filter tree is stored in',
+  db.pragma('table_info(views)').map((c) => c.name),
+  ['id', 'name', 'icon', 'filter', 'sort', 'grouping', 'layout', 'config', 'is_pinned', 'sort_order', 'created_at'])
+check('a view survives the migration running again', (() => {
+  db.prepare(`INSERT INTO views (id, name, filter, sort, layout)
+              VALUES ('v1', 'Reading', '{"op":"and","of":[{"field":{"kind":"type"},"cmp":"is","value":"book"}]}',
+                      '[]', 'board')`).run()
+  applySchema(db, () => null)
+  const row = db.prepare(`SELECT name, layout, filter FROM views WHERE id = 'v1'`).get()
+  return row.name === 'Reading' && row.layout === 'board' && JSON.parse(row.filter).of.length === 1
+})(), true)
+
 check('a mention and a relation to the same target can coexist', (() => {
   db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('ls','note','Src','[]')`).run()
   db.prepare(`INSERT INTO pages (id, type_id, title, content) VALUES ('lt','note','Tgt','[]')`).run()

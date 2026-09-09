@@ -1,3 +1,4 @@
+import type { ViewDef, ViewDraft } from './views'
 export type PageWidth = number
 
 export interface Page {
@@ -229,6 +230,17 @@ export interface PageSummary extends PageListItem {
   properties: Property[]
 }
 
+/**
+ * One row of a view's result: a page, its typed values and its tags.
+ *
+ * Every layout reads this same row — a board is these rows bucketed by a
+ * property, a gallery is these rows as cards. That is what keeps grouping a
+ * layout concern rather than a second query.
+ */
+export interface ViewRow extends PageSummary {
+  tags: Tag[]
+}
+
 export interface GraphPreview {
   nodeCount: number
   edgeCount: number
@@ -423,6 +435,8 @@ export interface NexusAPI {
     rename(id: string, name: string): Promise<TypeDef>
     remove(id: string): Promise<{ reassigned: number }>
     getPropertyDefinitions(typeId: string): Promise<PropertyDefinition[]>
+    /** Every property key defined on any type, for the view builder. */
+    allProperties(): Promise<PropertyDefinition[]>
     defineProperty(typeId: string, name: string, propertyType: PropertyType): Promise<PropertyDefinition>
     renameProperty(definitionId: string, name: string): Promise<PropertyDefinition>
     removeProperty(definitionId: string): Promise<void>
@@ -482,6 +496,16 @@ export interface NexusAPI {
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
+  }
+  views: {
+    list(): Promise<ViewDef[]>
+    get(id: string): Promise<ViewDef | null>
+    create(draft: ViewDraft): Promise<ViewDef>
+    update(id: string, patch: ViewDraft): Promise<ViewDef | null>
+    remove(id: string): Promise<void>
+    run(id: string, limit?: number): Promise<ViewRow[]>
+    /** Run an unsaved draft, so the builder can count before you commit. */
+    preview(draft: ViewDraft, limit?: number): Promise<ViewRow[]>
   }
   stats: {
     getStorage(): Promise<StorageStats>

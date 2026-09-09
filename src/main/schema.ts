@@ -55,8 +55,16 @@ let db: Database.Database
  *     too. Unlike `page_fts` and `tasks` this is user data, not a projection
  *     — nothing can re-derive which pages were pinned, so it is never
  *     rebuilt.
+ * 11 — views: a saved question about the vault — a filter tree, a sort, a
+ *     grouping and a layout. Purely additive, one `CREATE TABLE IF NOT
+ *     EXISTS`, and user data rather than a projection: nothing can re-derive
+ *     a view somebody wrote, so it is never rebuilt. `PHASES.md` had this
+ *     numbered 15 behind three schema phases; it was pulled forward because
+ *     everything a type is *for* was unreadable without it, and the phases
+ *     behind it were renumbered rather than left claiming a number that is
+ *     now taken.
  */
-export const SCHEMA_VERSION = 10
+export const SCHEMA_VERSION = 11
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -132,6 +140,27 @@ const CURRENT_SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_properties_page ON properties(page_id);
   CREATE INDEX IF NOT EXISTS idx_properties_key ON properties(key);
+
+  -- A saved question about the vault. The filter, sort, grouping and config
+  -- are JSON text because their shape is owned by shared/views.ts and
+  -- compiled in exactly one place (repo.compileFilter) -- exploding a filter
+  -- tree into rows would put half of that shape in the schema and make every
+  -- later comparator a migration.
+  CREATE TABLE IF NOT EXISTS views (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    icon        TEXT,
+    filter      TEXT NOT NULL DEFAULT '{}',
+    sort        TEXT NOT NULL DEFAULT '[]',
+    grouping    TEXT,
+    layout      TEXT NOT NULL DEFAULT 'table',
+    config      TEXT NOT NULL DEFAULT '{}',
+    is_pinned   INTEGER NOT NULL DEFAULT 0,
+    sort_order  REAL NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_views_order ON views(sort_order);
 
   -- Backlinks, from two places a page can point at another.
   --
@@ -732,6 +761,12 @@ export function applySchema(
       db.exec('ALTER TABLE pages ADD COLUMN pinned_at TEXT')
     }
     db.exec('CREATE INDEX IF NOT EXISTS idx_pages_pinned ON pages(is_pinned)')
+
+    // v11. Views. `CURRENT_SCHEMA` above creates the table with IF NOT EXISTS,
+    // so an existing file picks it up from the same statement a new one does —
+    // there is nothing to alter and nothing to rewrite. Unlike `page_fts` and
+    // `tasks` this is user data: a view is a question somebody wrote down, and
+    // no projection can invent it back, so it is never rebuilt.
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`)
   })

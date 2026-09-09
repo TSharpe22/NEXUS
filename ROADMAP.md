@@ -1,4 +1,4 @@
-# ROADMAP — what happens before, during and after v11
+# ROADMAP — what happens before, during and after the schema phases
 
 > The near-term order of work and the decisions behind it. `PHASES.md` is the
 > structural plan and outranks this document from Phase 1 onward; this one
@@ -137,7 +137,37 @@ down instead of built.
 - **`scripts/probes/README.md` lists two probes that do not exist**
   (`scale.mjs`, `roundtrip.mjs`) and misses the two that do.
 
-## Wave 2 — Phase 1 (schema v11)
+## Wave 2 — Views (shipped, out of order)
+
+**Phase 4 came first.** The plan had it fifth, behind three schema phases, on
+the argument that a view needs properties worth filtering. What beat that
+argument is that until this shipped, nothing in the app could show a *set* of
+typed objects at all: Tables had been removed in wave 0, so a type could be
+defined, filled in, and never looked at again. Everything a type is *for* was
+unreadable, which is the same mistake wave 0 found in types themselves — a
+capability with no door.
+
+What shipped, at schema v11:
+
+- **The filter tree, in the shape `PHASES.md` fixes it**, plus one field kind
+  it did not have (`tag`, because tags are their own tables until phase 2b).
+  `repo.compileFilter` is the only place it becomes SQL, and nothing in the
+  renderer interprets a filter — the builder edits the tree and hands it back.
+- **Four layouts over one query.** Table, list, board, gallery, registered in
+  one map. A board is the rows grouped by a field; a gallery is the same rows
+  as cards. Adding a calendar is a function and a line, not a second query.
+- **A table's columns are the type's own schema in the type's own order**, when
+  the view names one type — the order the properties panel shows and the mirror
+  writes. Sorting a column writes the view, so the order survives leaving it.
+- **"Save as a view"** on the Notes filter rail, which is what turns the chips
+  from a gesture into somewhere you go back to.
+
+What it costs, and where it is written down: phase 1 renames property keys to
+resolve format collisions and must rewrite every saved filter that names one;
+phase 2b turns tags into a property and must rewrite every `tag` condition.
+Both are recorded in `PHASES.md` under the phases that owe them.
+
+## Wave 2b — Phase 1 (schema v12)
 
 In this order, and the order is the point:
 
@@ -178,9 +208,10 @@ directory `npm run update` last ran from is what `/opt/Nexus` became, and two
 of those checkouts sit at `SCHEMA_VERSION` 8 and 9.
 
 Today an old build mis-stamps `user_version` and the next current-build launch
-silently re-corrects it — every step is guarded, nothing is lost. **After v11
-that stops being true**: a v11 vault stamped back to 8 or 9 gets its
+silently re-corrects it — every step is guarded, nothing is lost. **After
+phase 1 that stops being true**: a vault carrying its key rewrite, stamped back
+to 8 or 9 by an older build, gets its
 irreversible key-collision rewrite run a second time, against data that has
 already been through it.
 
-Collapse to one working copy before v11 lands.
+Collapse to one working copy before phase 1 lands.

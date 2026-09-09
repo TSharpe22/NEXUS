@@ -75,18 +75,16 @@ The current app is `src/main` + `src/renderer` with `views/`, `design/` and
   content DOM, so the block cannot be typed into and text aimed at it lands in
   the following block instead. Nothing throws and nothing logs. If toggle or
   callout ever stop accepting text, check the resolved tiptap version first.
-- **Nav**: four views — Home, Notes, Tracker, Settings. The names in the code
-  (`View` in `store/app-store.ts`) match what's on screen. Tables and Activity
-  were removed: Tables is scheduled for demolition by `PHASES.md` phase 4,
-  which rebuilds it as a view over the view engine, and polishing a screen due
-  to be replaced is work thrown away twice. Tables owned two things, and both
-  had to be re-homed rather than leave with it: **type management** went to
-  Settings, and **browsing by type** went to the Notes list as a rail of type
-  chips beside the tag chips (`TypeFilter`). The second was missed the first
-  time round, and for a fortnight there was no way left in the app to ask
-  "show me every Book" — which is the question a type exists to answer.
+- **Nav**: five views — Home, Notes, Views, Tracker, Settings. The names in the
+  code (`View` in `store/app-store.ts`) match what's on screen. Tables and
+  Activity were removed, and what Tables owned was re-homed in three places
+  rather than allowed to leave with it: **type management** went to Settings,
+  **browsing by type** went to the Notes list as a rail of type chips beside
+  the tag chips (`TypeFilter`), and **a set of typed objects, drawn** became
+  Views — `PHASES.md` phase 4, pulled forward, which is what Tables was always
+  a hardcoded special case of.
 - **State**: Zustand. No router — a single `activeView` string switches
-  between the four nav sections.
+  between the five nav sections.
 - **Fonts**: IBM Plex Mono + Chakra Petch, self-hosted via `@fontsource`
   packages (no Google Fonts CDN call — keeps the app fully offline-capable).
 
@@ -315,6 +313,15 @@ substitutes for the other.
   silently retyping the first. `sort_order` is the panel order, and drives
   the mirror's frontmatter order.
 
+- `views` — `id, name, icon, filter, sort, grouping, layout, config,
+  is_pinned, sort_order, created_at`. A saved question about the vault. The
+  filter, sort, grouping and config are **JSON text**, not exploded into rows:
+  their shape belongs to `shared/views.ts` and is compiled in exactly one
+  place, and a filter tree as a table would put half that shape in the schema
+  and make every new comparator a migration. Like `pages.is_pinned` and unlike
+  `page_fts`, `tasks` and `links`, this is user data — nothing can re-derive a
+  question somebody wrote — so it is never rebuilt.
+
 ### Migrations
 
 `src/main/schema.ts` owns the schema and the forward-migration, and imports
@@ -355,6 +362,14 @@ version did; keep it current when bumping.
 ALTERs guarded by `columnExists`. Unlike every step before it this is user
 data rather than a projection, so `check-migration.mjs` asserts both that
 migrating never invents a pin and that re-running never clears one.
+
+`user_version` 11 adds `views`. One `CREATE TABLE IF NOT EXISTS` in
+`CURRENT_SCHEMA`, so a legacy file picks it up from the same statement a new
+one does. It is out of order against `PHASES.md`, which had numbered views 15
+behind three schema phases — the reasoning, and the two migrations that now owe
+saved views a rewrite, are recorded under phase 4 there. **The phases behind it
+were renumbered rather than left claiming a number that is now taken**, which
+is the mistake `user_version` 7 exists to remember.
 
 `user_version` 8 adds `tasks`. Additive, and derived in the same sense as
 `page_fts`: the table is created empty and `repo.ensureTaskIndex()` fills it
@@ -653,6 +668,46 @@ Six sections, each a thin view over the same page/property model:
   a property name to rename it. The two altitudes are kept apart: the × on a
   row clears that page's value, while removing the property from the type
   lives in the rename state, since it clears the value from every page.
+- **Views** — a saved question about the vault, drawn. Pick conditions, pick a
+  layout, and the answer is there tomorrow. This is `PHASES.md` phase 4 shipped
+  early, and three things about it are load-bearing.
+
+  **The filter tree is compiled in exactly one place.** `repo.compileFilter`
+  turns the tree from `shared/views.ts` into a WHERE fragment and its
+  parameters; `repo.runView` is the only thing that runs it. Nothing in the
+  renderer interprets a filter — `ViewFilterBuilder` edits the tree and hands
+  it back whole. Every later phase serialises this shape, so a second
+  interpreter is how the two would drift, and a shape change invalidates every
+  view a vault holds. Adding a `kind`, a `cmp` or a layout is additive and
+  safe; renaming one is not.
+
+  A condition the compiler does not understand is **ignored, not fatal**. A
+  vault written by a later build can hold a comparator this one has never heard
+  of, and the honest answer is to drop that one condition rather than to throw
+  the view away or to silently show the wrong rows.
+
+  **Grouping is what makes a layout, so there is one query.** A board is the
+  rows cut by a field; a gallery is the same rows as cards. `LAYOUTS` in
+  `ViewLayouts.tsx` is a registry, and every layout takes the identical row —
+  which is what makes a calendar later a function and a line rather than a
+  second query path. Grouping by a tag puts a row in every column it belongs
+  to, deliberately: tags are many-to-many, and a board showing only the first
+  would be lying.
+
+  **A view's rows are never cached in the store.** They are a query result;
+  they go stale the moment anything is written. The screen owns its own result
+  and re-runs on `pages`, which is exactly the list every write bumps. A board
+  showing a page it no longer matches is worse than one that takes 40ms.
+
+  Columns come from the type's own `property_definitions` when the filter names
+  exactly one type — the order the properties panel shows and the mirror writes
+  — and otherwise from whatever keys the rows actually carry. Sorting a column
+  writes the view's `sort`, cycling ascending → descending → the view's default,
+  because "no sort" is a real answer and there is otherwise no way back to it.
+
+  A view can also be made from the Notes list: the type and tag chips are a
+  question asked in passing, and **Save as a view** writes the same tree the
+  builder writes, so nothing made that way is a lesser kind of view.
 - **Tracker** — what is due, in a window of time. Three modes over the same
   data: *Week* (every day of the week, empty ones included, because the shape
   of the week is part of what you're reading), *Quarter* (only the days

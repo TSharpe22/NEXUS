@@ -126,8 +126,11 @@
   min-height: 0;
 }
 
-/* Notes manages its own scrolling in two independent columns. */
-.nx-content:has(.nx-notes) {
+/* Notes and Views each manage their own scrolling in two independent columns,
+   and their rails are meant to meet the sidebar rather than float inside a
+   padded page. */
+.nx-content:has(.nx-notes),
+.nx-content:has(.nx-views) {
   overflow: hidden;
   padding: 0;
 }

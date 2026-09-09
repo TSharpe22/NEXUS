@@ -1,9 +1,10 @@
 import { create } from 'zustand'
+import type { ViewDef, ViewDraft } from '@shared/views'
 import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 import { localDateISO } from '@shared/journal-date'
 
-export type View = 'home' | 'notes' | 'tracker' | 'settings'
+export type View = 'home' | 'notes' | 'views' | 'tracker' | 'settings'
 
 /**
  * The nav sections, in the order they appear.
@@ -20,6 +21,7 @@ export type View = 'home' | 'notes' | 'tracker' | 'settings'
 export const VIEW_META: Record<View, { label: string; hint: string }> = {
   home: { label: 'Home', hint: 'Overview and graph' },
   notes: { label: 'Notes', hint: 'Write and edit pages' },
+  views: { label: 'Views', hint: 'Saved questions about the vault' },
   tracker: { label: 'Tracker', hint: "What's due, week by week" },
   settings: { label: 'Settings', hint: 'Types, data, import and export' }
 }
@@ -53,6 +55,18 @@ interface AppState {
   trashed: PageListItem[]
   types: TypeDef[]
   folders: Folder[]
+  /**
+   * Saved views, and which one is open.
+   *
+   * The list lives here rather than in the screen because a view is reachable
+   * from more than the screen — a pinned one belongs in the sidebar, and the
+   * palette should be able to jump to one. The rows a view returns do *not*
+   * live here: they are a query result, they go stale the moment anything is
+   * written, and caching them is how a board would show a page it no longer
+   * matches.
+   */
+  views: ViewDef[]
+  activeViewId: string | null
   tags: TagWithCount[]
   loaded: boolean
 
@@ -181,6 +195,15 @@ interface AppState {
   clearTagFilter: () => void
   toggleTypeFilter: (typeId: string) => void
   clearTypeFilter: () => void
+
+  refreshViews: () => Promise<void>
+  setActiveViewId: (id: string | null) => void
+  /** Make a view and open it. */
+  createView: (draft: ViewDraft) => Promise<ViewDef>
+  saveView: (id: string, patch: ViewDraft) => Promise<void>
+  deleteView: (id: string) => Promise<void>
+  /** Jump to a view from anywhere: switches to Views and selects it. */
+  openView: (id: string) => void
 }
 
 /** How long "saved" stays on screen before the indicator goes quiet again. */
@@ -216,6 +239,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   expandedFolderIds: readExpandedFolders(),
   activeTagFilter: [],
   activeTypeFilter: [],
+  views: [],
+  activeViewId: null,
   activePageTags: [],
 
   saveStatus: 'idle',
@@ -540,7 +565,42 @@ export const useAppStore = create<AppState>((set, get) => ({
         : [...state.activeTypeFilter, typeId]
     })),
 
-  clearTypeFilter: () => set({ activeTypeFilter: [] })
+  clearTypeFilter: () => set({ activeTypeFilter: [] }),
+
+  // ----------------------------------------------------------
+  // Views
+  // ----------------------------------------------------------
+
+  refreshViews: async () => {
+    const views = await window.api.views.list()
+    set((state) => ({
+      views,
+      // A view deleted in another window, or by an import, must not stay
+      // selected — the screen would ask for rows of something that is gone.
+      activeViewId: views.some((v) => v.id === state.activeViewId) ? state.activeViewId : null
+    }))
+  },
+
+  setActiveViewId: (id) => set({ activeViewId: id }),
+
+  createView: async (draft) => {
+    const view = await window.api.views.create(draft)
+    await get().refreshViews()
+    set({ activeViewId: view.id })
+    return view
+  },
+
+  saveView: async (id, patch) => {
+    await window.api.views.update(id, patch)
+    await get().refreshViews()
+  },
+
+  deleteView: async (id) => {
+    await window.api.views.remove(id)
+    await get().refreshViews()
+  },
+
+  openView: (id) => set({ activeView: 'views', activeViewId: id })
 }))
 
 /**

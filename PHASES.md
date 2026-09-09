@@ -85,7 +85,11 @@ than growing.
 
 # Phase 1 — Property vocabulary
 
-**Schema v11.** Separate property *identity* from property *membership*.
+**Schema v12.** Separate property *identity* from property *membership*.
+
+> **Renumbered.** This phase claimed v11 while phase 4 claimed v15. Phase 4
+> shipped first — see the note under it — so every version number from here
+> down moved by one. Nothing else about the plan changed.
 
 ### Goal
 
@@ -156,7 +160,7 @@ collision** before writing the migration, not after.
 
 ### Code
 
-- `src/main/schema.ts` — v11, the DDL and the migration above.
+- `src/main/schema.ts` — v12, the DDL and the migration above.
 - `src/main/repo.ts` — `getPropertyDefinitions(typeId)` becomes a join through
   `type_properties`. New: `getPropertyDefs()`, `defineProperty(key, name,
   format)`, `addPropertyToType(typeId, key)`, `removePropertyFromType`,
@@ -187,7 +191,7 @@ collision** before writing the migration, not after.
 
 # Phase 2 — Values that hold more than one thing
 
-**Schema v12 and v13.** Two steps, shipped separately.
+**Schema v13 and v14.** Two steps, shipped separately.
 
 ### Goal
 
@@ -200,7 +204,7 @@ Boards group by a select. Rollups aggregate across a reference. Collections are
 an ordered reference. All three are blocked until a value can be plural, and
 tags cannot collapse until multi-value storage is better than `page_tags`.
 
-## 2a — Multi-values, references, options (v12)
+## 2a — Multi-values, references, options (v13)
 
 ### Schema
 
@@ -256,7 +260,7 @@ wrong about your own notes.
   Malformed JSON becomes one single value rather than being dropped.
 - `properties.value_relation` → one `property_refs` row per object, `sort_order`
   0. Leave `value_relation` in place but **stop reading it** — it is dropped in
-  v13 once 2a has run in anger.
+  v14 once 2a has run in anger.
 - `getKnownPropertyValues()` (`repo.ts:1532`) is superseded by
   `property_options`; keep it only as the seeder that fills options on
   migration.
@@ -274,7 +278,7 @@ wrong about your own notes.
   filtered by `targetTypes`.
 - `Tables.tsx` — cells render plural values.
 
-## 2b — Tags become a property (v13)
+## 2b — Tags become a property (v14)
 
 ### Migration
 
@@ -283,7 +287,7 @@ wrong about your own notes.
 - Every `tags` row → a `property_options('tags', name, color)` row, colour
   preserved.
 - Every `page_tags` row → a `property_multi(page_id, 'tags', name)` row.
-- Keep `tags` / `page_tags` for one version, then drop in v14.
+- Keep `tags` / `page_tags` for one version, then drop in v15.
 
 ### Code
 
@@ -315,7 +319,7 @@ wrong about your own notes.
 
 # Phase 3 — Inline objects
 
-**Schema v14.** Tasks and check-ins become real objects.
+**Schema v15.** Tasks and check-ins become real objects.
 
 ### Goal
 
@@ -400,7 +404,29 @@ type-with-date-and-boolean while Habit/Check-in objects appear alongside.
 
 # Phase 4 — Views
 
-**Schema v15.** Saved filters, sorts, grouping and layouts.
+**Schema v11 — shipped, out of order.**
+
+> **Pulled forward, ahead of phases 1–3.** The argument for the original order
+> was that views need properties worth filtering; the argument that beat it is
+> that until this existed, nothing in the app could show a *set* of typed
+> objects at all. Tables had been removed, so a type could be defined, filled
+> in and never looked at again — everything a type is *for* was unreadable.
+> Improving the vocabulary of a thing nobody can see is the same mistake wave 0
+> found in types themselves.
+>
+> What that costs, written down so the phases behind it can pay it:
+>
+> - **Phase 1 must migrate saved filters.** When a property key is renamed to
+>   resolve a format collision, every `{ "kind": "property", "key": "..." }` in
+>   every stored view has to be rewritten with it. A view is not a projection —
+>   nothing can re-derive it — so missing this loses somebody's question.
+> - **Phase 2b must migrate `{ "kind": "tag" }`.** Tags are their own tables
+>   today and the tree has a field kind for them; when they become a property,
+>   those conditions become `{ "kind": "property", "key": "tags" }`.
+> - **Phase 4's own remaining work** is what is listed under *Not yet* below.
+>
+> The filter tree shipped in the shape this document specifies, plus the `tag`
+> kind above. `repo.compileFilter` is the one place it becomes SQL.
 
 ### Goal
 
@@ -473,9 +499,20 @@ addition, not a new feature each time.
 
 ### Done when
 
-- A view survives a restart with its filter, sort, grouping and layout.
-- The same view redrawn as a board and a calendar needs no new query code.
-- Tables is a view and nothing was lost.
+- A view survives a restart with its filter, sort, grouping and layout. ✔
+- The same view redrawn as a board and a gallery needs no new query code. ✔
+- Tables is a view and nothing was lost. ✔ — it is a view with `type is X`
+  prefilled, which is what the Notes rail's *Save as a view* writes.
+
+### Not yet
+
+- **Calendar.** The layout registry has room for it and grouping by a date
+  property is the mechanism; the Tracker answers "what is due" today, so it
+  waits until it is the shortest way to something the Tracker cannot say.
+- **Pinned views in the sidebar.** `views.is_pinned` is in the schema and
+  nothing writes it.
+- **A view embedded in a page body.** Wants a stable filter tree first, which
+  is now what it has.
 
 ### Do not
 
@@ -487,7 +524,7 @@ addition, not a new feature each time.
 
 # Phase 5 — Analysis
 
-**Schema v16.** In four steps, in this order, because each answers one of the
+**Schema v17.** In four steps, in this order, because each answers one of the
 questions in `MODEL.md` and each needs the one before it.
 
 ### 5a — Aggregates
@@ -558,7 +595,7 @@ whose contents are other views.
 
 # Phase 6 — History
 
-**Schema v17.** What a property held over time, not only what it holds now.
+**Schema v18.** What a property held over time, not only what it holds now.
 
 ### Goal
 

@@ -7,6 +7,7 @@ import { CommandPalette } from './design/CommandPalette'
 import { ConfirmHost } from './design/Confirm'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
+import { Views } from './views/Views'
 import { Tracker } from './views/Tracker'
 import { Settings } from './views/Settings'
 import './App.css'
@@ -14,6 +15,7 @@ import './App.css'
 const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   home: Home,
   notes: Notes,
+  views: Views,
   tracker: Tracker,
   settings: Settings
 }

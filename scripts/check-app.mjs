@@ -1424,6 +1424,249 @@ check('and its chip is gone with it',
     [...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')].some((el) =>
       el.textContent.trim().startsWith('Book')))))
 
+// ------------------------------------------------------------------ views
+log('\n— views: a saved question about the vault —')
+// The filter tree is compiled to SQL in exactly one place, so these assertions
+// are the contract for that one place: what a condition means, what two of
+// them mean together, and that the same rows drive every layout. Tables used
+// to be the only way to see a set of typed objects and it left with phase 4
+// scheduled to replace it — this is that replacement, pulled forward.
+const viewFixture = await page.evaluate(async () => {
+  const type = await window.api.types.create('Book', null)
+  for (const [name, kind] of [
+    ['Status', 'select'],
+    ['Rating', 'number'],
+    ['Themes', 'multi_select'],
+    ['Finished', 'date']
+  ])
+    await window.api.types.defineProperty(type.id, name, kind)
+
+  const made = []
+  const data = [
+    ['The Beginning of Infinity', 'reading', 5, ['science', 'epistemology']],
+    ['Thinking in Systems', 'done', 4, ['systems']],
+    ['Seeing Like a State', 'reading', 3, ['politics', 'systems']],
+    ['The Dawn of Everything', 'someday', null, []]
+  ]
+  for (const [title, status, rating, themes] of data) {
+    const p = await window.api.pages.create(type.id)
+    await window.api.pages.update(p.id, { title })
+    await window.api.properties.set(p.id, 'status', 'select', status)
+    if (rating !== null) await window.api.properties.set(p.id, 'rating', 'number', rating)
+    if (themes.length)
+      await window.api.properties.set(p.id, 'themes', 'multi_select', JSON.stringify(themes))
+    made.push(p.id)
+  }
+  await window.nexus.store.getState().refresh()
+  return { typeId: type.id, pageIds: made }
+})
+
+const titlesFor = async (filter, extra = {}) =>
+  (
+    await page.evaluate(
+      ([filter, extra]) => window.api.views.preview({ name: 'probe', filter, ...extra }),
+      [filter, extra]
+    )
+  ).map((r) => r.title)
+
+const one = (field, cmp, value) => ({ op: 'and', of: [{ field, cmp, value }] })
+
+check('a type condition selects that type and nothing else',
+  (await titlesFor(one({ kind: 'type' }, 'is', viewFixture.typeId))).length === 4)
+check('a select property narrows to its value',
+  (await titlesFor(one({ kind: 'property', key: 'status' }, 'is', 'reading'))).sort().join('|') ===
+    'Seeing Like a State|The Beginning of Infinity')
+check('a number property compares as a number',
+  (await titlesFor(one({ kind: 'property', key: 'rating' }, 'gte', 4))).length === 2)
+// A multi_select is a JSON array, and membership has to be membership: a LIKE
+// over the stored text would match "system" against "systems" and quietly
+// return a row nobody asked for.
+check('a multi-select matches a whole value',
+  (await titlesFor(one({ kind: 'property', key: 'themes' }, 'has', 'systems'))).length === 2)
+check('and not a prefix of one',
+  (await titlesFor(one({ kind: 'property', key: 'themes' }, 'has', 'system'))).length === 0)
+check('empty means no value, not no row',
+  (await titlesFor(one({ kind: 'property', key: 'rating' }, 'empty'))).includes('The Dawn of Everything'))
+check('a title condition reads the title',
+  (await titlesFor(one({ kind: 'title' }, 'contains', 'Everything'))).join() === 'The Dawn of Everything')
+
+const andTitles = await titlesFor({
+  op: 'and',
+  of: [
+    { field: { kind: 'property', key: 'status' }, cmp: 'is', value: 'reading' },
+    { field: { kind: 'property', key: 'rating' }, cmp: 'gte', value: 4 }
+  ]
+})
+check('two conditions under "and" both hold', andTitles.join() === 'The Beginning of Infinity',
+  JSON.stringify(andTitles))
+
+const orTitles = await titlesFor({
+  op: 'or',
+  of: [
+    { field: { kind: 'property', key: 'status' }, cmp: 'is', value: 'done' },
+    { field: { kind: 'property', key: 'status' }, cmp: 'is', value: 'someday' }
+  ]
+})
+check('and under "or" either does', orTitles.length === 2, JSON.stringify(orTitles))
+
+// A comparator this build has never heard of can be in a vault a later build
+// wrote. Ignoring that one condition is the only answer that does not either
+// throw the view away or silently show the wrong rows.
+check('a condition it cannot compile is ignored rather than fatal',
+  (await titlesFor(one({ kind: 'pinned' }, 'contains', 'nonsense'))).length > 0)
+
+const sorted = await titlesFor(one({ kind: 'type' }, 'is', viewFixture.typeId), {
+  sort: [{ field: { kind: 'property', key: 'rating' }, direction: 'asc' }]
+})
+check('a property sort orders by that property, empty last',
+  sorted.join('|') ===
+    'Seeing Like a State|Thinking in Systems|The Beginning of Infinity|The Dawn of Everything',
+  JSON.stringify(sorted))
+
+// ---- the screen
+const viewId = await page.evaluate(async (typeId) => {
+  const view = await window.api.views.create({
+    name: 'Reading list',
+    filter: { op: 'and', of: [{ field: { kind: 'type' }, cmp: 'is', value: typeId }] },
+    layout: 'table',
+    grouping: { kind: 'property', key: 'status' }
+  })
+  await window.nexus.store.getState().refreshViews()
+  return view.id
+}, viewFixture.typeId)
+
+await nav('Views')
+await sleep(1200)
+check('the view is listed on the rail',
+  (await page.evaluate(() => document.querySelectorAll('.nx-views__rail-item').length)) >= 1)
+check('the table draws a row per matching page',
+  (await page.evaluate(() => document.querySelectorAll('.nx-view__table tbody tr, .nx-table tbody tr').length)) === 4)
+// The columns are the type's own, in the order whoever made the type put them
+// in — not alphabetical, and not whatever order the rows happened to arrive.
+check('and a column per property, in the type’s own order',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-table th')].map((t) => t.textContent.replace(/[▲▼·]/g, '').trim())
+  )).join('|') === 'Title|Status|Rating|Themes|Finished|Tags|Edited')
+
+const layoutShape = async (label) => {
+  await page.evaluate((l) => {
+    ;[...document.querySelectorAll('.nx-views__layout')].find((b) => b.textContent.trim() === l)?.click()
+  }, label)
+  await sleep(700)
+  return page.evaluate(() => ({
+    columns: document.querySelectorAll('.nx-view__column').length,
+    cards: document.querySelectorAll('.nx-view__card').length,
+    rows: document.querySelectorAll('.nx-view__list-row').length,
+    heads: [...document.querySelectorAll('.nx-view__group-head')].map((h) => h.textContent.trim())
+  }))
+}
+
+// One result, four drawings of it. If a layout needed its own query the
+// grouping would have to be pushed into SQL, and every later layout would be a
+// new query path rather than a new function.
+const board = await layoutShape('Board')
+check('a board cuts the same rows into a column per group',
+  board.columns === 3 && board.cards === 4, JSON.stringify(board))
+check('and names each column after the value it grouped on',
+  board.heads.join('|') === 'done 1|reading 2|someday 1', JSON.stringify(board.heads))
+const gallery = await layoutShape('Gallery')
+check('a gallery draws the same rows as cards', gallery.cards === 4, JSON.stringify(gallery))
+const list = await layoutShape('List')
+check('a list draws them as rows', list.rows === 4, JSON.stringify(list))
+
+await page.evaluate((l) => {
+  ;[...document.querySelectorAll('.nx-views__layout')].find((b) => b.textContent.trim() === l)?.click()
+}, 'Table')
+await sleep(600)
+
+// Sorting a table writes the view, so the order survives leaving the screen.
+// A header that only sorted what was on screen would be a control that forgets.
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-table th')].find((t) => t.textContent.includes('Rating'))?.click()
+})
+await sleep(700)
+const savedSort = await page.evaluate((id) => window.api.views.get(id), viewId)
+check('sorting a column is written into the view', savedSort.sort.length === 1 &&
+  savedSort.sort[0].field.key === 'rating' && savedSort.sort[0].direction === 'asc',
+  JSON.stringify(savedSort.sort))
+check('and the rows are in that order on screen',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-table tbody tr td:first-child')].map((c) => c.textContent.trim())
+  ))[0].startsWith('Seeing Like a State'))
+
+// Clicking through: ascending, descending, then back to the view's default.
+// "No sort" is a real answer — newest-first is what a view of recent work
+// wants, and without a third click there is no way back to it.
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-table th')].find((t) => t.textContent.includes('Rating'))?.click()
+})
+await sleep(600)
+check('clicking again reverses it',
+  (await page.evaluate((id) => window.api.views.get(id), viewId)).sort[0].direction === 'desc')
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-table th')].find((t) => t.textContent.includes('Rating'))?.click()
+})
+await sleep(600)
+check('and a third time clears it',
+  (await page.evaluate((id) => window.api.views.get(id), viewId)).sort.length === 0)
+
+// The filter builder writes the same tree the compiler reads — a builder that
+// wrote a shape of its own would be a second interpreter of the contract.
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-views__controls button')].find((b) => b.textContent.trim() === 'Filter')?.click()
+})
+await sleep(600)
+check('the builder opens on the conditions the view holds',
+  (await page.evaluate(() => document.querySelectorAll('.nx-filter__row').length)) === 1)
+await page.evaluate(() => document.querySelector('.nx-filter__add')?.click())
+await sleep(600)
+check('a condition can be added from the builder',
+  (await page.evaluate(() => document.querySelectorAll('.nx-filter__row').length)) === 2)
+check('and it is written into the stored view',
+  (await page.evaluate((id) => window.api.views.get(id), viewId)).filter.of.length === 2)
+await page.evaluate(() => {
+  ;[...document.querySelectorAll('.nx-filter__remove')].pop()?.click()
+})
+await sleep(600)
+check('removing it takes it back out',
+  (await page.evaluate((id) => window.api.views.get(id), viewId)).filter.of.length === 1)
+
+// The bridge from the Notes rail: the chips are a question asked in passing,
+// and this is what makes one you can come back to.
+await nav('Notes')
+await sleep(800)
+await page.evaluate((typeId) => window.nexus.store.getState().toggleTypeFilter(typeId), viewFixture.typeId)
+await sleep(600)
+check('the Notes rail offers to keep a filter as a view',
+  await page.evaluate(() => !!document.querySelector('.nx-notes__save-view')))
+await page.evaluate(() => document.querySelector('.nx-notes__save-view')?.click())
+await sleep(1000)
+const madeFromRail = await page.evaluate(() => {
+  const s = window.nexus.store.getState()
+  return { view: s.views.find((v) => v.id === s.activeViewId) ?? null, at: s.activeView }
+})
+check('and saving one lands you on it', madeFromRail.at === 'views' && !!madeFromRail.view)
+check('with the chip written as a real condition',
+  madeFromRail.view?.filter?.of?.[0]?.field?.kind === 'type',
+  JSON.stringify(madeFromRail.view?.filter))
+
+await page.screenshot({ path: SHOT + '/11-views.png' })
+
+// Tear the fixture down: the mirror assertions later read an exact list of
+// files, and four books in it are four failures with nothing to do with them.
+await page.evaluate(async (fx) => {
+  const s = window.nexus.store.getState()
+  s.clearTypeFilter()
+  for (const view of s.views) await window.api.views.remove(view.id)
+  for (const id of fx.pageIds) await window.api.pages.hardDelete(id)
+  await window.api.types.remove(fx.typeId)
+  await s.refreshViews()
+  await s.refresh()
+}, viewFixture)
+await sleep(700)
+check('the views made here are cleaned up',
+  (await page.evaluate(() => window.api.views.list())).length === 0)
+
 log('\n— types live in Settings —')
 // Tables and Activity are gone. Types used to be managed from two places,
 // neither of which said "types": created from a magic entry in the Notes type

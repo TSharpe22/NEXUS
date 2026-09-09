@@ -9,6 +9,7 @@ import * as files from './files'
 import { restoreBackup } from './backup'
 import { flushAllRenderers } from './flush'
 import type { PropertyType, CaptureTarget } from '../shared/types'
+import type { ViewDraft } from '../shared/views'
 
 /**
  * File dialogs, parented to a window when there is one.
@@ -645,6 +646,67 @@ export function registerIpcHandlers(): void {
       rethrow('tasks:setDone', e)
     }
   })
+  ipcMain.handle('types:allProperties', () => {
+    try {
+      return repo.getAllPropertyDefinitions()
+    } catch (e) {
+      rethrow('types:allProperties', e)
+    }
+  })
+
+  // ---------------------------------------------------------- views
+  ipcMain.handle('views:list', () => {
+    try {
+      return repo.listViews()
+    } catch (e) {
+      rethrow('views:list', e)
+    }
+  })
+  ipcMain.handle('views:get', (_, id: string) => {
+    try {
+      return repo.getView(id)
+    } catch (e) {
+      rethrow('views:get', e)
+    }
+  })
+  ipcMain.handle('views:create', (_, draft: ViewDraft) => {
+    try {
+      return repo.createView(draft)
+    } catch (e) {
+      rethrow('views:create', e)
+    }
+  })
+  ipcMain.handle('views:update', (_, id: string, patch: ViewDraft) => {
+    try {
+      return repo.updateView(id, patch)
+    } catch (e) {
+      rethrow('views:update', e)
+    }
+  })
+  ipcMain.handle('views:remove', (_, id: string) => {
+    try {
+      return repo.deleteView(id)
+    } catch (e) {
+      rethrow('views:remove', e)
+    }
+  })
+  ipcMain.handle('views:run', (_, id: string, limit?: number) => {
+    try {
+      return repo.runViewById(id, limit)
+    } catch (e) {
+      rethrow('views:run', e)
+    }
+  })
+  // The builder's live count. Same compiler as a saved view — a preview down a
+  // second code path is a preview of something else.
+  ipcMain.handle('views:preview', (_, draft: ViewDraft, limit?: number) => {
+    try {
+      return repo.previewView(draft, limit)
+    } catch (e) {
+      rethrow('views:preview', e)
+    }
+  })
+
   ipcMain.handle('activity:getRecent', (_, limit?: number) => {
     try {
       return repo.getRecentActivity(limit)

@@ -817,3 +817,22 @@
 .nx-notes__inbox-count {
   color: var(--nx-accent);
 }
+
+/* The filter rail's one outward door: the chips above are a question asked in
+   passing, and this is what turns it into one you can come back to. */
+.nx-notes__save-view {
+  align-self: flex-start;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
+  color: var(--nx-accent);
+  cursor: pointer;
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nx-notes__save-view:hover {
+  text-decoration: underline;
+}
