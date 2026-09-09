@@ -609,6 +609,27 @@ export function setTaskSection(name: string): string {
 
 export const DEFAULT_TASK_SECTION = 'Tasks'
 
+const SETTING_CAPTURE_KEY = 'capture.accelerator'
+
+/**
+ * The system-wide key that opens the capture box.
+ *
+ * Default off, and stored as a string rather than a flag: it is the one
+ * setting that reaches outside the application and takes a key away from every
+ * other one, so it has to be both refusable and re-spellable without a code
+ * change. Registering it can fail — `main/index.ts` owns that half — and
+ * nothing here pretends otherwise.
+ */
+export function getCaptureAccelerator(): string {
+  return getSetting(SETTING_CAPTURE_KEY) ?? ''
+}
+
+export function setCaptureAccelerator(accelerator: string): string {
+  const clean = accelerator.trim()
+  setSetting(SETTING_CAPTURE_KEY, clean)
+  return clean
+}
+
 // ============================================================
 // Journal
 // ============================================================

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearch } from '../hooks/use-search'
 import toast from 'react-hot-toast'
 import type { Page, PageListItem } from '@shared/types'
@@ -15,6 +15,7 @@ import { FolderTree } from './FolderTree'
 import { TagFilter } from './TagFilter'
 import { TypeFilter } from './TypeFilter'
 import { SaveAsView } from './SaveAsView'
+import { SelectionBar } from './SelectionBar'
 import './Notes.css'
 
 export function Notes() {
@@ -64,6 +65,17 @@ export function Notes() {
   const [newTypeName, setNewTypeName] = useState('')
   const [creatingType, setCreatingType] = useState(false)
   const [selectedTypeId, setSelectedTypeId] = useState('note')
+  /**
+   * Pages picked out for an action that applies to several at once.
+   *
+   * Held here rather than in the store: it is a gesture inside this list, it
+   * means nothing to any other screen, and it has to be dropped the moment the
+   * list changes under it — a selection of rows that are no longer shown is a
+   * bulk action aimed at pages you cannot see.
+   */
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  /** The row a Shift-click measures its range from. */
+  const [anchorId, setAnchorId] = useState<string | null>(null)
 
   // Resolved against the store, so a page opened from the palette, a mention
   // or the graph is always found — not only ones this view happened to load.
@@ -184,6 +196,57 @@ export function Notes() {
       toast.error(`A type named "${name}" already exists`)
     }
   }
+
+  /**
+   * What a click on a row means.
+   *
+   * Plain opens the page and drops any selection — the common case must stay
+   * one click. ⌘/Ctrl adds or removes one row. Shift takes everything between
+   * the last row you touched and this one, in the order the list is drawn,
+   * which is the order you can see rather than the order the store holds.
+   */
+  const handleRowClick = useCallback(
+    (page: PageListItem, modifiers: { toggle: boolean; range: boolean }) => {
+      if (modifiers.range && anchorId) {
+        const order = list.map((p) => p.id)
+        const from = order.indexOf(anchorId)
+        const to = order.indexOf(page.id)
+        if (from !== -1 && to !== -1) {
+          const [lo, hi] = from < to ? [from, to] : [to, from]
+          setSelected(new Set(order.slice(lo, hi + 1)))
+          return
+        }
+      }
+
+      if (modifiers.toggle) {
+        setSelected((current) => {
+          const next = new Set(current)
+          if (next.has(page.id)) next.delete(page.id)
+          else next.add(page.id)
+          return next
+        })
+        setAnchorId(page.id)
+        return
+      }
+
+      setSelected(new Set())
+      setAnchorId(page.id)
+      setActivePageId(page.id)
+    },
+    [anchorId, list, setActivePageId]
+  )
+
+  // A page that has left the list — trashed, filtered out, moved into a folder
+  // that is now closed — must leave the selection with it, or the bar acts on
+  // rows nobody can see.
+  useEffect(() => {
+    setSelected((current) => {
+      if (current.size === 0) return current
+      const shown = new Set(list.map((p) => p.id))
+      const next = new Set([...current].filter((id) => shown.has(id)))
+      return next.size === current.size ? current : next
+    })
+  }, [list])
 
   const handleDeleteForever = async (page: PageListItem) => {
     const label = page.title || 'Untitled'
@@ -370,9 +433,13 @@ export function Notes() {
               onTogglePin={(page) => setPagePinned(page.id, !page.is_pinned)}
               onDuplicate={(page) => duplicatePage(page.id)}
               onTrash={(page) => trashPage(page.id)}
+              selected={selected}
+              onRowClick={handleRowClick}
             />
           )}
         </div>
+
+        <SelectionBar selected={selected} pages={list} onClear={() => setSelected(new Set())} />
 
         <div className="nx-notes__list-foot">
           <button className="nx-notes__trash-toggle" onClick={() => setShowTrash((v) => !v)}>

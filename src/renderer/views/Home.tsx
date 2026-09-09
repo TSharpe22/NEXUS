@@ -16,6 +16,7 @@ import { dayStartLabel } from '@shared/day'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
+import { CaptureBar } from '../design/CaptureBar'
 import { ErrorState } from '../design/ErrorState'
 import { Icon } from '../design/Icon'
 import { DueDate } from '../design/DueDate'
@@ -38,20 +39,6 @@ import './Home.css'
  * stale from `pages`. The one thing Home added to the model is the pin, and
  * that is a flag on a page rather than a table of its own.
  */
-
-const CAPTURE_TARGETS: { value: CaptureTarget; label: string; hint: string }[] = [
-  { value: 'page', label: 'New page', hint: 'A page of its own, ready to type or link' },
-  { value: 'journal', label: "Today's entry", hint: "Appended to today's journal entry" },
-  { value: 'task', label: 'Task', hint: "A checkbox under today's entry's task heading — @2026-08-22 sets a due date" },
-  { value: 'inbox', label: 'Inbox', hint: 'A checkbox on the Inbox page — no date, no home yet' }
-]
-
-const CAPTURED_MESSAGE: Record<CaptureTarget, string> = {
-  page: 'Captured as a new page',
-  journal: "Added to today's entry",
-  task: "Added to today's entry",
-  inbox: 'Added to the Inbox'
-}
 
 /** How many rows each of the short side panels shows before it stops. */
 const SIDE_ROWS = 7
@@ -492,82 +479,3 @@ function DayHeader() {
   )
 }
 
-function CaptureBar({ onCapture, onCaptured, openPage }: {
-  onCapture: (text: string, target: CaptureTarget) => Promise<Page>
-  onCaptured: () => void
-  openPage: (id: string) => void
-}) {
-  const [text, setText] = useState('')
-  const [target, setTarget] = useState<CaptureTarget>('page')
-  const [busy, setBusy] = useState(false)
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  const submit = async (andOpen: boolean) => {
-    const trimmed = text.trim()
-    if (!trimmed || busy) return
-    setBusy(true)
-    try {
-      const page = await onCapture(trimmed, target)
-      // Cleared before navigating, so a capture-and-open does not leave the
-      // text sitting in the box to be captured twice on the way back.
-      setText('')
-      onCaptured()
-      if (andOpen) openPage(page.id)
-      else toast.success(CAPTURED_MESSAGE[target])
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  // The box is meant to take one thought after another. It stopped doing that
-  // because the input was disabled while a capture was in flight: the browser
-  // blurs a disabled element, focusing one back does nothing, and re-enabling
-  // it does not restore focus — so the next thing typed went to the document
-  // body and vanished. The input stays enabled now (`submit` already ignores a
-  // re-entrant call) and focus is restored after the render that clears `busy`,
-  // not during it.
-  const wasBusy = useRef(false)
-  useEffect(() => {
-    if (wasBusy.current && !busy) inputRef.current?.focus()
-    wasBusy.current = busy
-  }, [busy])
-
-  return (
-    <Panel className="nx-home__capture">
-      <div className="nx-home__capture-row">
-        <Icon shape="diamond" size={14} color="var(--nx-accent)" />
-        <input
-          ref={inputRef}
-          className="nx-input nx-home__capture-input"
-          placeholder="Capture a thought…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter') return
-            e.preventDefault()
-            void submit(e.shiftKey)
-          }}
-        />
-        <Button onClick={() => void submit(false)} disabled={busy || !text.trim()}>
-          Capture
-        </Button>
-      </div>
-      <div className="nx-home__capture-row">
-        <span className="nx-type-label">into</span>
-        {CAPTURE_TARGETS.map((option) => (
-          <Button
-            key={option.value}
-            variant={target === option.value ? 'selected' : 'ghost'}
-            title={option.hint}
-            onClick={() => setTarget(option.value)}
-          >
-            {option.label}
-          </Button>
-        ))}
-        <span className="nx-type-data nx-home__capture-hint">⏎ capture · ⇧⏎ capture and open</span>
-      </div>
-    </Panel>
-  )
-}

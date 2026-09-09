@@ -1424,6 +1424,210 @@ check('and its chip is gone with it',
     [...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')].some((el) =>
       el.textContent.trim().startsWith('Book')))))
 
+// -------------------------------------------------- several pages at once
+log('\n— several pages at once —')
+// Everything here could be done one page at a time already, which is the
+// problem: filing a week of captures was twenty drags. Export is here for a
+// different reason — `io.exportPageMarkdown` has existed, tested, and reachable
+// from nothing, because Settings only ever offered the whole vault.
+await nav('Notes')
+await sleep(800)
+const bulkFixture = await page.evaluate(async () => {
+  const made = []
+  for (const title of ['Bulk one', 'Bulk two', 'Bulk three']) {
+    const p = await window.api.pages.create()
+    await window.api.pages.update(p.id, { title })
+    made.push(p.id)
+  }
+  const folder = await window.api.folders.create('Bulk target', null)
+  await window.nexus.store.getState().refresh()
+  return { pageIds: made, folderId: folder.id }
+})
+await sleep(800)
+
+const clickRow = (title, modifiers = {}) =>
+  page.evaluate(
+    ([title, modifiers]) => {
+      const row = [...document.querySelectorAll('.nx-tree-row--page')].find((r) =>
+        r.querySelector('.nx-tree-row__title')?.textContent.trim() === title
+      )
+      if (!row) return false
+      row.dispatchEvent(
+        new MouseEvent('click', { bubbles: true, ctrlKey: !!modifiers.toggle, shiftKey: !!modifiers.range })
+      )
+      return true
+    },
+    [title, modifiers]
+  )
+
+check('a plain click still just opens the page', (await clickRow('Bulk one')) &&
+  (await page.evaluate(() => document.querySelectorAll('.nx-tree-row--page.is-selected').length)) === 0)
+await sleep(400)
+await clickRow('Bulk two', { toggle: true })
+await sleep(400)
+check('ctrl-click picks a row out',
+  (await page.evaluate(() => document.querySelectorAll('.nx-tree-row--page.is-selected').length)) === 1)
+await clickRow('Bulk three', { toggle: true })
+await sleep(400)
+check('and another adds to it',
+  (await page.evaluate(() => document.querySelectorAll('.nx-tree-row--page.is-selected').length)) === 2)
+check('the bar says how many it is talking about',
+  /2 pages selected/.test(await page.evaluate(() => document.querySelector('.nx-selection__count')?.textContent ?? '')))
+
+// Shift takes the run between the last row touched and this one, in the order
+// the list is drawn — the order you can see, not the order the store holds.
+await clickRow('Bulk one', { range: true })
+await sleep(500)
+const ranged = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tree-row--page.is-selected .nx-tree-row__title')].map((t) =>
+    t.textContent.trim()))
+check('shift-click takes the run between two rows', ranged.length >= 2, JSON.stringify(ranged))
+
+// Moving several is the case one-at-a-time made tedious enough to skip.
+await page.evaluate((folderId) => {
+  const select = [...document.querySelectorAll('.nx-selection__control')][0]
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+  setter.call(select, folderId)
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+}, bulkFixture.folderId)
+await sleep(1600)
+check('moving the selection moves every page in it',
+  (await page.evaluate((fx) => {
+    const pages = window.nexus.store.getState().pages
+    return pages.filter((p) => fx.pageIds.includes(p.id) && p.folder_id === fx.folderId).length
+  }, bulkFixture)) >= 2)
+check('and the bar clears itself afterwards',
+  (await page.evaluate(() => document.querySelectorAll('.nx-selection').length)) === 0)
+
+// A tag on several at once, the other half of what one-at-a-time made tedious.
+await clickRow('Bulk one', { toggle: true })
+await clickRow('Bulk two', { toggle: true })
+await sleep(500)
+await page.evaluate(() => {
+  const select = [...document.querySelectorAll('.nx-selection__control')][1]
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value').set
+  setter.call(select, select.options[1].value)
+  select.dispatchEvent(new Event('change', { bubbles: true }))
+})
+await sleep(1600)
+const tagged = await page.evaluate((fx) =>
+  Promise.all(fx.pageIds.slice(0, 2).map((id) => window.api.tags.getForPage(id))), bulkFixture)
+check('tagging the selection tags every page in it',
+  tagged.every((list) => list.length > 0), JSON.stringify(tagged.map((l) => l.length)))
+
+// A tag's colour was assigned round-robin and could not be changed at all —
+// `tags.setColor` was implemented and reachable from nothing.
+const recoloured = await page.evaluate(async () => {
+  const tag = window.nexus.store.getState().tags[0]
+  if (!tag) return null
+  const before = tag.color
+  const next = ['accent', 'info', 'success', 'critical'].find((c) => c !== before)
+  await window.nexus.store.getState().setTagColor(tag.id, next)
+  const after = window.nexus.store.getState().tags.find((t) => t.id === tag.id)
+  return { before, wanted: next, after: after?.color }
+})
+check('a tag can be given a different colour',
+  recoloured && recoloured.after === recoloured.wanted, JSON.stringify(recoloured))
+
+await page.evaluate(async (fx) => {
+  const s = window.nexus.store.getState()
+  for (const id of fx.pageIds) await window.api.pages.hardDelete(id)
+  await window.api.folders.remove(fx.folderId)
+  await s.refresh()
+}, bulkFixture)
+await sleep(700)
+
+// ---------------------------------------------------- capture and the keys
+log('\n— capture from anywhere, and the keyboard map —')
+// Capture is the action the application exists for, and it lived on one
+// screen: getting a thought down while writing in Notes meant leaving the page
+// you were writing. The overlay is the identical component, not a stripped-down
+// second one — a fast path you cannot trust is a fast path you stop using.
+await nav('Notes')
+await sleep(600)
+await page.keyboard.press('Control+Shift+k')
+await sleep(600)
+check('the capture box opens over whatever screen you are on',
+  await page.evaluate(() => !!document.querySelector('.nx-capture-overlay')))
+check('and it is the same box Home shows',
+  await page.evaluate(() => !!document.querySelector('.nx-capture-overlay .nx-home__capture-input')))
+check('with every target Home offers',
+  (await page.evaluate(() =>
+    [...document.querySelectorAll('.nx-capture-overlay .nx-home__capture-row')[1].querySelectorAll('button')]
+      .map((b) => b.textContent.trim())
+  )).join('|') === "New page|Today's entry|Task|Inbox")
+
+await page.evaluate(() => {
+  const input = document.querySelector('.nx-capture-overlay .nx-home__capture-input')
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set
+  setter.call(input, 'captured from the overlay')
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+  input.focus()
+})
+await page.keyboard.press('Enter')
+await sleep(1200)
+check('a capture from it lands as a page',
+  await page.evaluate(() =>
+    window.nexus.store.getState().pages.some((p) => p.title === 'captured from the overlay')))
+// The box stays up after a plain capture: the whole point of one is the next
+// thought, and a box that closes after every line is a box you reopen four
+// times.
+check('and the box stays up for the next one',
+  await page.evaluate(() => !!document.querySelector('.nx-capture-overlay')))
+await page.keyboard.press('Escape')
+await sleep(400)
+check('Escape puts it away',
+  !(await page.evaluate(() => !!document.querySelector('.nx-capture-overlay'))))
+
+// One list dispatches the map and one list is rendered in Settings. There used
+// to be two, and the rendered one was the half that could go stale in silence.
+for (const [combo, view] of [
+  ['Control+1', 'home'],
+  ['Control+3', 'views'],
+  ['Control+4', 'tracker'],
+  ['Control+2', 'notes']
+]) {
+  await page.keyboard.press(combo)
+  await sleep(400)
+  check(`${combo} reaches ${view}`,
+    (await page.evaluate(() => window.nexus.store.getState().activeView)) === view)
+}
+
+await page.keyboard.press('Control+f')
+await sleep(500)
+check('the find key lands in the notes search box',
+  await page.evaluate(() => document.activeElement?.classList.contains('nx-notes__search')))
+await page.keyboard.press('Escape')
+
+await nav('Settings')
+await sleep(700)
+const listed = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-settings__shortcut')].map((row) => row.textContent))
+check('Settings lists every binding the map dispatches', listed.length >= 14, `${listed.length} rows`)
+check('including the capture key', listed.some((row) => /Shift \+ K/.test(row)))
+check('and the ones the editor owns', listed.some((row) => /Bold, italic/.test(row)))
+check('the global capture key is off until it is asked for',
+  (await page.evaluate(() => window.api.prefs.get())).captureAccelerator === '')
+
+// Registering can fail without anything being wrong — another application may
+// already hold the combination. What must never happen is the setting claiming
+// to be on over a key nothing is listening to.
+const registered = await page.evaluate(() =>
+  window.api.prefs.setCaptureAccelerator('CommandOrControl+Alt+C'))
+check('asking for a global key stores it', registered.accelerator === 'CommandOrControl+Alt+C')
+check('and reports whether it actually took', typeof registered.active === 'boolean',
+  JSON.stringify(registered))
+const cleared = await page.evaluate(() => window.api.prefs.setCaptureAccelerator(''))
+check('and it can be handed back', cleared.accelerator === '' && cleared.active === false)
+
+await page.evaluate(async () => {
+  const s = window.nexus.store.getState()
+  const made = s.pages.find((p) => p.title === 'captured from the overlay')
+  if (made) await window.api.pages.hardDelete(made.id)
+  await s.refresh()
+})
+await sleep(500)
+
 // ------------------------------------------------------------------ views
 log('\n— views: a saved question about the vault —')
 // The filter tree is compiled to SQL in exactly one place, so these assertions

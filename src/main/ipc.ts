@@ -8,6 +8,7 @@ import { getDataDir, getBackupInfo, getDbPath, closeDatabase, initDatabase } fro
 import * as files from './files'
 import { restoreBackup } from './backup'
 import { flushAllRenderers } from './flush'
+import { applyCaptureAccelerator, captureAcceleratorActive } from './capture-key'
 import type { PropertyType, CaptureTarget } from '../shared/types'
 import type { ViewDraft } from '../shared/views'
 
@@ -228,7 +229,12 @@ export function registerIpcHandlers(): void {
   // ---- Preferences ----
   ipcMain.handle('prefs:get', () => {
     try {
-      return { dayStartHour: repo.getDayStartHour(), taskSection: repo.getTaskSection() }
+      return {
+        dayStartHour: repo.getDayStartHour(),
+        taskSection: repo.getTaskSection(),
+        captureAccelerator: repo.getCaptureAccelerator(),
+        captureAcceleratorActive: captureAcceleratorActive()
+      }
     } catch (e) {
       rethrow('prefs:get', e)
     }
@@ -245,6 +251,18 @@ export function registerIpcHandlers(): void {
       return repo.setTaskSection(String(name))
     } catch (e) {
       rethrow('prefs:setTaskSection', e)
+    }
+  })
+
+  ipcMain.handle('prefs:setCaptureAccelerator', (_, accelerator: string) => {
+    try {
+      const stored = repo.setCaptureAccelerator(String(accelerator ?? ''))
+      // Registered here rather than in the repo: the repo imports no electron,
+      // which is what lets the migration checker run it against a bare file.
+      const active = applyCaptureAccelerator(stored)
+      return { accelerator: stored, active }
+    } catch (e) {
+      rethrow('prefs:setCaptureAccelerator', e)
     }
   })
 

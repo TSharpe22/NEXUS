@@ -836,3 +836,33 @@
 .nx-notes__save-view:hover {
   text-decoration: underline;
 }
+
+/* Several pages at once. Sits between the list and its footer so it appears
+   where the rows it acts on are, rather than as a bar over the whole window
+   that has to say what it is talking about. */
+.nx-selection {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border-top: 1px solid var(--nx-accent);
+  background: var(--nx-accent-tint);
+}
+
+.nx-selection__count {
+  color: var(--nx-accent);
+}
+
+.nx-selection__control {
+  min-width: 96px;
+  padding: 2px 6px;
+  font-size: 11.5px;
+}
+
+/* A selected row reads as selected without losing which one is *open* —
+   the accent rule is the selection, the filled marker is the caret. */
+.nx-tree-row--page.is-selected {
+  background: var(--nx-accent-tint-soft, var(--nx-accent-tint));
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}

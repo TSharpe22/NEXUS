@@ -4,10 +4,22 @@ import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
 import { initDatabase, closeDatabase, getDataDir } from './database'
 import { registerIpcHandlers } from './ipc'
-import { ensureSearchIndex, ensureTaskIndex, ensureLinkIndex, getSetting, setSetting } from './repo'
+import {
+  ensureSearchIndex,
+  ensureTaskIndex,
+  ensureLinkIndex,
+  getCaptureAccelerator,
+  getSetting,
+  setSetting
+} from './repo'
 import { flushPending as flushMirror } from './mirror'
 import { flushRenderer } from './flush'
 import { attachmentPath, mimeFor } from './files'
+import {
+  applyCaptureAccelerator,
+  releaseCaptureAccelerator,
+  setCaptureTarget
+} from './capture-key'
 import { ATTACHMENT_SCHEME, attachmentName } from '../shared/attachments'
 
 let mainWindow: BrowserWindow | null = null
@@ -231,7 +243,10 @@ if (!app.requestSingleInstanceLock()) {
     // it from both the documents and the relation properties.
     ensureLinkIndex()
     registerIpcHandlers()
+    setCaptureTarget(() => mainWindow)
     createWindow()
+    // After the window exists, because the handler reaches for it.
+    applyCaptureAccelerator(getCaptureAccelerator())
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -253,6 +268,10 @@ app.on('window-all-closed', () => {
 // into a renderer that was already being torn down. `will-quit` runs after
 // every window has gone, which is after every flush has been waited for.
 app.on('will-quit', () => {
+  // Electron leaves a registered accelerator held by the process; releasing it
+  // on the way out is what lets the next launch — or another application — take
+  // the key back.
+  releaseCaptureAccelerator()
   // Flush before the database closes — the mirror reads from it.
   flushMirror()
   closeDatabase()

@@ -224,6 +224,19 @@ export interface Preferences {
   dayStartHour: number
   /** Heading in the journal entry that captured tasks are filed under. */
   taskSection: string
+  /**
+   * The system-wide key that opens the capture box, in Electron's accelerator
+   * spelling. Empty means no global key at all — it is the one setting that
+   * reaches outside the application, so it has to be refusable.
+   */
+  captureAccelerator: string
+  /**
+   * Whether that key is actually registered. It can fail without anything
+   * being wrong here: another application may already hold the combination,
+   * and a setting that says "on" over a key that does nothing is worse than
+   * one that admits it.
+   */
+  captureAcceleratorActive: boolean
 }
 
 export interface PageSummary extends PageListItem {
@@ -317,6 +330,12 @@ export interface NexusAPI {
      * database is still open. Returns an unsubscribe function.
      */
     onFlushRequest(handler: () => void | Promise<unknown>): () => void
+    /**
+     * The global accelerator asking for the capture box. Fires whether or not
+     * Nexus was the focused application — main brings the window forward
+     * first, so by the time this arrives there is something to type into.
+     */
+    onCaptureRequest(handler: () => void): () => void
   }
   journal: {
     /** Today's journal entry, created from the Journal template if absent. */
@@ -385,6 +404,12 @@ export interface NexusAPI {
     setDayStartHour(hour: number): Promise<number>
     /** The heading captured tasks are filed under in the journal entry. */
     setTaskSection(name: string): Promise<string>
+    /**
+     * Set the system-wide capture key; '' turns it off. Resolves with what was
+     * stored and whether the key actually registered — another application may
+     * already hold it, and that failure has to reach the screen.
+     */
+    setCaptureAccelerator(accelerator: string): Promise<{ accelerator: string; active: boolean }>
   }
   inbox: {
     /** The inbox page if it exists, without making one. */

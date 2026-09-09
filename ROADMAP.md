@@ -107,35 +107,35 @@ driver does dozens of times a day.
 - **The window comes back where it was left.** It opened 1280×820 wherever the
   window manager felt like, every launch.
 
-## Wave 1c — found, not fixed
+## Wave 1c — the daily loop (shipped)
 
-Each of these is a decision rather than a bug, which is why they are written
-down instead of built.
+Everything wave 1b found and deliberately left, built once the decisions behind
+each one had been made.
 
-- **There is no capture from outside the app, and none from inside it either
-  unless you are on Home.** No global shortcut, no tray, and the capture box
-  lives on one screen. The daily action Nexus is *for* — get the thought down
-  before it goes — costs a window switch and a nav click, and if you are mid-
-  sentence in Notes it costs leaving the page you are writing. This is the
-  largest remaining gap and it needs two calls: which key, and whether Nexus
-  runs in the background to answer it.
-- **Five keyboard shortcuts, three of which are BlockNote's.** Nothing for
-  capture, today's entry, or reaching a view without going through the palette.
-  "Keyboard-first where practical" is a stated principle with almost nothing
-  behind it.
-- **A page cannot be exported on its own.** `io.exportPageMarkdown` and
-  `io.exportPageJSON` are implemented, tested, and reachable from nothing —
-  Settings exports the whole vault or nothing. Same bug shape as Wave 0.
-- **`tags.setColor` and `search.rebuildIndex` are also unreachable.** Colours
-  are assigned round-robin and cannot be changed; a drifted index cannot be
-  repaired from the app that owns it.
-- **Collapsing a toggle counts as editing the page.** `open` lives in
-  `block.props`, so folding one away writes the document, bumps `updated_at`,
-  logs an edit, moves the page to the top of every recency list and out of
-  Home's stale panel. Reading should not be writing. The fix is for the
-  autosave to ignore a change that only moved an `open` prop.
-- **`scripts/probes/README.md` lists two probes that do not exist**
-  (`scale.mjs`, `roundtrip.mjs`) and misses the two that do.
+- **Capture from anywhere, and from outside.** `CaptureBar` moved out of Home
+  and the overlay mounts the same component; `⌘⇧K` opens it over any screen.
+  The system-wide key is off by default, spelled by the user, and says so when
+  another application already holds the combination. The action Nexus exists
+  for no longer costs finding the window first.
+- **A real keyboard map.** One list, dispatched by the handler and rendered by
+  Settings — capture, today's entry, the inbox, each of the five views, and the
+  notes search box. There were five bindings, three of which were BlockNote's.
+- **Several pages at once.** ⌘/Ctrl-click and Shift-click in the Notes list,
+  then move, tag, export or trash the lot. Filing a week of captures was twenty
+  drags.
+- **A page can be exported on its own** — which is what the same control does
+  with one page selected. `io.exportPageMarkdown` and `exportPageJSON` had been
+  implemented, tested, and reachable from nothing.
+- **A tag's colour can be chosen**, from the rename state on the chip.
+  `tags.setColor` was the other channel nothing called.
+
+**Left, deliberately:** `search.rebuildIndex` still has no button — a drifted
+index has never actually happened, and a repair control for a fault nobody has
+seen is a button that gets clicked when something *else* is wrong. And
+collapsing a toggle still counts as editing the page: `open` lives in
+`block.props`, so folding one bumps `updated_at` and moves the page in every
+recency list. Reading should not be writing, and the fix is for the autosave to
+ignore a change that only moved an `open` prop.
 
 ## Wave 2 — Views (shipped, out of order)
 

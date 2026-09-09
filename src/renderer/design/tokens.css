@@ -366,3 +366,27 @@ button {
   background: var(--nx-accent);
   border-color: var(--nx-accent);
 }
+
+/* Renaming a tag is also where its colour is chosen — the rarer half of what
+   you want from a chip, kept off the chip so a click stays unambiguous. */
+.nx-tag-chip__editing {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.nx-tag-chip__swatch {
+  width: 12px;
+  height: 12px;
+  padding: 0;
+  border: 1px solid var(--nx-tag-color, var(--nx-border-2));
+  border-radius: 99px;
+  background: var(--nx-tag-tint, transparent);
+  cursor: pointer;
+  transition: background var(--nx-motion);
+}
+
+.nx-tag-chip__swatch.is-active,
+.nx-tag-chip__swatch:hover {
+  background: var(--nx-tag-color, var(--nx-accent));
+}

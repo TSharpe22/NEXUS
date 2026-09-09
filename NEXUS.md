@@ -261,7 +261,10 @@ substitutes for the other.
   unique index on `name`, joined to pages through `page_tags(page_id,
   tag_id)`. Renaming a tag onto an existing name merges the two rather than
   failing the index. Colour is one of the four semantic names from
-  `tokens.css`, assigned round-robin on creation.
+  `tokens.css`, assigned round-robin on creation and changed from the rename
+  state on a tag chip — the same place removing a property from a type lives,
+  and for the same reason: it is the rarer half of what you want from a chip,
+  and putting it on the chip itself would make every click ambiguous.
 - `links` — `source_page_id, target_page_id, source, property_key, context`.
   Backs `[[wiki-links]]`, relation properties and the backlinks panel. `source`
   is `'mention'` or `'relation'`, and it is what lets the two be projected
@@ -762,6 +765,39 @@ passes over. Before this it was Fuse alone — the one global way into a vault
 could not find a sentence you had written, which in a note-taking application
 is the search not working. The body never crosses IPC to do it: `pages` still
 carries no `content`, and the excerpt comes back from SQLite's own `snippet()`.
+
+**Capture is reachable from every screen, and from outside the application.**
+`CaptureBar` was Home's; it is now `design/CaptureBar.tsx` and the overlay
+(`⌘⇧K`) mounts the identical component rather than a stripped-down second one —
+a fast path you cannot trust is a fast path you stop using. A plain capture
+leaves the box up, because the point of a capture box is the next thought;
+capture-and-open closes it, because you are going somewhere.
+
+The system-wide key is `capture.accelerator` in `settings`, **off by default**,
+registered in `main/capture-key.ts`. It is the one thing in Nexus that reaches
+outside itself, so three rules hold: it is off unless asked for, it is spelled
+by the user rather than hardcoded onto a combination something else may own,
+and a registration that fails is reported — a setting claiming to be on over a
+dead key is worse than one that admits it. `globalShortcut.unregisterAll()` on
+`will-quit`, or the next launch cannot take the key back.
+
+**Every keyboard shortcut is one list.** `renderer/shortcuts.ts` holds them;
+`hooks/use-shortcuts.ts` dispatches them and Settings renders them. There were
+two — a hand-written table beside a handler that had grown past it — and the
+table was the half that could go stale in silence, which is the same argument
+`VIEW_META` settles for the nav. Every binding carries a modifier, so nothing
+in the map can swallow a keystroke meant for the editor.
+
+**Several pages at once.** ⌘/Ctrl-click picks a row out of the Notes list,
+Shift-click takes the run between it and the last one touched, and a plain
+click still just opens a page — the common case stays one click.
+`SelectionBar` moves, tags, exports or trashes the lot. Export lives there
+rather than on a row because that is what was missing: `io.exportPageMarkdown`
+and `exportPageJSON` had been implemented, tested and reachable from nothing,
+since Settings only ever offered the whole vault. One page selected and
+exported *is* the single-page export, and the same control does forty. The
+selection is dropped whenever a page leaves the list, so a bulk action can
+never be aimed at rows you cannot see.
 
 **The window comes back where it was left.** `window.bounds` in `settings`,
 written debounced on resize/move/maximize and once more on the way out while

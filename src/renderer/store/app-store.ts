@@ -137,6 +137,8 @@ interface AppState {
   setActiveView: (view: View) => void
   setDayStartHour: (hour: number) => Promise<void>
   setTaskSection: (name: string) => Promise<void>
+  /** The system-wide capture key; '' turns it off. */
+  setCaptureAccelerator: (accelerator: string) => Promise<void>
   /** Open the inbox page, making it on first use. */
   openInbox: () => Promise<Page>
   setActivePageId: (id: string | null) => void
@@ -190,6 +192,8 @@ interface AppState {
   addTag: (pageId: string, name: string) => Promise<void>
   removeTag: (pageId: string, tagId: string) => Promise<void>
   renameTag: (id: string, name: string) => Promise<void>
+  /** One of the four semantic colour names from `tokens.css`. */
+  setTagColor: (id: string, color: string) => Promise<void>
   deleteTag: (id: string) => Promise<void>
   toggleTagFilter: (tagId: string) => void
   clearTagFilter: () => void
@@ -245,7 +249,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   saveStatus: 'idle',
 
-  prefs: { dayStartHour: DEFAULT_DAY_START_HOUR, taskSection: 'Tasks' },
+  prefs: {
+    dayStartHour: DEFAULT_DAY_START_HOUR,
+    taskSection: 'Tasks',
+    captureAccelerator: '',
+    captureAcceleratorActive: false
+  },
   today: logicalDateISO(DEFAULT_DAY_START_HOUR),
   wallToday: localDateISO(),
 
@@ -263,6 +272,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTaskSection: async (name) => {
     const stored = await window.api.prefs.setTaskSection(name)
     set((state) => ({ prefs: { ...state.prefs, taskSection: stored } }))
+  },
+
+  setCaptureAccelerator: async (accelerator) => {
+    // `active` is not the same as "stored": another application may already
+    // hold the combination, and Settings says so rather than showing a key
+    // that quietly does nothing.
+    const { accelerator: stored, active } = await window.api.prefs.setCaptureAccelerator(accelerator)
+    set((state) => ({
+      prefs: { ...state.prefs, captureAccelerator: stored, captureAcceleratorActive: active }
+    }))
   },
 
   openInbox: async () => {
@@ -541,6 +560,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     await window.api.tags.rename(id, name)
     const active = get().activePageId
     await Promise.all([get().refresh(), active ? get().loadPageTags(active) : Promise.resolve()])
+  },
+
+  setTagColor: async (id, color) => {
+    await window.api.tags.setColor(id, color)
+    await get().refresh()
   },
 
   deleteTag: async (id) => {

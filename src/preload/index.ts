@@ -16,6 +16,11 @@ const api: NexusAPI = {
       }
       ipcRenderer.on('app:flush', listener)
       return () => ipcRenderer.removeListener('app:flush', listener)
+    },
+    onCaptureRequest: (handler) => {
+      const listener = (): void => handler()
+      ipcRenderer.on('app:capture', listener)
+      return () => ipcRenderer.removeListener('app:capture', listener)
     }
   },
   mirror: {
@@ -52,7 +57,9 @@ const api: NexusAPI = {
   prefs: {
     get: () => ipcRenderer.invoke('prefs:get'),
     setDayStartHour: (hour) => ipcRenderer.invoke('prefs:setDayStartHour', hour),
-    setTaskSection: (name) => ipcRenderer.invoke('prefs:setTaskSection', name)
+    setTaskSection: (name) => ipcRenderer.invoke('prefs:setTaskSection', name),
+    setCaptureAccelerator: (accelerator) =>
+      ipcRenderer.invoke('prefs:setCaptureAccelerator', accelerator)
   },
   inbox: {
     get: () => ipcRenderer.invoke('inbox:get'),

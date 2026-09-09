@@ -9,14 +9,33 @@ import { dayStartLabel } from '@shared/day'
 import { formatBytes } from '@shared/format'
 import { relativeTime } from '../hooks/use-relative-time'
 import type { MirrorConfig, BackupInfo, AttachmentStats } from '@shared/types'
+import { SHORTCUTS, EDITOR_SHORTCUTS } from '../shortcuts'
 import './Settings.css'
 
-const SHORTCUTS: [string, string][] = [
-  ['Cmd/Ctrl + K', 'Search pages and jump between views'],
-  ['Cmd/Ctrl + N', 'New page'],
-  ['/', 'Block menu (headings, lists, toggle, callout…)'],
-  ['[[', 'Link to another page'],
-  ['Cmd/Ctrl + B / I / U', 'Bold, italic, underline']
+/**
+ * Read from the one list the keyboard map dispatches, rather than typed out
+ * again here. This panel used to be a hand-written table beside a handler that
+ * had grown past it — five rows describing an app with more bindings than that,
+ * and no way to notice.
+ */
+/**
+ * The combinations offered for the global key.
+ *
+ * A short list rather than a free-text box: an accelerator Electron cannot
+ * parse throws rather than failing, and these are the shapes least likely to
+ * be spoken for by something else already.
+ */
+const CAPTURE_KEYS = [
+  'CommandOrControl+Shift+Space',
+  'CommandOrControl+Alt+Space',
+  'CommandOrControl+Shift+C',
+  'CommandOrControl+Alt+C',
+  'CommandOrControl+Shift+Enter'
+]
+
+const SHORTCUT_ROWS: [string, string][] = [
+  ...SHORTCUTS.map((s): [string, string] => [s.display, s.label]),
+  ...EDITOR_SHORTCUTS.map((s): [string, string] => [s.display, s.label])
 ]
 
 export function Settings() {
@@ -32,6 +51,7 @@ export function Settings() {
   const prefs = useAppStore((s) => s.prefs)
   const setDayStartHour = useAppStore((s) => s.setDayStartHour)
   const setTaskSection = useAppStore((s) => s.setTaskSection)
+  const setCaptureAccelerator = useAppStore((s) => s.setCaptureAccelerator)
   const [sectionDraft, setSectionDraft] = useState(prefs.taskSection)
 
   // The stored value is the truth; the draft only exists while it is being
@@ -410,8 +430,40 @@ export function Settings() {
       </Panel>
 
       <Panel title="Shortcuts">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Capture from anywhere</div>
+            <div className="nx-type-data">
+              A key the whole system listens for, so a thought can be written down without
+              finding this window first. Off by default — it is the one setting that takes a
+              key away from every other application, so it is yours to hand over.
+              {prefs.captureAccelerator && !prefs.captureAcceleratorActive && (
+                <>
+                  {' '}
+                  <span className="nx-settings__warn">
+                    Something else already holds {prefs.captureAccelerator} — nothing is
+                    listening. Try another combination.
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <select
+            className="nx-input nx-settings__select"
+            value={prefs.captureAccelerator}
+            onChange={(e) => void setCaptureAccelerator(e.target.value)}
+          >
+            <option value="">off</option>
+            {CAPTURE_KEYS.map((accelerator) => (
+              <option key={accelerator} value={accelerator}>
+                {accelerator.replace('CommandOrControl', 'Cmd/Ctrl')}
+              </option>
+            ))}
+          </select>
+        </div>
+
         <div className="nx-settings__shortcuts">
-          {SHORTCUTS.map(([key, label]) => (
+          {SHORTCUT_ROWS.map(([key, label]) => (
             <div className="nx-settings__shortcut" key={key}>
               <span className="nx-type-body">{label}</span>
               <span className="nx-settings__kbd">{key}</span>

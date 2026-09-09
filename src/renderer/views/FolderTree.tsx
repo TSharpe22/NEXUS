@@ -52,6 +52,18 @@ interface Props {
   onDuplicate: (page: PageListItem) => void
   onTrash: (page: PageListItem) => void
   onTogglePin: (page: PageListItem) => void
+  /**
+   * Pages picked out for an action that applies to several at once. Held by
+   * Notes rather than here: the bar that acts on them is Notes' own, and a
+   * selection the tree owned would be one the bar had to ask it for.
+   */
+  selected: ReadonlySet<string>
+  /**
+   * A click on a row, with the modifiers that came with it. The tree does not
+   * decide what they mean — plain, ⌘/Ctrl and Shift are three different
+   * intentions and only the list knows what the last-clicked row was.
+   */
+  onRowClick: (page: PageListItem, modifiers: { toggle: boolean; range: boolean }) => void
 }
 
 export function FolderTree({
@@ -62,12 +74,13 @@ export function FolderTree({
   typeName,
   onDuplicate,
   onTrash,
-  onTogglePin
+  onTogglePin,
+  selected,
+  onRowClick
 }: Props) {
   const folders = useAppStore((s) => s.folders)
   const expandedFolderIds = useAppStore((s) => s.expandedFolderIds)
   const activePageId = useAppStore((s) => s.activePageId)
-  const setActivePageId = useAppStore((s) => s.setActivePageId)
   const toggleFolderExpanded = useAppStore((s) => s.toggleFolderExpanded)
   const movePageToFolder = useAppStore((s) => s.movePageToFolder)
   const moveFolder = useAppStore((s) => s.moveFolder)
@@ -155,7 +168,9 @@ export function FolderTree({
   const renderPage = (page: PageListItem, depth: number) => (
     <div
       key={page.id}
-      className={`nx-tree-row nx-tree-row--page ${page.id === activePageId ? 'is-active' : ''}`}
+      className={`nx-tree-row nx-tree-row--page ${page.id === activePageId ? 'is-active' : ''} ${
+        selected.has(page.id) ? 'is-selected' : ''
+      }`}
       style={{ paddingLeft: depth * INDENT + 8 }}
       draggable
       onDragStart={(e) => {
@@ -167,10 +182,15 @@ export function FolderTree({
       onDragEnd={() => {
         dragPayload = null
       }}
-      onClick={() => setActivePageId(page.id)}
+      onClick={(e) => onRowClick(page, { toggle: e.metaKey || e.ctrlKey, range: e.shiftKey })}
     >
       <span className="nx-tree-row__icon">
-        <Icon shape="circle" size={9} filled={page.id === activePageId} />
+        <Icon
+          shape={selected.has(page.id) ? 'square' : 'circle'}
+          size={9}
+          filled={selected.has(page.id) || page.id === activePageId}
+          color={selected.has(page.id) ? 'var(--nx-accent)' : undefined}
+        />
       </span>
       <span className="nx-tree-row__main">
         <span className="nx-tree-row__title">{page.title || 'Untitled'}</span>

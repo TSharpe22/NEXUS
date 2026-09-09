@@ -141,3 +141,9 @@
 .nx-types__remove:hover {
   color: var(--nx-critical);
 }
+
+/* A setting that says it is on over a key nothing is listening to is worse
+   than one that admits it. */
+.nx-settings__warn {
+  color: var(--nx-warning);
+}

@@ -23,8 +23,7 @@ interface Hit {
   snippet: string | null
 }
 
-export function CommandPalette() {
-  const [open, setOpen] = useState(false)
+export function CommandPalette({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('')
 
   // Read from the store rather than fetching on open: the list is already
@@ -48,21 +47,15 @@ export function CommandPalette() {
   const { results: indexed } = useSearch(query, LIMIT)
 
   useEffect(() => {
+    // Escape only. Everything else that opens or closes this now comes from
+    // the window-wide map in `use-shortcuts.ts`, so there is one place a
+    // binding can be added and one place it can go stale.
     const down = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setOpen((v) => !v)
-      }
-      if (e.key === 'n' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault()
-        setOpen(false)
-        createPage()
-      }
-      if (e.key === 'Escape') setOpen(false)
+      if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', down)
     return () => document.removeEventListener('keydown', down)
-  }, [createPage])
+  }, [onClose])
 
   useEffect(() => {
     if (!open) setQuery('')
@@ -117,11 +110,11 @@ export function CommandPalette() {
 
   const select = (fn: () => void) => {
     fn()
-    setOpen(false)
+    onClose()
   }
 
   return (
-    <div className="nx-palette-backdrop" onClick={() => setOpen(false)}>
+    <div className="nx-palette-backdrop" onClick={onClose}>
       <div className="nx-palette" onClick={(e) => e.stopPropagation()}>
         <Command shouldFilter={false} loop>
           <Command.Input

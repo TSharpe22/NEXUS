@@ -1,9 +1,11 @@
-import { useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Toaster } from 'react-hot-toast'
 import { useAppStore, VIEW_META, VIEW_ORDER, View } from './store/app-store'
 import { flushPendingWrites } from './pending-writes'
 import { NavItem } from './design/NavItem'
 import { CommandPalette } from './design/CommandPalette'
+import { QuickCapture } from './design/CaptureBar'
+import { useShortcuts } from './hooks/use-shortcuts'
 import { ConfirmHost } from './design/Confirm'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
@@ -32,6 +34,11 @@ function SaveIndicator() {
 }
 
 export function App() {
+  // The two things a shortcut can put over the screen. They live here rather
+  // than inside themselves because the keyboard map opens them, and a
+  // component that owns its own "am I open" cannot be opened from outside it.
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [captureOpen, setCaptureOpen] = useState(false)
   const activeView = useAppStore((s) => s.activeView)
   const setActiveView = useAppStore((s) => s.setActiveView)
   const refresh = useAppStore((s) => s.refresh)
@@ -46,6 +53,35 @@ export function App() {
   // The main process holds the window open while this runs, so a save still
   // sitting in a debounce when you hit quit lands before the database closes.
   useEffect(() => window.api.lifecycle.onFlushRequest(flushPendingWrites), [])
+
+  const openCapture = useCallback(() => {
+    setSearchOpen(false)
+    setCaptureOpen(true)
+  }, [])
+
+  useShortcuts({
+    onSearch: () => {
+      setCaptureOpen(false)
+      setSearchOpen((v) => !v)
+    },
+    onCapture: openCapture
+  })
+
+  // The global accelerator fires in the main process — Nexus need not be the
+  // focused application, which is the whole point of it — and arrives here as
+  // a request to show the same box the in-app shortcut shows.
+  useEffect(() => window.api.lifecycle.onCaptureRequest(openCapture), [openCapture])
+
+  // Escape closes whichever is up. The capture box stops its own keys before
+  // they reach here, so this cannot close the overlay you are typing into by
+  // way of a key it handled itself.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCaptureOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <div className="nx-app">
@@ -62,7 +98,9 @@ export function App() {
             />
           ))}
         </nav>
-        <div className="nx-sidebar__foot nx-type-data">⌘K to search</div>
+        <div className="nx-sidebar__foot nx-type-data">
+          ⌘K to search · ⌘⇧K to capture
+        </div>
       </aside>
 
       <div className="nx-main">
@@ -75,7 +113,8 @@ export function App() {
         </main>
       </div>
 
-      <CommandPalette />
+      <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
+      {captureOpen && <QuickCapture onClose={() => setCaptureOpen(false)} />}
       <ConfirmHost />
       <Toaster
         position="bottom-right"
