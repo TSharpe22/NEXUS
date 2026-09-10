@@ -479,7 +479,14 @@ v11.exec(`
 `)
 v11.pragma('user_version = 11')
 
-applySchema(v11, () => null)
+// The step rewrites values somebody typed, so it has to copy the file first —
+// the same contract the v6 relation repair has, and the reason it has it.
+let v11Backup = null
+applySchema(v11, (reason) => {
+  v11Backup = reason
+  return '/tmp/pretend-backup.db'
+})
+check('a repair that rewrites typed values takes a backup first', v11Backup, 'number repair')
 const numberOf = (id) => v11.prepare('SELECT value_number, value_text FROM properties WHERE id = ?').get(id)
 check('a negative integer moves to value_number', numberOf('a'), { value_number: -750, value_text: null })
 check('a positive integer moves too', numberOf('b'), { value_number: 5688, value_text: null })
@@ -495,8 +502,13 @@ check('the file moves to the current version', v11.pragma('user_version', { simp
 // A repair, not a recurring cleanup: a number typed back into value_text
 // after the file is stamped is not this step's to move.
 v11.prepare(`UPDATE properties SET value_number = NULL, value_text = '99' WHERE id = 'a'`).run()
-applySchema(v11, () => null)
+let reBackup = null
+applySchema(v11, (reason) => {
+  reBackup = reason
+  return null
+})
 check('re-running does not repair again', numberOf('a'), { value_number: null, value_text: '99' })
+check('and takes no second backup of a file already repaired', reBackup, null)
 v11.pragma('foreign_keys = ON')
 check('foreign keys satisfied', v11.pragma('foreign_key_check'), [])
 v11.close()

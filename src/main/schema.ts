@@ -286,6 +286,24 @@ function isLegacySchema(): boolean {
  * v5 vault full of relations from a file that has never been written to — and
  * the difference decides whether a backup is worth taking before it runs.
  */
+/**
+ * Whether the v12 repair has anything to move.
+ *
+ * Same gate as `hasStrandedRelations`, and here for the same reason: v12
+ * rewrites values somebody typed, so it takes a copy of the file first — and a
+ * backup of a vault that has nothing to repair is a backup taken of nothing.
+ */
+function hasStrandedNumbers(): boolean {
+  const row = db
+    .prepare(
+      `SELECT count(*) AS c FROM properties
+        WHERE type = 'number' AND value_number IS NULL
+          AND value_text IS NOT NULL AND trim(value_text) <> ''`
+    )
+    .get() as { c: number }
+  return row.c > 0
+}
+
 function hasStrandedRelations(): boolean {
   if (!columnExists('properties', 'value_relation')) return false
   const row = db
@@ -646,6 +664,13 @@ export function applySchema(
   // rewrite, because a brand-new file is at version 0 as well and a copy of an
   // empty vault is a backup taken of nothing.
   const repairsV6 = !legacy && version < 6 && hasStrandedRelations()
+  // v12 moves numbers out of `value_text`, which is the same kind of step: it
+  // rewrites what the user typed rather than changing the shape of the file,
+  // so it gets the same copy-first treatment. Gated on `properties` existing,
+  // because a legacy file has not got that table yet and takes its own backup
+  // on the branch above anyway.
+  const repairsV12 =
+    !legacy && version < 12 && tableExists('properties') && hasStrandedNumbers()
 
   // Both backups are taken before the transaction opens: `backupDatabase`
   // checkpoints the write-ahead log first, and a checkpoint cannot run inside
@@ -653,6 +678,7 @@ export function applySchema(
   let backupPath: string | null = null
   if (legacy) backupPath = backup('legacy schema')
   else if (repairsV6) backupPath = backup('relation repair')
+  else if (repairsV12) backupPath = backup('number repair')
 
   // Every step below runs in one transaction.
   //
