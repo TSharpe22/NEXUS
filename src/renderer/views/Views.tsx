@@ -15,6 +15,7 @@ import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
 import { ErrorState } from '../design/ErrorState'
 import { confirmDialog } from '../design/Confirm'
+import { usePageTitles } from '../hooks/use-page-titles'
 import { ViewFilterBuilder } from './ViewFilterBuilder'
 import { LAYOUTS } from './ViewLayouts'
 import './Views.css'
@@ -53,6 +54,7 @@ export function Views() {
     (id: string) => types.find((t) => t.id === id)?.name ?? 'Note',
     [types]
   )
+  const pageTitle = usePageTitles()
 
   useEffect(() => {
     void refreshViews()
@@ -294,6 +296,7 @@ export function Views() {
                 grouping={view.grouping}
                 sort={view.sort}
                 typeName={typeName}
+                pageTitle={pageTitle}
                 onOpen={openPage}
                 onSort={handleSort}
               />

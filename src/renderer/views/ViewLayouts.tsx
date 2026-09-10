@@ -20,6 +20,14 @@ export interface LayoutProps {
   grouping: FilterField | null
   sort: ViewSort[]
   typeName: (id: string) => string
+  /**
+   * A page id to its current title. A relation property stores an id, and
+   * every layout here draws one — so without this a board grouped by a
+   * relation prints uuids as its column headings and a card shows one as a
+   * value. Resolved live rather than snapshotted, for the same reason
+   * `usePageTitles` exists: a renamed target has to read as its new name.
+   */
+  pageTitle: (id: string | null | undefined) => string | null
   onOpen: (pageId: string) => void
   /**
    * Sorting a table writes the view's own sort, so the order you put it in is
@@ -29,12 +37,23 @@ export interface LayoutProps {
   onSort: (field: FilterField) => void
 }
 
-/** What one property reads as, whatever column it landed in. */
-export function propertyText(prop: Property | undefined): string {
+/**
+ * What one property reads as, whatever column it landed in.
+ *
+ * `pageTitle` is optional only so the fallback is explicit: a relation whose
+ * target has been deleted for good has no title to show, and a caller with no
+ * resolver at all should still get something rather than nothing. Both cases
+ * end at the same place — the id, which is at least a thing you can search
+ * for. Every layout in this file passes a resolver.
+ */
+export function propertyText(
+  prop: Property | undefined,
+  pageTitle?: (id: string | null | undefined) => string | null
+): string {
   if (!prop) return ''
   if (prop.value_number !== null && prop.value_number !== undefined) return String(prop.value_number)
   if (prop.value_date) return prop.value_date
-  if (prop.value_relation) return prop.value_relation
+  if (prop.value_relation) return pageTitle?.(prop.value_relation) ?? prop.value_relation
   const text = prop.value_text ?? ''
   // A multi_select is a JSON array; showing the brackets is showing the
   // storage rather than the value.
@@ -65,7 +84,8 @@ const propOf = (row: ViewRow, key: string): Property | undefined =>
 export function groupRows(
   rows: ViewRow[],
   grouping: FilterField | null,
-  typeName: (id: string) => string
+  typeName: (id: string) => string,
+  pageTitle?: (id: string | null | undefined) => string | null
 ): { key: string; label: string; rows: ViewRow[] }[] {
   if (!grouping) return [{ key: '', label: '', rows }]
 
@@ -87,8 +107,14 @@ export function groupRows(
       continue
     }
     if (grouping.kind === 'property') {
-      const text = propertyText(propOf(row, grouping.key ?? ''))
-      put(text, text || 'Empty', row)
+      // Bucketed by the stored value and labelled by the readable one: two
+      // pages pointing at the same target must land in one column even if
+      // that target is later renamed, and the column must still be named
+      // after it rather than after its id.
+      const prop = propOf(row, grouping.key ?? '')
+      const key = prop?.value_relation ?? propertyText(prop)
+      const label = propertyText(prop, pageTitle)
+      put(key, label || 'Empty', row)
       continue
     }
     if (grouping.kind === 'pinned') {
@@ -122,7 +148,7 @@ function TagChips({ row }: { row: ViewRow }) {
   )
 }
 
-function TableLayout({ rows, columns, sort, typeName, onOpen, onSort }: LayoutProps) {
+function TableLayout({ rows, columns, sort, typeName, pageTitle, onOpen, onSort }: LayoutProps) {
   // Only the first sort clause is drawn. A stack of them is a real thing the
   // filter tree can hold, but an arrow on three headers reads as three sorts
   // at once rather than as one order.
@@ -162,7 +188,7 @@ function TableLayout({ rows, columns, sort, typeName, onOpen, onSort }: LayoutPr
               </Td>
               {columns.map((def) => (
                 <Td key={def.key} className="nx-type-data">
-                  {propertyText(propOf(row, def.key))}
+                  {propertyText(propOf(row, def.key), pageTitle)}
                 </Td>
               ))}
               <Td>
@@ -201,11 +227,13 @@ function Card({
   row,
   columns,
   typeName,
+  pageTitle,
   onOpen
 }: {
   row: ViewRow
   columns: PropertyDefinition[]
   typeName: (id: string) => string
+  pageTitle: (id: string | null | undefined) => string | null
   onOpen: (id: string) => void
 }) {
   // Three properties, because a card that shows everything is a table row with
@@ -216,7 +244,7 @@ function Card({
       <span className="nx-view__card-title">{row.title || 'Untitled'}</span>
       <span className="nx-view__card-type nx-type-data">{typeName(row.type_id)}</span>
       {shown.map((def) => {
-        const text = propertyText(propOf(row, def.key))
+        const text = propertyText(propOf(row, def.key), pageTitle)
         if (!text) return null
         return (
           <span key={def.key} className="nx-view__card-prop nx-type-data">
@@ -230,8 +258,11 @@ function Card({
   )
 }
 
-function GalleryLayout({ rows, columns, grouping, typeName, onOpen }: LayoutProps) {
-  const groups = useMemo(() => groupRows(rows, grouping, typeName), [rows, grouping, typeName])
+function GalleryLayout({ rows, columns, grouping, typeName, pageTitle, onOpen }: LayoutProps) {
+  const groups = useMemo(
+    () => groupRows(rows, grouping, typeName, pageTitle),
+    [rows, grouping, typeName, pageTitle]
+  )
   return (
     <div className="nx-view__scroll">
       {groups.map((group) => (
@@ -243,7 +274,14 @@ function GalleryLayout({ rows, columns, grouping, typeName, onOpen }: LayoutProp
           )}
           <div className="nx-view__gallery">
             {group.rows.map((row) => (
-              <Card key={row.id} row={row} columns={columns} typeName={typeName} onOpen={onOpen} />
+              <Card
+                key={row.id}
+                row={row}
+                columns={columns}
+                typeName={typeName}
+                pageTitle={pageTitle}
+                onOpen={onOpen}
+              />
             ))}
           </div>
         </section>
@@ -252,8 +290,11 @@ function GalleryLayout({ rows, columns, grouping, typeName, onOpen }: LayoutProp
   )
 }
 
-function BoardLayout({ rows, columns, grouping, typeName, onOpen }: LayoutProps) {
-  const groups = useMemo(() => groupRows(rows, grouping, typeName), [rows, grouping, typeName])
+function BoardLayout({ rows, columns, grouping, typeName, pageTitle, onOpen }: LayoutProps) {
+  const groups = useMemo(
+    () => groupRows(rows, grouping, typeName, pageTitle),
+    [rows, grouping, typeName, pageTitle]
+  )
 
   if (!grouping) {
     return (
@@ -273,7 +314,14 @@ function BoardLayout({ rows, columns, grouping, typeName, onOpen }: LayoutProps)
           </header>
           <div className="nx-view__column-body">
             {group.rows.map((row) => (
-              <Card key={row.id} row={row} columns={columns} typeName={typeName} onOpen={onOpen} />
+              <Card
+                key={row.id}
+                row={row}
+                columns={columns}
+                typeName={typeName}
+                pageTitle={pageTitle}
+                onOpen={onOpen}
+              />
             ))}
           </div>
         </section>
