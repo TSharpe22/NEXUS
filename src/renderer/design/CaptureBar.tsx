@@ -49,7 +49,22 @@ export function CaptureBar({
   onDone?: (opened: boolean) => void
 }) {
   const [text, setText] = useState('')
-  const [target, setTarget] = useState<CaptureTarget>('page')
+  /**
+   * Opens on the preference rather than on a constant. The box is a fast path
+   * and the fastest path through it is type-and-return, so whatever this
+   * opens on is where most captures actually land — which makes it a setting
+   * rather than a default somebody in this file gets to pick.
+   */
+  const defaultTarget = useAppStore((s) => s.prefs.captureTarget)
+  const [target, setTarget] = useState<CaptureTarget>(defaultTarget)
+
+  // Preferences load after the first paint, and the box may already be open
+  // by then. Only re-seat an untouched box: changing the target under someone
+  // who has just clicked one is worse than opening on the wrong one.
+  const touched = useRef(false)
+  useEffect(() => {
+    if (!touched.current) setTarget(defaultTarget)
+  }, [defaultTarget])
   const [busy, setBusy] = useState(false)
   const inputRef = useRef<HTMLInputElement | null>(null)
 
@@ -121,7 +136,10 @@ export function CaptureBar({
             key={option.value}
             variant={target === option.value ? 'selected' : 'ghost'}
             title={option.hint}
-            onClick={() => setTarget(option.value)}
+            onClick={() => {
+              touched.current = true
+              setTarget(option.value)
+            }}
           >
             {option.label}
           </Button>

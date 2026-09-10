@@ -609,6 +609,46 @@ export function setTaskSection(name: string): string {
 
 export const DEFAULT_TASK_SECTION = 'Tasks'
 
+const SETTING_CAPTURE_TARGET = 'capture.target'
+
+/**
+ * Where the capture box files a line when you have not said otherwise.
+ *
+ * The default was `page`, which is the most expensive of the four: every
+ * stray thought became a titled, untyped page of its own, and thirty days of
+ * capturing produced thirty orphans nothing pointed at. That is the outcome a
+ * capture box exists to avoid, and it was the one you got by pressing the
+ * global key and hitting return.
+ *
+ * `task` instead — a checkbox under today's entry, which is where a thought
+ * caught mid-sentence usually belongs and is the one target that survives
+ * being wrong, since a task can be reread and moved. Stored rather than
+ * hard-coded because the right answer differs per person: an inbox-first
+ * workflow wants `inbox`, and someone who captures ideas rather than jobs
+ * genuinely does want `page`.
+ */
+export const DEFAULT_CAPTURE_TARGET: CaptureTarget = 'task'
+
+const CAPTURE_TARGETS: readonly CaptureTarget[] = ['page', 'journal', 'task', 'inbox']
+
+export function getCaptureTarget(): CaptureTarget {
+  const stored = getSetting(SETTING_CAPTURE_TARGET)
+  return CAPTURE_TARGETS.includes(stored as CaptureTarget)
+    ? (stored as CaptureTarget)
+    : DEFAULT_CAPTURE_TARGET
+}
+
+export function setCaptureTarget(target: string): CaptureTarget {
+  // An unrecognised target is not an error worth throwing over — it is a
+  // setting, and the honest response is the default rather than a broken
+  // capture box.
+  const clean = CAPTURE_TARGETS.includes(target as CaptureTarget)
+    ? (target as CaptureTarget)
+    : DEFAULT_CAPTURE_TARGET
+  setSetting(SETTING_CAPTURE_TARGET, clean)
+  return clean
+}
+
 const SETTING_CAPTURE_KEY = 'capture.accelerator'
 
 /**

@@ -8,7 +8,8 @@ import { confirmDialog } from '../design/Confirm'
 import { dayStartLabel } from '@shared/day'
 import { formatBytes } from '@shared/format'
 import { relativeTime } from '../hooks/use-relative-time'
-import type { MirrorConfig, BackupInfo, AttachmentStats } from '@shared/types'
+import type { MirrorConfig, BackupInfo, AttachmentStats, CaptureTarget } from '@shared/types'
+import { CAPTURE_TARGETS } from '../design/CaptureBar'
 import { SHORTCUTS, EDITOR_SHORTCUTS } from '../shortcuts'
 import './Settings.css'
 
@@ -49,6 +50,7 @@ export function Settings() {
   const [syncing, setSyncing] = useState(false)
   const [showRestore, setShowRestore] = useState(false)
   const prefs = useAppStore((s) => s.prefs)
+  const setCaptureTarget = useAppStore((s) => s.setCaptureTarget)
   const setDayStartHour = useAppStore((s) => s.setDayStartHour)
   const setTaskSection = useAppStore((s) => s.setTaskSection)
   const setCaptureAccelerator = useAppStore((s) => s.setCaptureAccelerator)
@@ -352,6 +354,26 @@ export function Settings() {
             {Array.from({ length: 24 }, (_, h) => (
               <option key={h} value={h}>
                 {dayStartLabel(h)}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Capture opens on</div>
+            <div className="nx-type-data">
+              Where a captured line goes when you press return without picking a target. The box
+              still offers all four every time.
+            </div>
+          </div>
+          <select
+            className="nx-select nx-settings__select"
+            value={prefs.captureTarget}
+            onChange={(e) => void setCaptureTarget(e.target.value as CaptureTarget)}
+          >
+            {CAPTURE_TARGETS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
               </option>
             ))}
           </select>

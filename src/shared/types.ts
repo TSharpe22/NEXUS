@@ -225,6 +225,11 @@ export interface Preferences {
   /** Heading in the journal entry that captured tasks are filed under. */
   taskSection: string
   /**
+   * Where the capture box files a line when you have not picked a target.
+   * The box still offers all four; this is only what it opens on.
+   */
+  captureTarget: CaptureTarget
+  /**
    * The system-wide key that opens the capture box, in Electron's accelerator
    * spelling. Empty means no global key at all — it is the one setting that
    * reaches outside the application, so it has to be refusable.
@@ -404,6 +409,11 @@ export interface NexusAPI {
     setDayStartHour(hour: number): Promise<number>
     /** The heading captured tasks are filed under in the journal entry. */
     setTaskSection(name: string): Promise<string>
+    /**
+     * The target the capture box opens on. An unrecognised value stores the
+     * default rather than failing — this is a preference, not a command.
+     */
+    setCaptureTarget(target: CaptureTarget): Promise<CaptureTarget>
     /**
      * Set the system-wide capture key; '' turns it off. Resolves with what was
      * stored and whether the key actually registered — another application may

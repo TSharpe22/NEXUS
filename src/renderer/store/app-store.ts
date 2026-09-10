@@ -137,6 +137,8 @@ interface AppState {
   setActiveView: (view: View) => void
   setDayStartHour: (hour: number) => Promise<void>
   setTaskSection: (name: string) => Promise<void>
+  /** The target the capture box opens on. */
+  setCaptureTarget: (target: CaptureTarget) => Promise<void>
   /** The system-wide capture key; '' turns it off. */
   setCaptureAccelerator: (accelerator: string) => Promise<void>
   /** Open the inbox page, making it on first use. */
@@ -252,6 +254,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   prefs: {
     dayStartHour: DEFAULT_DAY_START_HOUR,
     taskSection: 'Tasks',
+    captureTarget: 'task',
     captureAccelerator: '',
     captureAcceleratorActive: false
   },
@@ -272,6 +275,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   setTaskSection: async (name) => {
     const stored = await window.api.prefs.setTaskSection(name)
     set((state) => ({ prefs: { ...state.prefs, taskSection: stored } }))
+  },
+
+  setCaptureTarget: async (target) => {
+    const stored = await window.api.prefs.setCaptureTarget(target)
+    set((state) => ({ prefs: { ...state.prefs, captureTarget: stored } }))
   },
 
   setCaptureAccelerator: async (accelerator) => {

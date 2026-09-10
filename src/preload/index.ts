@@ -58,6 +58,7 @@ const api: NexusAPI = {
     get: () => ipcRenderer.invoke('prefs:get'),
     setDayStartHour: (hour) => ipcRenderer.invoke('prefs:setDayStartHour', hour),
     setTaskSection: (name) => ipcRenderer.invoke('prefs:setTaskSection', name),
+    setCaptureTarget: (target) => ipcRenderer.invoke('prefs:setCaptureTarget', target),
     setCaptureAccelerator: (accelerator) =>
       ipcRenderer.invoke('prefs:setCaptureAccelerator', accelerator)
   },

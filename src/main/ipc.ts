@@ -232,6 +232,7 @@ export function registerIpcHandlers(): void {
       return {
         dayStartHour: repo.getDayStartHour(),
         taskSection: repo.getTaskSection(),
+        captureTarget: repo.getCaptureTarget(),
         captureAccelerator: repo.getCaptureAccelerator(),
         captureAcceleratorActive: captureAcceleratorActive()
       }
@@ -267,6 +268,14 @@ export function registerIpcHandlers(): void {
       return repo.setTaskSection(String(name))
     } catch (e) {
       rethrow('prefs:setTaskSection', e)
+    }
+  })
+
+  ipcMain.handle('prefs:setCaptureTarget', (_, target: string) => {
+    try {
+      return repo.setCaptureTarget(String(target))
+    } catch (e) {
+      rethrow('prefs:setCaptureTarget', e)
     }
   })
 
