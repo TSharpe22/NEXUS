@@ -1,0 +1,118 @@
+.nx-iconpick {
+  position: relative;
+  display: inline-block;
+}
+
+/* Sized against the 30px title it sits above, so an icon and a title read as
+   one block rather than two stacked controls. */
+.nx-iconpick__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 var(--nx-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-md);
+  background: transparent;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-sans);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--nx-motion), border-color var(--nx-motion);
+}
+
+.nx-iconpick__btn.has-icon {
+  font-size: 26px;
+}
+
+.nx-iconpick__btn:hover {
+  background: var(--nx-row-hover);
+  border-color: var(--nx-border);
+}
+
+/* The "+ icon" affordance is deliberately quiet until the row is hovered:
+   an empty icon slot should not compete with the title beside it. */
+.nx-iconpick__placeholder {
+  opacity: 0;
+  white-space: nowrap;
+  transition: opacity var(--nx-motion);
+}
+
+.nx-editor:hover .nx-iconpick__placeholder,
+.nx-iconpick__btn:focus-visible .nx-iconpick__placeholder {
+  opacity: 1;
+}
+
+.nx-iconpick__pop {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  width: 268px;
+  padding: var(--nx-space-2);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-surface-raised);
+}
+
+.nx-iconpick__filter {
+  width: 100%;
+  margin-bottom: var(--nx-space-2);
+}
+
+.nx-iconpick__grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.nx-iconpick__cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background var(--nx-motion);
+}
+
+.nx-iconpick__cell:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-iconpick__cell.is-current {
+  border-color: var(--nx-accent);
+  background: var(--nx-accent-tint);
+}
+
+.nx-iconpick__none {
+  grid-column: 1 / -1;
+  padding: var(--nx-space-3) var(--nx-space-2);
+  color: var(--nx-text-dim);
+}
+
+.nx-iconpick__clear {
+  width: 100%;
+  margin-top: var(--nx-space-2);
+  padding: var(--nx-space-2);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-sans);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nx-iconpick__clear:hover {
+  border-color: var(--nx-critical);
+  color: var(--nx-critical);
+}

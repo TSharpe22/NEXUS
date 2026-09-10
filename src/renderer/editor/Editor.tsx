@@ -10,6 +10,7 @@ import { useDebounce } from '../hooks/use-debounce'
 import { registerPendingWrite } from '../pending-writes'
 import { getLinkMenuItems, LinkMenu } from './link-menu'
 import { TagBar } from './TagBar'
+import { IconPicker } from '../design/IconPicker'
 import './Editor.css'
 
 interface EditorProps {
@@ -40,6 +41,7 @@ function parseInitialContent(content: string) {
  */
 export function Editor({ page, children }: EditorProps) {
   const [title, setTitle] = useState(page.title)
+  const [icon, setIcon] = useState<string | null>(page.icon)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const editorRootRef = useRef<HTMLDivElement>(null)
   const setSaveStatus = useAppStore((s) => s.setSaveStatus)
@@ -238,8 +240,27 @@ export function Editor({ page, children }: EditorProps) {
     ])
   }
 
+  /**
+   * An icon is one value with no draft state — there is nothing to debounce
+   * and nothing to commit, so it writes straight through and patches the
+   * store copy the rest of the app reads.
+   */
+  const saveIcon = async (icon: string | null) => {
+    setSaveStatus('saving')
+    try {
+      await window.api.pages.update(page.id, { icon })
+      patchPage(page.id, { icon })
+      setSaveStatus('saved')
+    } catch (e) {
+      console.error('[nexus] failed to save page icon', e)
+      setSaveStatus('error')
+    }
+  }
+
   return (
     <div className="nx-editor" ref={editorRootRef}>
+      <IconPicker value={icon} onChange={(next) => { setIcon(next); void saveIcon(next) }} />
+
       <textarea
         ref={titleRef}
         className="nx-editor__title"
