@@ -289,6 +289,17 @@ export function Views() {
                   ))}
                 </select>
 
+                <Button
+                  variant={view.is_pinned ? 'selected' : 'quiet'}
+                  title={
+                    view.is_pinned
+                      ? 'Remove this view from the sidebar'
+                      : 'Keep this view in the sidebar'
+                  }
+                  onClick={() => void patch({ is_pinned: view.is_pinned ? 0 : 1 })}
+                >
+                  {view.is_pinned ? 'Pinned' : 'Pin'}
+                </Button>
                 <Button variant="quiet" onClick={() => setEditing((v) => !v)}>
                   {editing ? 'Done' : 'Filter'}
                 </Button>

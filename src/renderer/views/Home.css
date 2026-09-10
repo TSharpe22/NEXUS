@@ -659,3 +659,11 @@ button.nx-home__entry:hover {
 .nx-home__habit-day--today {
   border-color: var(--nx-accent);
 }
+
+/* A widget that has not been told what to show yet. */
+.nx-home__pick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-2);
+  align-items: flex-start;
+}

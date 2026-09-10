@@ -42,13 +42,37 @@ export function App() {
   const activeView = useAppStore((s) => s.activeView)
   const setActiveView = useAppStore((s) => s.setActiveView)
   const refresh = useAppStore((s) => s.refresh)
+  const refreshViews = useAppStore((s) => s.refreshViews)
+  const views = useAppStore((s) => s.views)
+  const activeViewId = useAppStore((s) => s.activeViewId)
+  const setActiveViewId = useAppStore((s) => s.setActiveViewId)
   const ActiveComponent = VIEW_COMPONENT[activeView]
+
+  /**
+   * Saved views the user has pinned, under the five fixed destinations.
+   *
+   * The sidebar named mechanisms — Home, Notes, Views, Tracker — while the
+   * thing anybody actually navigates by is their own subject: this project,
+   * that log, the open positions. `views.is_pinned` had been in the schema
+   * since views shipped and was read by nothing, so the only way to reach a
+   * saved question was Views → find it in a list.
+   *
+   * This is what a hand-maintained page of links in another app is for, and
+   * unlike that page it cannot go stale, because each of these is a query.
+   */
+  const pinnedViews = views.filter((v) => v.is_pinned)
 
   // Loaded once here rather than per view, so switching views doesn't refetch
   // and every view sees the same list.
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // The sidebar draws pinned views, so the list has to be loaded before the
+  // Views screen has ever been opened.
+  useEffect(() => {
+    void refreshViews()
+  }, [refreshViews])
 
   // The main process holds the window open while this runs, so a save still
   // sitting in a debounce when you hit quit lands before the database closes.
@@ -97,6 +121,24 @@ export function App() {
               onClick={() => setActiveView(view)}
             />
           ))}
+
+          {pinnedViews.length > 0 && (
+            <div className="nx-sidebar__pins">
+              <span className="nx-type-label nx-sidebar__pins-head">Pinned</span>
+              {pinnedViews.map((view) => (
+                <NavItem
+                  key={view.id}
+                  label={view.icon ? `${view.icon} ${view.name}` : view.name}
+                  title={`${view.name} — a saved view`}
+                  selected={activeView === 'views' && activeViewId === view.id}
+                  onClick={() => {
+                    setActiveViewId(view.id)
+                    setActiveView('views')
+                  }}
+                />
+              ))}
+            </div>
+          )}
         </nav>
         <div className="nx-sidebar__foot nx-type-data">
           ⌘K to search · ⌘⇧K to capture

@@ -75,7 +75,8 @@ function WidgetSlot({
   editing,
   onRemove,
   onMove,
-  onSpan
+  onSpan,
+  onConfig
 }: {
   instance: WidgetInstance
   ctx: WidgetContext
@@ -83,6 +84,7 @@ function WidgetSlot({
   onRemove: () => void
   onMove: (delta: -1 | 1) => void
   onSpan: (span: WidgetSpan) => void
+  onConfig: (next: Record<string, unknown>) => void
 }) {
   const definition = widgetFor(instance.kind)
 
@@ -137,7 +139,9 @@ function WidgetSlot({
     )
   }
 
-  const body = <definition.Component config={instance.config} ctx={ctx} />
+  const body = (
+    <definition.Component config={instance.config} setConfig={onConfig} ctx={ctx} />
+  )
 
   return (
     <div className="nx-home__slot" style={{ gridColumn: `span ${instance.span}` }}>
@@ -148,7 +152,7 @@ function WidgetSlot({
         </>
       ) : (
         <Panel
-          title={definition.label}
+          title={definition.title?.(instance.config, ctx) ?? definition.label}
           dense={definition.dense}
           actions={controls ?? definition.actions?.(ctx)}
         >
@@ -174,6 +178,7 @@ export function Home() {
   const patchPage = useAppStore((s) => s.patchPage)
   const pages = useAppStore((s) => s.pages)
   const types = useAppStore((s) => s.types)
+  const views = useAppStore((s) => s.views)
 
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [editing, setEditing] = useState(false)
@@ -228,6 +233,7 @@ export function Home() {
       today,
       pages,
       types,
+      views,
       openPage,
       goToTracker: (mode) => {
         setTrackerMode(mode)
@@ -240,6 +246,8 @@ export function Home() {
         tasksInRange: (from, to) => window.api.tasks.inRange(from, to),
         tasksOverdue: (before) => window.api.tasks.overdue(before),
         tasksLooseEnds: (before, limit) => window.api.tasks.looseEnds(before, limit),
+        runView: (id, limit) => window.api.views.run(id, limit),
+        aggregateView: (id, aggregates) => window.api.views.aggregate(id, aggregates),
         storage: () => window.api.stats.getStorage(),
         graph: () => window.api.stats.getGraph(),
         habitCandidates: () => window.api.habits.candidates(),
@@ -268,6 +276,7 @@ export function Home() {
       today,
       pages,
       types,
+      views,
       openPage,
       openTodayEntry,
       reload,
@@ -298,6 +307,18 @@ export function Home() {
     void persist({
       version: 1,
       widgets: widgets.map((w, i) => (i === index ? { ...w, span } : w))
+    })
+
+  /**
+   * A widget writing its own settings. Same path as every other edit to the
+   * dashboard, so a view chosen on Home is saved by the same write that saves
+   * a column width — and, like the rest of it, is a JSON file in the vault
+   * rather than something only this build can read.
+   */
+  const setConfig = (index: number, config: Record<string, unknown>) =>
+    void persist({
+      version: 1,
+      widgets: widgets.map((w, i) => (i === index ? { ...w, config } : w))
     })
 
   const add = (kind: string) => {
@@ -393,6 +414,7 @@ export function Home() {
             onRemove={() => remove(index)}
             onMove={(delta) => move(index, delta)}
             onSpan={(span) => setSpan(index, span)}
+            onConfig={(next) => setConfig(index, next)}
           />
         ))}
 

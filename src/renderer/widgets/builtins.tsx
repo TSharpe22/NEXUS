@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import type { GraphData, PageListItem, StorageStats, TrackerTask } from '@shared/types'
+import type { GraphData, PageListItem, StorageStats, TrackerTask, ViewRow } from '@shared/types'
+import type { ViewDef } from '@shared/views'
 import { STALE_DAYS, isOlderThan } from '@shared/date-range'
 import { documentPreview } from '@shared/document'
 import { formatBytes } from '@shared/format'
@@ -274,6 +275,98 @@ export function PinnedWidget({ ctx }: WidgetProps) {
       ))}
     </div>
   )
+}
+
+/**
+ * A saved view, on Home.
+ *
+ * The gap this closes is the whole reason Home could not replace a
+ * hand-written dashboard page. Every other widget answers a question the app
+ * chose — today, habits, the graph. This one answers a question *you* wrote
+ * down, which is the only kind that can be about your top three goals, your
+ * open positions or this week's sessions.
+ *
+ * It draws rows rather than borrowing `ViewLayouts`: a board inside a
+ * quarter-width panel is a board nobody can read, and a list of titles is what
+ * a panel this size can actually say. Clicking through goes to the view
+ * itself, where the layout the view was built for lives.
+ */
+export function ViewWidget({ config, setConfig, ctx }: WidgetProps) {
+  const viewId = typeof config.viewId === 'string' ? config.viewId : null
+  const limit = typeof config.limit === 'number' ? config.limit : SIDE_ROWS
+  const views = ctx.views
+  const [rows, setRows] = useState<ViewRow[]>([])
+  const [missing, setMissing] = useState(false)
+
+  useEffect(() => {
+    if (!viewId) return
+    let cancelled = false
+    ctx.read
+      .runView(viewId, limit)
+      .then((result) => {
+        if (cancelled) return
+        setRows(result)
+        setMissing(false)
+      })
+      // A view deleted after it was put on Home is the ordinary case, not an
+      // error worth a toast: the widget says so and offers the picker again.
+      .catch(() => !cancelled && setMissing(true))
+    return () => {
+      cancelled = true
+    }
+  }, [ctx, viewId, limit, ctx.pages])
+
+  if (!viewId || missing) {
+    return (
+      <div className="nx-home__pick">
+        <div className="nx-home__hint nx-type-data">
+          {missing ? 'That view is gone. Pick another.' : 'Which view?'}
+        </div>
+        {views.length === 0 ? (
+          <div className="nx-home__hint nx-type-data">
+            No saved views yet. Make one in Views and it will appear here.
+          </div>
+        ) : (
+          <select
+            className="nx-select"
+            value=""
+            onChange={(e) => e.target.value && setConfig({ ...config, viewId: e.target.value })}
+          >
+            <option value="">Choose a view…</option>
+            {views.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+    )
+  }
+
+  if (rows.length === 0) {
+    return <div className="nx-home__hint nx-type-data">Nothing matches right now.</div>
+  }
+
+  return (
+    <div className="nx-home__list">
+      {rows.map((row) => (
+        <PageRow
+          key={row.id}
+          page={row as unknown as PageListItem}
+          shape="circle"
+          meta={ctx.types.find((t) => t.id === row.type_id)?.name ?? 'Note'}
+          onOpen={ctx.openPage}
+        />
+      ))}
+    </div>
+  )
+}
+
+/** The name of the view an instance is showing, for its panel header. */
+export function viewWidgetTitle(config: Record<string, unknown>, views: ViewDef[]): string | null {
+  const viewId = typeof config.viewId === 'string' ? config.viewId : null
+  return views.find((v) => v.id === viewId)?.name ?? null
 }
 
 export function GraphWidget({ ctx }: WidgetProps) {

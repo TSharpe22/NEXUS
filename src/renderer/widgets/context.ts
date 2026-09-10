@@ -1,3 +1,4 @@
+import type { ViewAggregate, ViewDef } from '@shared/views'
 import type {
   CaptureTarget,
   GraphData,
@@ -7,7 +8,9 @@ import type {
   PageListItem,
   StorageStats,
   TrackerTask,
-  TypeDef
+  TypeDef,
+  ViewAggregateResult,
+  ViewRow
 } from '@shared/types'
 import type { TrackerMode } from '../store/app-store'
 
@@ -33,6 +36,12 @@ export interface WidgetContext {
   /** Page metadata only — bodies are not handed out. */
   pages: PageListItem[]
   types: TypeDef[]
+  /**
+   * The saved views, synchronously. A widget showing one has to name it in
+   * its own panel header, and a header that arrives a frame late reads as the
+   * panel changing its mind about what it is.
+   */
+  views: ViewDef[]
 
   openPage(id: string): void
   goToTracker(mode: TrackerMode): void
@@ -51,6 +60,10 @@ export interface WidgetContext {
     tasksInRange(from: string, to: string): Promise<TrackerTask[]>
     tasksOverdue(before: string): Promise<TrackerTask[]>
     tasksLooseEnds(before: string, limit?: number): Promise<TrackerTask[]>
+    /** One saved view's rows. Limited: a widget is a panel, not a screen. */
+    runView(id: string, limit?: number): Promise<ViewRow[]>
+    /** Totals for a saved view, over everything it matches. */
+    aggregateView(id: string, aggregates: ViewAggregate[]): Promise<ViewAggregateResult[]>
     storage(): Promise<StorageStats>
     graph(): Promise<GraphData>
     habitCandidates(): Promise<HabitCandidate[]>
@@ -82,5 +95,16 @@ export interface WidgetContext {
 export interface WidgetProps {
   /** This instance's own settings, opaque to everything but the widget. */
   config: Record<string, unknown>
+  /**
+   * Replace this instance's settings, persisted with the rest of the
+   * dashboard.
+   *
+   * A widget that needs to be told *which* thing to show — which saved view,
+   * which habit — has to be able to ask, and the answer has to survive a
+   * reload. Home has no per-widget settings dialog and does not need one: the
+   * widget draws its own picker when it has nothing to draw yet, which is the
+   * only moment the question is worth asking.
+   */
+  setConfig(next: Record<string, unknown>): void
   ctx: WidgetContext
 }

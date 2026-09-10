@@ -79,6 +79,25 @@
   gap: 1px;
 }
 
+/*
+  Pinned views sit under the fixed destinations, separated by a rule rather
+  than by a gap: they are navigation of the same kind, not a second sidebar,
+  and the label is there so a name like "Open trades" reads as a saved
+  question rather than as a screen the app shipped with.
+*/
+.nx-sidebar__pins {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-top: var(--nx-space-3);
+  padding-top: var(--nx-space-3);
+  border-top: 1px solid var(--nx-border);
+}
+
+.nx-sidebar__pins-head {
+  padding: 0 var(--nx-space-2) 4px;
+}
+
 .nx-sidebar__foot {
   margin-top: auto;
   padding: 0 var(--nx-space-2);

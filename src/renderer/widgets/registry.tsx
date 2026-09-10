@@ -9,7 +9,9 @@ import {
   StaleWidget,
   StatsWidget,
   STRIP_DAYS,
-  TodayWidget
+  TodayWidget,
+  ViewWidget,
+  viewWidgetTitle
 } from './builtins'
 
 /**
@@ -34,6 +36,12 @@ export interface WidgetDefinition {
   frame: 'panel' | 'bare'
   /** Tighter panel padding, for a widget that draws to its own edges. */
   dense?: boolean
+  /**
+   * What the panel header says, when the instance knows better than the kind
+   * does. Three widgets all headed "A saved view" tell you nothing; three
+   * headed "Open trades", "This week" and "Top 3" are a dashboard.
+   */
+  title?: (config: Record<string, unknown>, ctx: WidgetContext) => string | null
   /** Rendered in the panel header, right-aligned. Usually a link elsewhere. */
   actions?: (ctx: WidgetContext) => ReactNode
   Component: (props: WidgetProps) => JSX.Element | null
@@ -81,6 +89,15 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     defaultSpan: 3,
     frame: 'panel',
     Component: PinnedWidget
+  },
+  {
+    kind: 'view',
+    label: 'A saved view',
+    hint: 'The rows of one of your own questions',
+    defaultSpan: 4,
+    frame: 'panel',
+    title: (config, ctx) => viewWidgetTitle(config, ctx.views),
+    Component: ViewWidget
   },
   {
     kind: 'graph',
