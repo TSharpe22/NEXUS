@@ -4,6 +4,13 @@ dist
 *.log
 .DS_Store
 
+# electron-vite compiles this TypeScript config to a timestamped .mjs beside
+# it on every build and deletes it afterwards. Untracked while it exists —
+# which is precisely while `buildStamp()` is asking git whether the tree is
+# clean, so without this every build called itself `+local` and the marker
+# meant nothing.
+electron.vite.config.*.mjs
+
 # Never commit a source snapshot. `nexus-clean.tar.gz` was committed on a
 # dozen branches and went stale the day it landed — anyone who unpacked one
 # got the first build back, lasso overlay and all. A snapshot is built from a

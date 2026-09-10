@@ -19,9 +19,19 @@ function buildStamp(): string {
       .toString()
       .trim()
     // A build from a dirty tree is not the commit it names.
+    //
+    // The one exclusion is this file's own shadow: electron-vite compiles this
+    // TypeScript config to `electron.vite.config.<timestamp>.mjs` beside
+    // itself, builds through that, and deletes it afterwards — so it exists
+    // exactly while this line is asking whether the tree is clean. It is in
+    // `.gitignore` now, and filtered here as well, because a marker that is
+    // always on is a marker that says nothing: every build ever made called
+    // itself `+local`, including every clean one.
     const dirty = execSync('git status --porcelain', { stdio: ['ignore', 'pipe', 'ignore'] })
       .toString()
-      .trim()
+      .split('\n')
+      .filter((line) => line.trim() && !/electron\.vite\.config\.\d+\.mjs$/.test(line))
+      .join('\n')
     if (dirty) commit += '+local'
   } catch {
     // Built outside a checkout — a tarball, or a packaged source drop.
