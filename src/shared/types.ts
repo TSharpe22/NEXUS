@@ -508,8 +508,17 @@ export interface NexusAPI {
   tasks: {
     /** Tasks dated inside [from, to], both bounds inclusive, as YYYY-MM-DD. */
     inRange(from: string, to: string): Promise<TrackerTask[]>
-    /** Open tasks dated before `before`, which is exclusive. */
+    /**
+     * Open tasks past a date written on the block itself. `before` is
+     * exclusive. A task dated only by its page is not overdue — see
+     * `looseEnds`.
+     */
     overdue(before: string): Promise<TrackerTask[]>
+    /**
+     * Open tasks on a dated page that has already passed, newest first. What
+     * was left behind rather than what was missed.
+     */
+    looseEnds(before: string, limit?: number): Promise<TrackerTask[]>
     /** Open tasks with no date on the block or its page. */
     undated(limit?: number): Promise<TrackerTask[]>
     forPage(pageId: string): Promise<TrackerTask[]>

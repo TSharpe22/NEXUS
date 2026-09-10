@@ -109,6 +109,7 @@ export function Tracker() {
   const [pages, setPages] = useState<DatedPage[]>([])
   const [overdue, setOverdue] = useState<TrackerTask[]>([])
   const [undated, setUndated] = useState<TrackerTask[]>([])
+  const [looseEnds, setLooseEnds] = useState<TrackerTask[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -125,16 +126,18 @@ export function Tracker() {
       return
     }
     try {
-      const [rangeTasks, rangePages, before, none] = await Promise.all([
+      const [rangeTasks, rangePages, before, none, loose] = await Promise.all([
         window.api.tasks.inRange(range.from, range.to),
         window.api.tasks.datedPages(range.from, range.to),
         window.api.tasks.overdue(today),
-        window.api.tasks.undated()
+        window.api.tasks.undated(),
+        window.api.tasks.looseEnds(today)
       ])
       setTasks(rangeTasks)
       setPages(rangePages)
       setOverdue(before)
       setUndated(none)
+      setLooseEnds(loose)
       setError(null)
     } catch (e) {
       console.error('[nexus] could not load the tracker', e)
@@ -317,6 +320,23 @@ export function Tracker() {
             })
           )}
         </Panel>
+
+        {/* Open lines on days that are over. Not overdue — nothing here was
+            ever scheduled — so this sits below the window rather than above
+            it, and carries no colour. */}
+        {isCurrent && looseEnds.length > 0 && (
+          <Panel title={`Left open · ${looseEnds.length}`}>
+            {looseEnds.map((task) => (
+              <TaskRow
+                key={`${task.pageId}:${task.blockId}`}
+                task={task}
+                onToggle={toggle}
+                onReschedule={reschedule}
+                onOpen={openPage}
+              />
+            ))}
+          </Panel>
+        )}
 
         {/* A todo typed into an ordinary note has no date anywhere, and a
             date-scoped view would otherwise swallow it without a trace. */}

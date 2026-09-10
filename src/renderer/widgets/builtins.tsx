@@ -25,6 +25,12 @@ import type { WidgetProps } from './context'
 /** How many rows each of the short side panels shows before it stops. */
 const SIDE_ROWS = 7
 
+/**
+ * How many loose ends are counted before the count gives up and says "50+".
+ * The number is not the point past that — that it is large is the point.
+ */
+const LOOSE_END_LIMIT = 50
+
 /** `GraphView` takes a pixel height rather than filling its box. */
 const GRAPH_HEIGHT = 210
 
@@ -114,16 +120,19 @@ export function TodayWidget({ ctx }: WidgetProps) {
   const [entry, setEntry] = useState<Awaited<ReturnType<typeof ctx.read.journalPeek>>>(null)
   const [todayTasks, setTodayTasks] = useState<TrackerTask[]>([])
   const [overdue, setOverdue] = useState<TrackerTask[]>([])
+  const [looseEnds, setLooseEnds] = useState<TrackerTask[]>([])
 
   const load = useCallback(async () => {
-    const [todayEntry, dueToday, late] = await Promise.all([
+    const [todayEntry, dueToday, late, loose] = await Promise.all([
       ctx.read.journalPeek(),
       ctx.read.tasksInRange(ctx.today, ctx.today),
-      ctx.read.tasksOverdue(ctx.today)
+      ctx.read.tasksOverdue(ctx.today),
+      ctx.read.tasksLooseEnds(ctx.today, LOOSE_END_LIMIT)
     ])
     setEntry(todayEntry)
     setTodayTasks(dueToday)
     setOverdue(late)
+    setLooseEnds(loose)
   }, [ctx])
 
   useEffect(() => {
@@ -205,6 +214,22 @@ export function TodayWidget({ ctx }: WidgetProps) {
           <span className="nx-home__overdue-count">{overdue.length} overdue</span>
           <span className="nx-type-data nx-home__overdue-list">
             {overdue.slice(0, 3).map((t) => t.text || 'Untitled task').join(' · ')}
+          </span>
+        </button>
+      )}
+
+      {/*
+        Deliberately not red, and deliberately below the overdue bar. These
+        were never scheduled, so nothing about them is late — they are the
+        unticked lines on days that are over. Shown as a count you can go and
+        look at rather than as an alarm you learn to ignore.
+      */}
+      {looseEnds.length > 0 && (
+        <button className="nx-home__loose" onClick={() => ctx.goToTracker('week')}>
+          <Icon shape="circle" size={10} color="var(--nx-text-dim)" />
+          <span className="nx-type-data">
+            {looseEnds.length === LOOSE_END_LIMIT ? `${LOOSE_END_LIMIT}+` : looseEnds.length} left
+            open on days that have passed
           </span>
         </button>
       )}

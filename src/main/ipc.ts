@@ -637,6 +637,13 @@ export function registerIpcHandlers(): void {
       rethrow('tasks:overdue', e)
     }
   })
+  ipcMain.handle('tasks:looseEnds', (_, before: string, limit?: number) => {
+    try {
+      return repo.getLooseEnds(String(before), limit)
+    } catch (e) {
+      rethrow('tasks:looseEnds', e)
+    }
+  })
   ipcMain.handle('tasks:undated', (_, limit?: number) => {
     try {
       return repo.getUndatedTasks(limit ?? 100)

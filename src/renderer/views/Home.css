@@ -382,6 +382,33 @@ button.nx-home__entry:hover {
   color: var(--nx-text-dim);
 }
 
+/*
+  Loose ends. The same row, stripped of every signal the overdue bar uses:
+  no tint, no border colour, no count in the text colour. It has to be
+  findable and it must not read as an alarm — that distinction is the whole
+  reason the two lists are separate.
+*/
+.nx-home__loose {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  flex-shrink: 0;
+  width: 100%;
+  margin-top: 4px;
+  padding: 4px var(--nx-space-3);
+  border: none;
+  background: none;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  font-family: var(--nx-font-sans);
+  text-align: left;
+  transition: color var(--nx-motion);
+}
+
+.nx-home__loose:hover {
+  color: var(--nx-text);
+}
+
 /* ---- Shared list rows ---- */
 
 .nx-home__list {

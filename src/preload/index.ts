@@ -121,6 +121,7 @@ const api: NexusAPI = {
   tasks: {
     inRange: (from, to) => ipcRenderer.invoke('tasks:inRange', from, to),
     overdue: (before) => ipcRenderer.invoke('tasks:overdue', before),
+    looseEnds: (before, limit) => ipcRenderer.invoke('tasks:looseEnds', before, limit),
     undated: (limit) => ipcRenderer.invoke('tasks:undated', limit),
     forPage: (pageId) => ipcRenderer.invoke('tasks:forPage', pageId),
     datedPages: (from, to) => ipcRenderer.invoke('tasks:datedPages', from, to),

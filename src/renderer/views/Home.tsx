@@ -239,6 +239,7 @@ export function Home() {
         journalPeek: () => window.api.journal.peek(),
         tasksInRange: (from, to) => window.api.tasks.inRange(from, to),
         tasksOverdue: (before) => window.api.tasks.overdue(before),
+        tasksLooseEnds: (before, limit) => window.api.tasks.looseEnds(before, limit),
         storage: () => window.api.stats.getStorage(),
         graph: () => window.api.stats.getGraph(),
         habitCandidates: () => window.api.habits.candidates(),

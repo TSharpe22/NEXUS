@@ -50,6 +50,7 @@ export interface WidgetContext {
     journalPeek(): Promise<Page | null>
     tasksInRange(from: string, to: string): Promise<TrackerTask[]>
     tasksOverdue(before: string): Promise<TrackerTask[]>
+    tasksLooseEnds(before: string, limit?: number): Promise<TrackerTask[]>
     storage(): Promise<StorageStats>
     graph(): Promise<GraphData>
     habitCandidates(): Promise<HabitCandidate[]>

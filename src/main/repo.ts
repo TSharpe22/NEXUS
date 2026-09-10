@@ -1203,15 +1203,52 @@ export function getTasksInRange(from: string, to: string): TrackerTask[] {
   return rows.map(toTask)
 }
 
-/** Open tasks whose date has already passed. `before` is exclusive. */
+/**
+ * Open tasks that are late, meaning: past a date somebody actually wrote.
+ *
+ * `t.due_date IS NOT NULL` is the whole of this, and it is worth being explicit
+ * about because it used to be absent. Without it "overdue" also swept up every
+ * unticked checkbox on every dated page, since a task with no date of its own
+ * inherits its page's — so an entry's todo list stayed overdue from the day it
+ * was written, forever. Thirty days of ordinary journalling produced 58 of
+ * them, 53 inherited, and a counter that says 58 when five things are actually
+ * late is a counter you stop reading.
+ *
+ * A date on the block is a commitment: you typed `@2026-09-11`. A date on the
+ * page is a timestamp: it says when the line was written. Only the first can
+ * be missed, so only the first is overdue. The second is a loose end —
+ * `getLooseEnds` below — and it is shown quietly rather than in red.
+ */
 export function getOverdueTasks(before: string): TrackerTask[] {
   const rows = getDb()
     .prepare(
       `${TASK_SELECT}
-        WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NOT NULL AND ${EFFECTIVE_DUE} < ?
+        WHERE t.is_done = 0 AND t.due_date IS NOT NULL AND t.due_date < ?
         ORDER BY effective_due, p.title, t.sort_order`
     )
     .all(before) as TaskRow[]
+  return rows.map(toTask)
+}
+
+/**
+ * Open tasks left behind on a dated page that has passed.
+ *
+ * The other half of the split above: these were never scheduled, so they were
+ * never missed. They are what is still open on days that are over — the
+ * unticked line in last Tuesday's entry. Worth being able to find, not worth
+ * being shouted at about, and newest first because the ones you abandoned
+ * yesterday are the ones you might still do.
+ */
+export function getLooseEnds(before: string, limit = 100): TrackerTask[] {
+  const rows = getDb()
+    .prepare(
+      `${TASK_SELECT}
+        WHERE t.is_done = 0 AND t.due_date IS NULL
+          AND ${EFFECTIVE_DUE} IS NOT NULL AND ${EFFECTIVE_DUE} < ?
+        ORDER BY effective_due DESC, p.title, t.sort_order
+        LIMIT ?`
+    )
+    .all(before, limit) as TaskRow[]
   return rows.map(toTask)
 }
 
