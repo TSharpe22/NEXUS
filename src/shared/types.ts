@@ -1,4 +1,4 @@
-import type { ViewDef, ViewDraft } from './views'
+import type { AggregateFn, ViewAggregate, ViewDef, ViewDraft } from './views'
 export type PageWidth = number
 
 export interface Page {
@@ -257,6 +257,22 @@ export interface PageSummary extends PageListItem {
  */
 export interface ViewRow extends PageSummary {
   tags: Tag[]
+}
+
+/**
+ * One footer cell's answer.
+ *
+ * `filled` travels with the value so the cell can say what it is speaking for:
+ * a mean over 8 of 12 trades is a different statement from a mean over all 12,
+ * and a footer that shows only the number invites the reader to assume the
+ * second. `value` is null when nothing in the column was a number at all.
+ */
+export interface ViewAggregateResult {
+  key: string
+  fn: AggregateFn
+  value: number | null
+  /** How many matching pages actually carried a value in this column. */
+  filled: number
 }
 
 export interface GraphPreview {
@@ -559,6 +575,12 @@ export interface NexusAPI {
     run(id: string, limit?: number): Promise<ViewRow[]>
     /** Run an unsaved draft, so the builder can count before you commit. */
     preview(draft: ViewDraft, limit?: number): Promise<ViewRow[]>
+    /**
+     * Total the named columns over everything the view matches — not over the
+     * page of rows `run` returned, which is limited and would make the footer
+     * a confident lie.
+     */
+    aggregate(id: string, aggregates: ViewAggregate[]): Promise<ViewAggregateResult[]>
   }
   stats: {
     getStorage(): Promise<StorageStats>

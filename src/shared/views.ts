@@ -88,6 +88,66 @@ export const isFilterGroup = (node: FilterNode): node is FilterGroup =>
 /** An empty group matches everything, which is what a new view should show. */
 export const EMPTY_FILTER: FilterGroup = { op: 'and', of: [] }
 
+/**
+ * What a footer cell under a column says about the whole result.
+ *
+ * `count` is deliberately "how many rows have a value here" rather than "how
+ * many rows there are" — the row count is already printed above the table, and
+ * the useful question about a column is how much of it is filled in. It is
+ * also the one function that means something under a column of text, which is
+ * why it is not restricted to numbers.
+ *
+ * Additive, like every other list in this file: a build that meets an `fn` it
+ * does not know shows nothing in that cell and leaves the stored value alone.
+ */
+export type AggregateFn = 'sum' | 'mean' | 'count' | 'min' | 'max'
+
+export const AGGREGATE_FUNCTIONS: { fn: AggregateFn; label: string; numeric: boolean }[] = [
+  { fn: 'sum', label: 'Sum', numeric: true },
+  { fn: 'mean', label: 'Mean', numeric: true },
+  { fn: 'count', label: 'Filled', numeric: false },
+  { fn: 'min', label: 'Min', numeric: true },
+  { fn: 'max', label: 'Max', numeric: true }
+]
+
+/** One footer cell: a property key and what to do with its column. */
+export interface ViewAggregate {
+  key: string
+  fn: AggregateFn
+}
+
+/**
+ * The aggregates a view carries, read out of its `config`.
+ *
+ * They live in `config` rather than as a column of their own because that is
+ * what `config` is for and because it makes them free to add: an older build
+ * opening this view reads a `config` key it does not recognise, writes it back
+ * untouched, and draws no footer. A new column would have needed a migration
+ * to say the same thing.
+ */
+export function aggregatesOf(config: Record<string, unknown> | null | undefined): ViewAggregate[] {
+  const raw = config?.aggregates
+  if (!Array.isArray(raw)) return []
+  const known = new Set(AGGREGATE_FUNCTIONS.map((a) => a.fn))
+  return raw.flatMap((entry) => {
+    if (!entry || typeof entry !== 'object') return []
+    const { key, fn } = entry as { key?: unknown; fn?: unknown }
+    if (typeof key !== 'string' || !key) return []
+    if (typeof fn !== 'string' || !known.has(fn as AggregateFn)) return []
+    return [{ key, fn: fn as AggregateFn }]
+  })
+}
+
+/** The same list with one column's entry replaced, or removed when `fn` is null. */
+export function withAggregate(
+  current: ViewAggregate[],
+  key: string,
+  fn: AggregateFn | null
+): ViewAggregate[] {
+  const without = current.filter((a) => a.key !== key)
+  return fn ? [...without, { key, fn }] : without
+}
+
 export interface ViewSort {
   field: FilterField
   direction: 'asc' | 'desc'

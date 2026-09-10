@@ -18,6 +18,15 @@ export function TableBody(props: HTMLAttributes<HTMLTableSectionElement>) {
   return <tbody {...props} />
 }
 
+/**
+ * A footer that stays put while the body scrolls. `position: sticky` on the
+ * cells rather than on the `<tfoot>`, because a table section is not a
+ * positioning context in any engine that matters.
+ */
+export function TableFoot(props: HTMLAttributes<HTMLTableSectionElement>) {
+  return <tfoot className="nx-table__foot" {...props} />
+}
+
 interface TableRowProps extends HTMLAttributes<HTMLTableRowElement> {
   selected?: boolean
   clickable?: boolean

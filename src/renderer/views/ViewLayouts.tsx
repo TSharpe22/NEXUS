@@ -1,9 +1,10 @@
 import { useMemo } from 'react'
-import type { PropertyDefinition, Property, ViewRow } from '@shared/types'
+import type { PropertyDefinition, Property, ViewAggregateResult, ViewRow } from '@shared/types'
 import type { FilterField, ViewLayout, ViewSort } from '@shared/views'
 import { relativeTime } from '../hooks/use-relative-time'
 import { EmptyState } from '../design/EmptyState'
-import { Table, TableBody, TableHead, TableRow, Td, Th } from '../design/Table'
+import { Table, TableBody, TableFoot, TableHead, TableRow, Td, Th } from '../design/Table'
+import { AGGREGATE_FUNCTIONS, type AggregateFn, type ViewAggregate } from '@shared/views'
 
 /**
  * The four ways a view can be drawn.
@@ -35,6 +36,11 @@ export interface LayoutProps {
    * screen would be a control that forgets.
    */
   onSort: (field: FilterField) => void
+  /** What the footer has been asked to total, and what came back for it. */
+  aggregates: ViewAggregate[]
+  aggregateResults: ViewAggregateResult[]
+  /** Cycle one column's footer cell. Persisted on the view, like the sort. */
+  onAggregate: (key: string, fn: AggregateFn | null) => void
 }
 
 /**
@@ -148,7 +154,83 @@ function TagChips({ row }: { row: ViewRow }) {
   )
 }
 
-function TableLayout({ rows, columns, sort, typeName, pageTitle, onOpen, onSort }: LayoutProps) {
+/**
+ * One footer cell.
+ *
+ * Clicking cycles none → sum → mean → filled → min → max → none, which is the
+ * same three-state idea the sort headers already use and for the same reason:
+ * turning a total back off has to be as reachable as turning it on, and a menu
+ * for five options is a menu for a thing you do by feel.
+ */
+function AggregateCell({
+  def,
+  result,
+  onAggregate
+}: {
+  def: PropertyDefinition
+  result: ViewAggregateResult | undefined
+  onAggregate: (key: string, fn: AggregateFn | null) => void
+}) {
+  const order = AGGREGATE_FUNCTIONS.map((a) => a.fn)
+  const next = (): AggregateFn | null => {
+    if (!result) return order[0]
+    const i = order.indexOf(result.fn)
+    return i === order.length - 1 ? null : order[i + 1]
+  }
+
+  const label = result ? AGGREGATE_FUNCTIONS.find((a) => a.fn === result.fn)?.label : null
+
+  return (
+    <Td>
+      <button
+        className={`nx-table__agg ${result ? '' : 'nx-table__agg--empty'}`}
+        title={`Total ${def.name}`}
+        onClick={(e) => {
+          // The header row above navigates on click; this one must not, and
+          // the footer sits inside the same table.
+          e.stopPropagation()
+          onAggregate(def.key, next())
+        }}
+      >
+        {result ? (
+          <>
+            <span className="nx-table__agg-fn">{label}</span>
+            <span className="nx-table__agg-value">{formatAggregate(result)}</span>
+          </>
+        ) : (
+          <span className="nx-table__agg-fn">total</span>
+        )}
+      </button>
+    </Td>
+  )
+}
+
+/**
+ * A number the width of a column, and honest about what it covers.
+ *
+ * Long decimals are the norm for a mean — `avg` over three trades gives
+ * 158.33333333333334 — and a footer cell is not the place to print seventeen
+ * digits. Trailing zeroes are dropped so a sum of whole numbers still reads as
+ * a whole number.
+ */
+function formatAggregate(result: ViewAggregateResult): string {
+  if (result.fn === 'count') return String(result.value ?? 0)
+  if (result.value === null) return '—'
+  const rounded = Math.round(result.value * 100) / 100
+  return String(rounded)
+}
+
+function TableLayout({
+  rows,
+  columns,
+  sort,
+  typeName,
+  pageTitle,
+  onOpen,
+  onSort,
+  aggregateResults,
+  onAggregate
+}: LayoutProps) {
   // Only the first sort clause is drawn. A stack of them is a real thing the
   // filter tree can hold, but an arrow on three headers reads as three sorts
   // at once rather than as one order.
@@ -198,6 +280,28 @@ function TableLayout({ rows, columns, sort, typeName, pageTitle, onOpen, onSort 
             </TableRow>
           ))}
         </TableBody>
+        {/*
+          Always drawn, never conditional on something already being totalled.
+          A footer that appears only once you have found the feature is a
+          footer nobody finds — the empty cells fade in on hover instead.
+        */}
+        {columns.length > 0 && (
+          <TableFoot>
+            <tr>
+              <Td />
+              {columns.map((def) => (
+                <AggregateCell
+                  key={def.key}
+                  def={def}
+                  result={aggregateResults.find((r) => r.key === def.key)}
+                  onAggregate={onAggregate}
+                />
+              ))}
+              <Td />
+              <Td />
+            </tr>
+          </TableFoot>
+        )}
       </Table>
     </div>
   )

@@ -89,3 +89,70 @@
   opacity: 1;
   color: var(--nx-accent);
 }
+
+/* ---- Footer totals ---- */
+
+.nx-table__foot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  padding: 0;
+  background: var(--nx-surface-raised);
+  border-top: 1px solid var(--nx-border);
+  white-space: nowrap;
+}
+
+/*
+  Every footer cell is a button, including the empty ones. A column with no
+  aggregate on it has to be as easy to click as one that already has a total —
+  otherwise the feature is only discoverable on columns that already use it.
+*/
+.nx-table__agg {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  padding: 7px var(--nx-space-3);
+  border: none;
+  background: none;
+  color: var(--nx-text-dim);
+  font-family: var(--nx-font-mono);
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  transition: color var(--nx-motion), background var(--nx-motion);
+}
+
+.nx-table__agg:hover {
+  color: var(--nx-text);
+  background: var(--nx-surface-hover, rgba(255, 255, 255, 0.03));
+}
+
+.nx-table__agg-fn {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 9.5px;
+  opacity: 0.65;
+}
+
+.nx-table__agg-value {
+  color: var(--nx-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shown only when the column is not completely filled in — see the comment on
+   ViewAggregateResult. A total that speaks for 8 of 12 rows has to say so. */
+.nx-table__agg-of {
+  opacity: 0.55;
+}
+
+/* The prompt on an empty footer cell. Invisible until the row is hovered, so
+   a table with no totals on it reads as a table with no totals on it. */
+.nx-table__foot:not(:hover) .nx-table__agg--empty {
+  opacity: 0;
+}
+
+.nx-table__agg--empty {
+  opacity: 0.4;
+  transition: opacity var(--nx-motion);
+}

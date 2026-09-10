@@ -10,7 +10,7 @@ import { restoreBackup } from './backup'
 import { flushAllRenderers } from './flush'
 import { applyCaptureAccelerator, captureAcceleratorActive } from './capture-key'
 import type { PropertyType, CaptureTarget } from '../shared/types'
-import type { ViewDraft } from '../shared/views'
+import type { ViewAggregate, ViewDraft } from '../shared/views'
 
 /**
  * File dialogs, parented to a window when there is one.
@@ -749,6 +749,14 @@ export function registerIpcHandlers(): void {
   })
   // The builder's live count. Same compiler as a saved view — a preview down a
   // second code path is a preview of something else.
+  ipcMain.handle('views:aggregate', (_, id: string, aggregates: ViewAggregate[]) => {
+    try {
+      return repo.aggregateViewById(id, Array.isArray(aggregates) ? aggregates : [])
+    } catch (e) {
+      rethrow('views:aggregate', e)
+    }
+  })
+
   ipcMain.handle('views:preview', (_, draft: ViewDraft, limit?: number) => {
     try {
       return repo.previewView(draft, limit)

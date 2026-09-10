@@ -139,7 +139,8 @@ const api: NexusAPI = {
     update: (id, patch) => ipcRenderer.invoke('views:update', id, patch),
     remove: (id) => ipcRenderer.invoke('views:remove', id),
     run: (id, limit) => ipcRenderer.invoke('views:run', id, limit),
-    preview: (draft, limit) => ipcRenderer.invoke('views:preview', draft, limit)
+    preview: (draft, limit) => ipcRenderer.invoke('views:preview', draft, limit),
+    aggregate: (id, aggregates) => ipcRenderer.invoke('views:aggregate', id, aggregates)
   },
   shell: {
     openPath: (target) => ipcRenderer.invoke('shell:openPath', target)

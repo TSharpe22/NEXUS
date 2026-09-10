@@ -16,6 +16,7 @@ import type {
   FilterField,
   FilterLeaf,
   FilterNode,
+  ViewAggregate,
   ViewDef,
   ViewDraft,
   ViewLayout,
@@ -25,6 +26,7 @@ import type {
   Page,
   Property,
   PropertyType,
+  ViewAggregateResult,
   BacklinkResult,
   LinkTarget,
   ActivityLogEntry,
@@ -2458,6 +2460,72 @@ export function runView(view: ViewDef, limit = 500): ViewRow[] {
     properties: propsByPage.get(page.id) ?? [],
     tags: tagsByPage.get(page.id) ?? []
   }))
+}
+
+/**
+ * Total a view's columns over everything it matches.
+ *
+ * A separate query from `runView` on purpose, and this is the part worth being
+ * explicit about. `runView` takes a `limit` — it has to, a table cannot draw
+ * fifty thousand rows — so totalling the rows the renderer received would give
+ * the sum of the first 500 trades and call it the sum. That is worse than
+ * having no total at all, because it looks like an answer.
+ *
+ * So the aggregate runs against the same compiled filter with no limit, in
+ * SQL, and the number that comes back is about the question rather than about
+ * the page of it that fitted on screen.
+ *
+ * `min` and `max` on a date column work because `value_date` is `YYYY-MM-DD`
+ * and sorts as text — the one format where that is true, and the reason the
+ * schema stores dates that way.
+ */
+export function aggregateView(view: ViewDef, aggregates: ViewAggregate[]): ViewAggregateResult[] {
+  if (aggregates.length === 0) return []
+  const db = getDb()
+  const where = compileFilter(view.filter)
+
+  return aggregates.map(({ key, fn }) => {
+    // `count` asks how many matching pages have this property filled in at
+    // all, so it counts rows rather than numbers and works under a column of
+    // text. Everything else is arithmetic and only numbers can answer it.
+    if (fn === 'count') {
+      const row = db
+        .prepare(
+          `SELECT count(*) AS value FROM pages p
+            WHERE p.is_deleted = 0 AND ${where.sql}
+              AND EXISTS (
+                SELECT 1 FROM properties pr
+                 WHERE pr.page_id = p.id AND pr.key = ?
+                   AND (pr.value_text IS NOT NULL AND pr.value_text <> ''
+                        OR pr.value_number IS NOT NULL
+                        OR pr.value_date IS NOT NULL AND pr.value_date <> ''
+                        OR pr.value_relation IS NOT NULL)
+              )`
+        )
+        .get(...where.params, key) as { value: number | null }
+      return { key, fn, value: row.value ?? 0, filled: row.value ?? 0 }
+    }
+
+    const sqlFn = { sum: 'sum', mean: 'avg', min: 'min', max: 'max' }[fn]
+    const row = db
+      .prepare(
+        `SELECT ${sqlFn}(pr.value_number) AS value, count(pr.value_number) AS filled
+           FROM properties pr
+           JOIN pages p ON p.id = pr.page_id
+          WHERE p.is_deleted = 0 AND pr.key = ? AND pr.value_number IS NOT NULL
+            AND ${where.sql}`
+      )
+      .get(key, ...where.params) as { value: number | null; filled: number }
+
+    return { key, fn, value: row.value, filled: row.filled }
+  })
+}
+
+/** Aggregate a view by id, for the IPC layer. */
+export function aggregateViewById(id: string, aggregates: ViewAggregate[]): ViewAggregateResult[] {
+  const view = getView(id)
+  if (!view) throw new Error(`View not found: ${id}`)
+  return aggregateView(view, aggregates)
 }
 
 /** Run a view by id, for the IPC layer. */

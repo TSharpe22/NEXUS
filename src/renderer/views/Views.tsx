@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import type { PropertyDefinition, ViewRow } from '@shared/types'
+import type { PropertyDefinition, ViewAggregateResult, ViewRow } from '@shared/types'
 import {
   EMPTY_FILTER,
   VIEW_LAYOUTS,
+  aggregatesOf,
   isFilterGroup,
+  withAggregate,
+  type AggregateFn,
   type FilterField,
   type FilterGroup,
   type ViewDef,
@@ -47,6 +50,7 @@ export function Views() {
   const [loading, setLoading] = useState(false)
   const [editing, setEditing] = useState(false)
   const [properties, setProperties] = useState<PropertyDefinition[]>([])
+  const [aggregateResults, setAggregateResults] = useState<ViewAggregateResult[]>([])
 
   const view = useMemo(() => views.find((v) => v.id === activeViewId) ?? null, [views, activeViewId])
 
@@ -94,6 +98,40 @@ export function Views() {
       cancelled = true
     }
   }, [view, pages])
+
+  /**
+   * Totals, run separately from the rows and against the whole match.
+   *
+   * `runView` is limited, so totalling what came back would be the sum of the
+   * first 500 rows presented as the sum. This asks the database instead, and
+   * re-asks on the same trigger the rows use — any page write can change a
+   * number the footer is showing.
+   */
+  const aggregates = useMemo(() => aggregatesOf(view?.config), [view])
+
+  useEffect(() => {
+    if (!view || aggregates.length === 0) {
+      setAggregateResults([])
+      return
+    }
+    let cancelled = false
+    window.api.views
+      .aggregate(view.id, aggregates)
+      .then((result) => !cancelled && setAggregateResults(result))
+      .catch((e) => {
+        if (cancelled) return
+        console.error('[nexus] could not total the view', e)
+        setAggregateResults([])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, aggregates, pages])
+
+  const handleAggregate = (key: string, fn: AggregateFn | null) => {
+    if (!view) return
+    void patch({ config: { ...view.config, aggregates: withAggregate(aggregates, key, fn) } })
+  }
 
   /**
    * The columns a table draws.
@@ -299,6 +337,9 @@ export function Views() {
                 pageTitle={pageTitle}
                 onOpen={openPage}
                 onSort={handleSort}
+                aggregates={aggregates}
+                aggregateResults={aggregateResults}
+                onAggregate={handleAggregate}
               />
             )}
           </>
