@@ -1570,9 +1570,16 @@ await page.evaluate(() => {
 })
 await page.keyboard.press('Enter')
 await sleep(1200)
-check('a capture from it lands as a page',
-  await page.evaluate(() =>
-    window.nexus.store.getState().pages.some((p) => p.title === 'captured from the overlay')))
+// The overlay is the fast path, so what it does with no target chosen is the
+// behaviour worth pinning: a task on today's entry, not a page of its own.
+// The `page` target is covered against the Home bar further down.
+check('a capture from it lands where the preference says',
+  await page.evaluate(async () => {
+    const entry = await window.api.journal.peek()
+    if (!entry) return false
+    const tasks = await window.api.tasks.forPage(entry.id)
+    return tasks.some((t) => t.text === 'captured from the overlay')
+  }))
 // The box stays up after a plain capture: the whole point of one is the next
 // thought, and a box that closes after every line is a box you reopen four
 // times.
@@ -2163,11 +2170,15 @@ const captureLine = async (text) => {
   await sleep(1400)
 }
 
-check('capture defaults to a page of its own',
+// The box opens on the preference, and the preference ships as `task`: the
+// fast path has to land somewhere that gets reread, and a page per stray
+// thought is a month of orphans nothing points at.
+check('capture defaults to a target that gets reread',
   (await page.evaluate(() =>
     document.querySelector('.nx-home__capture .nx-button--selected')?.textContent.trim()
-  )) === 'New page')
+  )) === 'Task')
 
+check('and picking another target still works', (await captureAs('New page')) === 'OK')
 await captureLine('Ideas for the mirror format')
 const allAfterCapture = await page.evaluate(() => window.api.pages.getAll())
 const capturedPage = allAfterCapture.find((p) => p.title === 'Ideas for the mirror format')
