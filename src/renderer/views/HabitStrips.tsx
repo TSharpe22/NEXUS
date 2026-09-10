@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
+import type { WidgetContext } from '../widgets/context'
 import type { HabitCandidate, HabitDay } from '@shared/types'
 import { addDays, eachDay, fromISO } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
-import { useToday } from '../store/app-store'
 
 /**
  * Habits on Home: the last three weeks of each, and the streak running now.
@@ -68,22 +68,23 @@ function buildStrip(candidate: HabitCandidate, history: HabitDay[], today: strin
 }
 
 interface Props {
-  onOpen: (pageId: string) => void
+  /** The narrowed surface a widget gets. See `widgets/context.ts`. */
+  ctx: WidgetContext
 }
 
-export function HabitStrips({ onOpen }: Props) {
+export function HabitStrips({ ctx }: Props) {
   const [strips, setStrips] = useState<Strip[] | null>(null)
   // Bumped by a check-in so the strip redraws from the database rather than
   // from an optimistic guess about what the write did.
   const [version, setVersion] = useState(0)
-  const today = useToday()
+  const today = ctx.today
 
   useEffect(() => {
     let cancelled = false
     const from = localDateISO(addDays(fromISO(today), -(HISTORY_DAYS - 1)))
 
-    void window.api.habits
-      .candidates()
+    void ctx.read
+      .habitCandidates()
       .then(async (candidates) => {
         const built = await Promise.all(
           candidates.map(async (candidate) =>
@@ -91,7 +92,7 @@ export function HabitStrips({ onOpen }: Props) {
               candidate,
               // A type can define more than one of each; the first is the
               // panel's guess, and Tracker is where a different pair is picked.
-              await window.api.habits.days(
+              await ctx.read.habitDays(
                 candidate.typeId,
                 candidate.dateKeys[0],
                 candidate.booleanKeys[0],
@@ -153,11 +154,11 @@ export function HabitStrips({ onOpen }: Props) {
                   // clicked, so the panel that shows the habit was the one
                   // place you could not record one.
                   if ((e.metaKey || e.ctrlKey) && day.pageId) {
-                    onOpen(day.pageId)
+                    ctx.openPage(day.pageId)
                     return
                   }
-                  void window.api.habits
-                    .checkIn(strip.typeId, strip.dateKey, strip.booleanKey, day.date, day.state !== 'done')
+                  void ctx.write
+                    .checkInHabit(strip.typeId, strip.dateKey, strip.booleanKey, day.date, day.state !== 'done')
                     .then(() => setVersion((v) => v + 1))
                 }}
               />
