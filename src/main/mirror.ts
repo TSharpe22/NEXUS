@@ -231,12 +231,62 @@ function yamlString(value: string): string {
   return JSON.stringify(value ?? '')
 }
 
+/**
+ * A property value as YAML of the right kind, rather than as a string of it.
+ *
+ * Everything used to go through `yamlString`, so `pnl: "-1500"` was a string
+ * and every consumer — a Dataview query, a script, an assistant reading the
+ * folder — had to coerce before it could compare. The vault was readable but
+ * not queryable, which is a smaller promise than the mirror is meant to make.
+ *
+ * The type is what decides, not the shape of the text: a `text` property
+ * holding "42" stays quoted, because somebody chose for it to be text and a
+ * file that silently retypes it is a file that lies about what the vault
+ * holds. That is also what makes the round trip work — `importMarkdown` reads
+ * these back, and it can only be faithful if the writing was.
+ */
+function yamlValue(type: string, value: string): string {
+  if (type === 'number') {
+    // Guarded rather than assumed. `value_number` is a REAL column so this
+    // is nearly always fine, but an unquoted non-number would produce a file
+    // that no YAML parser can read, and a wrong quote is better than that.
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? String(parsed) : yamlString(value)
+  }
+  if (type === 'boolean') {
+    if (value === 'true' || value === 'false') return value
+    return yamlString(value)
+  }
+  if (type === 'date') {
+    // Bare only in the one shape YAML reads as a date. Anything else — an
+    // empty string, a half-typed value — goes back to being a string.
+    return /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : yamlString(value)
+  }
+  if (type === 'multi_select') {
+    // Stored as a JSON array; it was being written as an escaped JSON string,
+    // so `aliases` came out as "[\"The Roman\"]" on the same page where
+    // `tags` was a proper list. Two spellings of one idea in one file.
+    try {
+      const parsed = JSON.parse(value)
+      if (Array.isArray(parsed)) return `[${parsed.map((v) => yamlString(String(v))).join(', ')}]`
+    } catch {
+      /* not a list after all — fall through and quote it */
+    }
+    return yamlString(value)
+  }
+  return yamlString(value)
+}
+
 function renderPage(page: Page, relPath: string, typeName: string): string {
   const front = [
     '---',
     `id: ${yamlString(page.id)}`,
     `title: ${yamlString(page.title || 'Untitled')}`,
     `type: ${yamlString(typeName)}`,
+    // Quoted on purpose, unlike a `date` property below. These are
+    // `YYYY-MM-DD HH:MM:SS`, which YAML 1.1 reads as a timestamp and YAML 1.2
+    // reads as a string — so bare, the same two lines mean different things to
+    // different parsers. A quoted string means one thing everywhere.
     `created: ${yamlString(page.created_at)}`,
     `updated: ${yamlString(page.updated_at)}`
   ]
@@ -273,7 +323,7 @@ function renderPage(page: Page, relPath: string, typeName: string): string {
       (prop.value_number !== null ? String(prop.value_number) : null) ??
       prop.value_date
     if (value === null || value === undefined || value === '') continue
-    front.push(`${prop.key}: ${yamlString(String(value))}`)
+    front.push(`${prop.key}: ${yamlValue(prop.type, String(value))}`)
   }
 
   front.push(`path: ${yamlString(relPath)}`)

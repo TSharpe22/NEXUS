@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 import * as repo from './repo'
 import { parseDocument } from '../shared/document'
 import { ATTACHMENT_URL_PREFIX, attachmentName } from '../shared/attachments'
-import type { Page } from '../shared/types'
+import type { Page, PropertyType } from '../shared/types'
 
 interface BlockNoteBlock {
   id?: string
@@ -186,14 +186,190 @@ function importedBlock(
  * markdown spelling here and come back as prose, the same lossiness the mirror
  * documents on the way out.
  */
-export function importMarkdown(content: string, filename: string): Page {
+/**
+ * The frontmatter block at the top of a file, if there is one.
+ *
+ * A deliberately small YAML reader: flat `key: value` pairs, double-quoted
+ * strings, flow lists, and bare scalars. That is exactly the subset
+ * `mirror.ts` writes, and reading more than is written would be pretending to
+ * support documents this cannot round-trip. Anything it does not understand
+ * is left in `rest` as body text rather than dropped.
+ */
+function splitFrontmatter(content: string): { front: Map<string, string>; rest: string } {
+  const front = new Map<string, string>()
+  if (!/^---\r?\n/.test(content)) return { front, rest: content }
+
   const lines = content.split('\n')
+  let end = -1
+  for (let i = 1; i < lines.length; i++) {
+    if (lines[i].trim() === '---') {
+      end = i
+      break
+    }
+  }
+  // An opening fence with no closing one is not frontmatter, it is a document
+  // that happens to start with a rule.
+  if (end === -1) return { front, rest: content }
+
+  for (const line of lines.slice(1, end)) {
+    const match = /^([A-Za-z0-9_-]+):\s*(.*)$/.exec(line)
+    if (!match) continue
+    front.set(match[1], match[2].trim())
+  }
+  return { front, rest: lines.slice(end + 1).join('\n') }
+}
+
+/** A double-quoted YAML scalar back to its text. Bare scalars pass through. */
+function yamlScalar(raw: string): string {
+  if (raw.startsWith('"')) {
+    try {
+      return String(JSON.parse(raw))
+    } catch {
+      return raw.slice(1, -1)
+    }
+  }
+  return raw
+}
+
+/** A flow list — `[a, "b c"]` — as its members, or null when it is not one. */
+function yamlList(raw: string): string[] | null {
+  if (!raw.startsWith('[') || !raw.endsWith(']')) return null
+  const inner = raw.slice(1, -1).trim()
+  if (!inner) return []
+  // Split on commas that are not inside quotes. Good enough for what the
+  // mirror writes, which never nests.
+  const parts: string[] = []
+  let current = ''
+  let quoted = false
+  for (let i = 0; i < inner.length; i++) {
+    const c = inner[i]
+    if (c === '"' && inner[i - 1] !== '\\') quoted = !quoted
+    if (c === ',' && !quoted) {
+      parts.push(current.trim())
+      current = ''
+      continue
+    }
+    current += c
+  }
+  parts.push(current.trim())
+  return parts.filter(Boolean).map(yamlScalar)
+}
+
+/**
+ * What kind of property a frontmatter value is, when nothing has said.
+ *
+ * Only consulted for a key the page's type has no definition for. A type that
+ * already knows `pnl` is a number is believed over anything this could work
+ * out from the text — the declared schema is the answer, and guessing over the
+ * top of it is how "42" typed deliberately as text becomes a number on the way
+ * back in.
+ */
+function inferPropertyType(raw: string): { type: PropertyType; value: string } {
+  const list = yamlList(raw)
+  if (list) return { type: 'multi_select', value: JSON.stringify(list) }
+
+  const text = yamlScalar(raw)
+  // A quoted value was written as a string and comes back as one, whatever it
+  // looks like. This is the half of the round trip that makes the mirror's
+  // quoting meaningful.
+  if (raw.startsWith('"')) {
+    return /^\[\[.*\]\]$/.test(text) ? { type: 'relation', value: text } : { type: 'text', value: text }
+  }
+  if (text === 'true' || text === 'false') return { type: 'boolean', value: text }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return { type: 'date', value: text }
+  if (text !== '' && Number.isFinite(Number(text))) return { type: 'number', value: text }
+  return { type: 'text', value: text }
+}
+
+/** Keys that identify a file rather than describe a page. Never imported. */
+const IDENTITY_KEYS = new Set(['id', 'path', 'created', 'updated'])
+
+/**
+ * Put a page's frontmatter back onto it: its type, its tags, its properties.
+ *
+ * This did not exist, and its absence was the quiet hole in the whole
+ * local-first promise. The mirror wrote type, tags, every property and
+ * relations resolved to `[[Title]]`; `importMarkdown` read `# title` and the
+ * body and threw the rest away. So a vault could be exported and read by
+ * anything, and could not be brought back — the escape hatch only opened one
+ * way, which is a weaker guarantee than it looked like from inside the app.
+ */
+function applyFrontmatter(pageId: string, front: Map<string, string>): void {
+  const typeName = front.has('type') ? yamlScalar(front.get('type')!) : null
+  if (typeName) {
+    const existing = repo.getTypes().find((t) => t.name === typeName)
+    const type = existing ?? repo.createType(typeName)
+    repo.setPageType(pageId, type.id)
+  }
+
+  const tags = front.has('tags') ? yamlList(front.get('tags')!) : null
+  for (const name of tags ?? []) repo.addTagToPage(pageId, name)
+
+  const page = repo.getPageById(pageId)
+  if (!page) return
+  const defined = new Map(repo.getPropertyDefinitions(page.type_id).map((d) => [d.key, d]))
+
+  for (const [key, raw] of front) {
+    if (IDENTITY_KEYS.has(key) || key === 'title' || key === 'type' || key === 'tags') continue
+
+    const definition = defined.get(key)
+    const guess = inferPropertyType(raw)
+    const type = definition?.property_type ?? guess.type
+    // Declared type wins; the value still has to be re-read under it, since a
+    // key the schema calls text may have been written bare.
+    const value = definition ? valueFor(type, raw) : guess.value
+    if (value === null) continue
+
+    // A relation is written as `[[Title]]` and has to resolve to an id again.
+    // A target that is not in this vault is not an error — the mirror is a
+    // folder somebody may have copied a single file out of — so the reference
+    // is kept as text rather than silently dropped.
+    if (type === 'relation') {
+      const target = relationTarget(value)
+      if (target) repo.setProperty(pageId, key, 'relation', target)
+      else repo.setProperty(pageId, key, 'text', value)
+      continue
+    }
+
+    if (!definition) repo.defineProperty(page.type_id, key, type)
+    repo.setProperty(pageId, key, type, type === 'number' ? Number(value) : value)
+  }
+}
+
+/** One frontmatter value read under a type the schema already declared. */
+function valueFor(type: PropertyType, raw: string): string | null {
+  if (type === 'multi_select') {
+    const list = yamlList(raw)
+    return list ? JSON.stringify(list) : JSON.stringify([yamlScalar(raw)])
+  }
+  const text = yamlScalar(raw)
+  if (text === '') return null
+  if (type === 'number' && !Number.isFinite(Number(text))) return null
+  return text
+}
+
+/** The page a `[[Title]]` names, by title, or null when nothing here matches. */
+function relationTarget(value: string): string | null {
+  const match = /^\[\[(.*)\]\]$/.exec(value)
+  if (!match) return null
+  const title = match[1].trim()
+  return repo.getPageList().find((p) => p.title === title)?.id ?? null
+}
+
+export function importMarkdown(content: string, filename: string): Page {
+  const { front, rest } = splitFrontmatter(content)
+  const lines = rest.split('\n')
   // By position, not by value. Skipping every line equal to the title dropped
   // any line in the body that repeated it — a note whose H1 is "Notes" lost
   // each "# Notes" heading further down, silently, on the way in.
   const titleIndex = lines.findIndex((l) => l.startsWith('# '))
+  // Frontmatter wins over the H1, which wins over the filename. A mirrored
+  // file carries both and they agree; a file edited outside Nexus may have
+  // been retitled in only one of them, and the structured half is the one that
+  // was written on purpose.
   const title =
-    titleIndex >= 0 ? lines[titleIndex].slice(2).trim() : filename.replace(/\.md$/, '')
+    (front.has('title') ? yamlScalar(front.get('title')!) : '') ||
+    (titleIndex >= 0 ? lines[titleIndex].slice(2).trim() : filename.replace(/\.md$/, ''))
 
   const blocks: BlockNoteBlock[] = []
   let fence: string[] | null = null
@@ -260,6 +436,7 @@ export function importMarkdown(content: string, filename: string): Page {
 
   const page = repo.createPage()
   repo.updatePage(page.id, { title, content: JSON.stringify(blocks) })
+  applyFrontmatter(page.id, front)
   return repo.getPageById(page.id)!
 }
 
