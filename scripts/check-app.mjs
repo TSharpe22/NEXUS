@@ -15,8 +15,12 @@ import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSyn
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { fileURLToPath } from 'url'
 
-const APP = new URL('..', import.meta.url).pathname.replace(/\/$/, '')
+// `URL.pathname` is percent-encoded, so a vault checked out to a path with a
+// space in it ("NEXUS Files Loose") produced "NEXUS%20Files%20Loose" and the
+// launch failed with ENOENT. `fileURLToPath` is the decoding one.
+const APP = fileURLToPath(new URL('..', import.meta.url)).replace(/\/$/, '')
 const SHOT = process.env.SCREENSHOT_DIR || '/tmp/shots'
 const userDataDir = mkdtempSync(join(tmpdir(), 'nexus-check-'))
 mkdirSync(SHOT, { recursive: true })
@@ -2554,15 +2558,84 @@ check('an empty stale list says so rather than showing nothing',
   /Nothing has gone quiet/.test(await panelText('Stale')))
 
 check('the vault panel counts the open tasks', /tasks open/.test(await panelText('Vault')))
-check('Home fits its window without scrolling',
+/**
+ * Home used to assert "fits its window without scrolling", which held only
+ * because the screen was six panels nailed into two fixed bands. Home is now
+ * assembled from a stored list of widgets the user controls, so a dashboard
+ * can be any length and that invariant cannot be true in general — replacing
+ * it with a pixel budget nobody could reason about would be worse than
+ * dropping it. What is still true, and worth defending, is below: nothing
+ * overflows sideways, the default layout is the one we think it is, and an
+ * arrangement survives a reload.
+ */
+check('Home does not overflow horizontally',
   await page.evaluate(() => {
     const content = document.querySelector('.nx-content')
-    return content.scrollHeight <= content.clientHeight + 1
+    return content.scrollWidth <= content.clientWidth + 1
   }),
   await page.evaluate(() => {
     const c = document.querySelector('.nx-content')
-    return `${c.scrollHeight} vs ${c.clientHeight}`
+    return `${c.scrollWidth} vs ${c.clientWidth}`
   }))
+
+check('the default Home draws every built-in widget',
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7,
+  `${await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length)} slots`)
+
+check('no widget slot is left unregistered',
+  !/No widget registered/.test(await page.evaluate(() => document.querySelector('.nx-home').innerText)))
+
+// — rearranging Home, and that it sticks —
+await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('.nx-home__head-actions .nx-button')].find(
+    (b) => b.textContent.trim() === 'Edit Home')
+  btn?.click()
+})
+await sleep(150)
+check('Edit Home reveals the per-widget controls',
+  await page.evaluate(() => document.querySelectorAll('.nx-home__wctl').length) > 0)
+
+// Remove the last widget, which the default layout says is Vault.
+await page.evaluate(() => {
+  const xs = [...document.querySelectorAll('.nx-home__wctl-x')]
+  xs[xs.length - 1]?.click()
+})
+await sleep(400)
+check('removing a widget takes it off Home',
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 6)
+
+const savedDashboard = await page.evaluate(() => window.api.dashboard.get())
+check('the arrangement was written to the vault, not just to the screen',
+  typeof savedDashboard === 'string' && JSON.parse(savedDashboard).widgets.length === 6,
+  savedDashboard ? `${JSON.parse(savedDashboard).widgets.length} widgets` : 'nothing stored')
+
+/**
+ * A kind this build does not have must survive being read and written back.
+ * This is the one guarantee the whole widget contract exists to give: opening
+ * a vault in a Nexus without some add-on installed must not delete its
+ * widgets. Written straight to the setting, because by definition the UI
+ * cannot create one.
+ */
+await page.evaluate(async () => {
+  const current = JSON.parse(await window.api.dashboard.get())
+  current.widgets.push({ id: 'w-alien', kind: 'someaddon.chart', config: { a: 1 }, span: 6 })
+  await window.api.dashboard.set(JSON.stringify(current))
+})
+await page.reload()
+await sleep(1200)
+check('an unknown widget kind is shown rather than dropped',
+  /No widget registered/.test(await page.evaluate(() => document.querySelector('.nx-home').innerText)))
+
+const afterReload = JSON.parse(await page.evaluate(() => window.api.dashboard.get()))
+check('and it is still in the stored dashboard, with its config intact',
+  afterReload.widgets.some((w) => w.kind === 'someaddon.chart' && w.config.a === 1))
+
+// Put Home back the way the rest of this script expects to find it.
+await page.evaluate(() => window.api.dashboard.set(null))
+await page.reload()
+await sleep(1200)
+check('clearing the stored dashboard restores the default layout',
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7)
 
 await page.screenshot({ path: SHOT + '/15-home.png' })
 check('no uncaught renderer errors on Home', errors.length === 0, errors.join(' | '))

@@ -1,449 +1,35 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
-import type {
-  CaptureTarget,
-  GraphData,
-  Page,
-  PageListItem,
-  StorageStats,
-  TrackerTask
-} from '@shared/types'
-import { STALE_DAYS, dayOfYear, fromISO, isOlderThan, isoWeek } from '@shared/date-range'
-import { documentPreview } from '@shared/document'
-import { formatBytes } from '@shared/format'
-import { useAppStore, useToday, useWallToday } from '../store/app-store'
+import type { Dashboard, WidgetInstance, WidgetSpan } from '@shared/widgets'
+import { DEFAULT_DASHBOARD, WIDGET_SPANS, normaliseDashboard } from '@shared/widgets'
+import { dayOfYear, fromISO, isoWeek } from '@shared/date-range'
 import { dayStartLabel } from '@shared/day'
+import { useAppStore, useToday, useWallToday } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { EmptyState } from '../design/EmptyState'
-import { CaptureBar } from '../design/CaptureBar'
 import { ErrorState } from '../design/ErrorState'
-import { Icon } from '../design/Icon'
-import { DueDate } from '../design/DueDate'
-import { GraphView } from './GraphView'
-import { HabitStrips, STRIP_DAYS } from './HabitStrips'
-import { relativeTime } from '../hooks/use-relative-time'
+import type { WidgetContext } from '../widgets/context'
+import { WIDGET_DEFINITIONS, widgetFor } from '../widgets/registry'
 import './Home.css'
 
 /**
- * Home — the day.
+ * Home — the day, assembled from widgets.
  *
- * Nexus opens here, so this screen answers what today is: the journal entry,
- * what is due, whether the habits are alive, and one box to capture into
- * without going anywhere. The instrument panel — graph, vault, what has gone
- * quiet — sits underneath it rather than above.
+ * This screen used to be two fixed grids holding six hand-placed panels, each
+ * fetching inline. It is now a list of `WidgetInstance` read from the vault
+ * and drawn through the registry, so "move that panel", "make it narrower"
+ * and "I don't want the graph" are edits rather than commits.
  *
- * Everything here is a view over something that already exists. There is no
- * Home-specific storage and no Home-specific projection: tasks come from the
- * `tasks` table, habits from two properties on a user-made type, pinned and
- * stale from `pages`. The one thing Home added to the model is the pin, and
- * that is a flag on a page rather than a table of its own.
+ * What has not changed: everything on Home is still a view over something
+ * that already exists. There is no Home-specific projection — tasks come from
+ * the `tasks` table, habits from two properties on a user-made type, pinned
+ * and stale from `pages`. The only thing stored for Home itself is the
+ * arrangement, and that is one JSON row in `settings`.
  */
 
-/** How many rows each of the short side panels shows before it stops. */
-const SIDE_ROWS = 7
-
-/**
- * `GraphView` takes a pixel height rather than filling its box, so this has to
- * match the bottom row's height in `Home.css` less the dense panel's header.
- */
-const GRAPH_HEIGHT = 210
-
 // ------------------------------------------------------------------
-// Pieces
-// ------------------------------------------------------------------
-
-function TaskRow({ task, onToggle, onReschedule, onOpen }: {
-  task: TrackerTask
-  onToggle: (task: TrackerTask) => void
-  onReschedule: (task: TrackerTask, due: string | null) => Promise<void>
-  onOpen: (pageId: string) => void
-}) {
-  return (
-    <div className={`nx-home__task ${task.isDone ? 'nx-home__task--done' : ''}`}>
-      <button
-        className="nx-home__check"
-        onClick={() => onToggle(task)}
-        aria-pressed={task.isDone}
-        title={task.isDone ? 'Mark as not done' : 'Mark as done'}
-      >
-        <Icon
-          shape="square"
-          filled={task.isDone}
-          size={13}
-          color={task.isDone ? 'var(--nx-accent)' : 'var(--nx-text-dim)'}
-        />
-      </button>
-      <span className="nx-home__task-text">{task.text || 'Untitled task'}</span>
-      <DueDate task={task} onChange={(due) => onReschedule(task, due)} />
-      <button className="nx-home__task-src nx-type-data" onClick={() => onOpen(task.pageId)}>
-        {task.pageTitle || 'Untitled'}
-      </button>
-    </div>
-  )
-}
-
-function PageRow({ page, meta, shape, onOpen, onRemove, removeTitle }: {
-  page: PageListItem
-  meta: string
-  shape: 'diamond' | 'circle'
-  onOpen: (id: string) => void
-  onRemove?: (id: string) => void
-  removeTitle?: string
-}) {
-  return (
-    <div className="nx-home__row">
-      <button className="nx-home__row-open" onClick={() => onOpen(page.id)}>
-        <Icon shape={shape} size={11} color="var(--nx-text-dim)" />
-        <span className="nx-home__row-title">{page.title || 'Untitled'}</span>
-        <span className="nx-home__row-meta nx-type-data">{meta}</span>
-      </button>
-      {onRemove && (
-        <button className="nx-home__row-x" title={removeTitle} onClick={() => onRemove(page.id)}>
-          ×
-        </button>
-      )}
-    </div>
-  )
-}
-
-// ------------------------------------------------------------------
-// Home
-// ------------------------------------------------------------------
-
-export function Home() {
-  const openPage = useAppStore((s) => s.openPage)
-  const createPage = useAppStore((s) => s.createPage)
-  const openTodayEntry = useAppStore((s) => s.openTodayEntry)
-  const setActiveView = useAppStore((s) => s.setActiveView)
-  const setTrackerMode = useAppStore((s) => s.setTrackerMode)
-  const setPagePinned = useAppStore((s) => s.setPagePinned)
-  const capture = useAppStore((s) => s.capture)
-  const patchPage = useAppStore((s) => s.patchPage)
-  const pages = useAppStore((s) => s.pages)
-  const types = useAppStore((s) => s.types)
-
-  const [entry, setEntry] = useState<Page | null>(null)
-  const [todayTasks, setTodayTasks] = useState<TrackerTask[]>([])
-  const [overdue, setOverdue] = useState<TrackerTask[]>([])
-  const [storage, setStorage] = useState<StorageStats | null>(null)
-  const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] })
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  // Bumped by anything Home itself changes — a capture, a task ticked off.
-  // The page list cannot serve as that signal: capturing into today's entry
-  // edits a page rather than adding one, so the list comes back the same
-  // length and nothing would reload.
-  const [reloadKey, setReloadKey] = useState(0)
-  const reload = useCallback(() => setReloadKey((n) => n + 1), [])
-
-  // The logical day, not the calendar one — at 1am this is still yesterday,
-  // which is the day the entry and the tasks on screen belong to.
-  const today = useToday()
-
-  const loadDay = useCallback(async () => {
-    try {
-      const [todayEntry, dueToday, late, stats] = await Promise.all([
-        // `peek`, never `today()`: the latter creates the entry, and merely
-        // looking at a dashboard must not write to the vault.
-        window.api.journal.peek(),
-        window.api.tasks.inRange(today, today),
-        window.api.tasks.overdue(today),
-        window.api.stats.getStorage()
-      ])
-      setEntry(todayEntry)
-      setTodayTasks(dueToday)
-      setOverdue(late)
-      setStorage(stats)
-      setError(null)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
-    } finally {
-      setLoading(false)
-    }
-  }, [today])
-
-  useEffect(() => {
-    void loadDay()
-  }, [loadDay, pages.length, reloadKey])
-
-  // Fetched on the page count rather than on `pages`, which is a fresh array
-  // after every mutation. `GraphView` restarts its simulation whenever the
-  // node list changes identity, so refetching on each keystroke's save would
-  // leave the layout permanently unsettled.
-  useEffect(() => {
-    let cancelled = false
-    void window.api.stats.getGraph().then((data) => {
-      if (!cancelled) setGraph(data)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [pages.length])
-
-  const pinned = useMemo(
-    () =>
-      pages
-        .filter((p) => p.is_pinned)
-        // By when the pin was made, not when the page was last touched: a pin
-        // kept for a month should not drop below one made today just because
-        // the newer page is the one being edited.
-        .sort((a, b) => (a.pinned_at ?? '').localeCompare(b.pinned_at ?? '')),
-    [pages]
-  )
-
-  const stale = useMemo(
-    () =>
-      pages
-        // A pin says the page matters; calling it neglected in the same breath
-        // is noise, so a pinned page is never stale.
-        .filter((p) => !p.is_pinned && isOlderThan(p.updated_at, STALE_DAYS))
-        .sort((a, b) => a.updated_at.localeCompare(b.updated_at)),
-    [pages]
-  )
-
-  const toggleTask = async (task: TrackerTask) => {
-    try {
-      const page = await window.api.tasks.setDone(task.pageId, task.blockId, !task.isDone)
-      // The write went into the block, so the renderer's cached body for that
-      // page is now behind. Handing a stale document back to the editor is how
-      // a page saves over what was changed elsewhere.
-      patchPage(page.id, { content: page.content, updated_at: page.updated_at })
-      reload()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  const reschedule = async (task: TrackerTask, due: string | null) => {
-    try {
-      const page = await window.api.tasks.setDue(task.pageId, task.blockId, due)
-      patchPage(page.id, { content: page.content, updated_at: page.updated_at })
-      reload()
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e))
-    }
-  }
-
-  const doneToday = todayTasks.filter((t) => t.isDone).length
-
-  if (loading) return <div className="nx-type-data">Loading…</div>
-
-  if (error) {
-    return (
-      <ErrorState
-        label="Could not load Home"
-        detail={error}
-        onRetry={() => {
-          setLoading(true)
-          void loadDay()
-        }}
-      />
-    )
-  }
-
-  if (pages.length === 0) {
-    return (
-      <EmptyState
-        text="Nothing here yet"
-        meta="Nexus is empty. Start today's entry, or make a page — everything on this screen fills in from what you write."
-        action={
-          <div className="nx-home__empty-actions">
-            <Button onClick={() => void openTodayEntry()}>Start today's entry</Button>
-            <Button variant="ghost" onClick={() => void createPage()}>
-              New page
-            </Button>
-          </div>
-        }
-      />
-    )
-  }
-
-  return (
-    <div className="nx-home">
-      <DayHeader />
-
-      <CaptureBar onCapture={capture} onCaptured={reload} openPage={openPage} />
-
-      <div className="nx-home__grid nx-home__grid--top">
-        <Panel
-          title="Today"
-          actions={
-            <button
-              className="nx-home__link nx-type-data"
-              onClick={() => {
-                setTrackerMode('week')
-                setActiveView('tracker')
-              }}
-            >
-              tracker →
-            </button>
-          }
-        >
-          {entry ? (
-            <button className="nx-home__entry" onClick={() => openPage(entry.id)}>
-              <span className="nx-home__entry-head">
-                <span className="nx-home__entry-title">{entry.title || 'Untitled'}</span>
-                <span className="nx-type-data">
-                  {types.find((t) => t.id === entry.type_id)?.name ?? 'Note'} ·{' '}
-                  {relativeTime(entry.updated_at)}
-                </span>
-                <span className="nx-home__entry-open nx-type-data">open →</span>
-              </span>
-              <span className="nx-home__entry-preview">
-                {documentPreview(entry.content, 180) || 'Empty so far.'}
-              </span>
-            </button>
-          ) : (
-            <div className="nx-home__entry nx-home__entry--absent">
-              <span className="nx-home__entry-absent-text">No entry for today yet</span>
-              <Button onClick={() => void openTodayEntry()}>Start today&apos;s entry</Button>
-            </div>
-          )}
-
-          <div className="nx-home__section">
-            <span className="nx-type-label">Tasks · today</span>
-            <span className="nx-type-data">
-              {todayTasks.length === 0 ? 'nothing due' : `${doneToday} of ${todayTasks.length} done`}
-            </span>
-          </div>
-
-          <div className="nx-home__list nx-home__list--grow">
-            {todayTasks.length === 0 ? (
-              <div className="nx-home__hint nx-type-data">
-                Nothing dated today. A checkbox on any page counts — write
-                <span className="nx-home__code"> @{today}</span> in it to date it by hand.
-              </div>
-            ) : (
-              todayTasks.map((task) => (
-                <TaskRow
-                  key={`${task.pageId}:${task.blockId}`}
-                  task={task}
-                  onToggle={toggleTask}
-                  onReschedule={reschedule}
-                  onOpen={openPage}
-                />
-              ))
-            )}
-          </div>
-
-          {overdue.length > 0 && (
-            <button
-              className="nx-home__overdue"
-              onClick={() => {
-                setTrackerMode('week')
-                setActiveView('tracker')
-              }}
-            >
-              <Icon shape="circle" size={12} color="var(--nx-critical)" />
-              <span className="nx-home__overdue-count">
-                {overdue.length} overdue
-              </span>
-              <span className="nx-type-data nx-home__overdue-list">
-                {overdue.slice(0, 3).map((t) => t.text || 'Untitled task').join(' · ')}
-              </span>
-            </button>
-          )}
-        </Panel>
-
-        <Panel
-          title="Habits"
-          actions={
-            <button
-              className="nx-home__link nx-type-data"
-              onClick={() => {
-                setTrackerMode('habits')
-                setActiveView('tracker')
-              }}
-            >
-              {`last ${STRIP_DAYS} days · year →`}
-            </button>
-          }
-        >
-          <HabitStrips onOpen={openPage} />
-        </Panel>
-
-        <Panel title="Pinned" actions={<span className="nx-type-data">{pinned.length || ''}</span>}>
-          {pinned.length === 0 ? (
-            <div className="nx-home__hint nx-type-data">
-              Nothing pinned. Hover a page in Notes and hit Pin to keep it here.
-            </div>
-          ) : (
-            <div className="nx-home__list">
-              {pinned.slice(0, SIDE_ROWS).map((page) => (
-                <PageRow
-                  key={page.id}
-                  page={page}
-                  shape="diamond"
-                  meta={types.find((t) => t.id === page.type_id)?.name ?? 'Note'}
-                  onOpen={openPage}
-                  onRemove={(id) => void setPagePinned(id, false)}
-                  removeTitle="Unpin"
-                />
-              ))}
-            </div>
-          )}
-        </Panel>
-      </div>
-
-      <div className="nx-home__grid nx-home__grid--bottom">
-        {/* No `actions` here: GraphView draws its own legend with the same
-            counts and the same hints, and a second copy in the panel header
-            wrapped to two lines and pushed the graph out of its row. */}
-        <Panel title="Graph" dense actions={<span className="nx-type-data">click a node to open it</span>}>
-          <GraphView graph={graph} height={GRAPH_HEIGHT} />
-        </Panel>
-
-        <Panel
-          title="Stale"
-          actions={<span className="nx-type-data">untouched {STALE_DAYS}d+</span>}
-        >
-          {stale.length === 0 ? (
-            <div className="nx-home__hint nx-type-data">
-              Nothing has gone quiet for {STALE_DAYS} days.
-            </div>
-          ) : (
-            <div className="nx-home__list">
-              {stale.slice(0, 5).map((page) => (
-                <PageRow
-                  key={page.id}
-                  page={page}
-                  shape="circle"
-                  meta={relativeTime(page.updated_at)}
-                  onOpen={openPage}
-                />
-              ))}
-            </div>
-          )}
-        </Panel>
-
-        <Panel title="Vault">
-          {storage && (
-            <div className="nx-home__stats">
-              <Stat value={String(storage.pageCount)} label="pages" />
-              <Stat value={String(graph.edges.length)} label="links" />
-              <Stat value={String(storage.openTaskCount)} label="tasks open" />
-              <Stat value={formatBytes(storage.dbSizeBytes)} label="on disk" />
-            </div>
-          )}
-        </Panel>
-      </div>
-    </div>
-  )
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="nx-home__stat">
-      <span className="nx-home__stat-value">{value}</span>
-      <span className="nx-type-data">{label}</span>
-    </div>
-  )
-}
-
-// ------------------------------------------------------------------
-// Day header and capture
+// Day header
 // ------------------------------------------------------------------
 
 function DayHeader() {
@@ -479,3 +65,343 @@ function DayHeader() {
   )
 }
 
+// ------------------------------------------------------------------
+// One widget in its frame
+// ------------------------------------------------------------------
+
+function WidgetSlot({
+  instance,
+  ctx,
+  editing,
+  onRemove,
+  onMove,
+  onSpan
+}: {
+  instance: WidgetInstance
+  ctx: WidgetContext
+  editing: boolean
+  onRemove: () => void
+  onMove: (delta: -1 | 1) => void
+  onSpan: (span: WidgetSpan) => void
+}) {
+  const definition = widgetFor(instance.kind)
+
+  const controls = editing ? (
+    <span className="nx-home__wctl">
+      <button title="Move earlier" aria-label="Move earlier" onClick={() => onMove(-1)}>
+        ←
+      </button>
+      <button title="Move later" aria-label="Move later" onClick={() => onMove(1)}>
+        →
+      </button>
+      <select
+        className="nx-select"
+        value={instance.span}
+        aria-label="Width"
+        onChange={(e) => onSpan(Number(e.target.value) as WidgetSpan)}
+      >
+        {WIDGET_SPANS.map((s) => (
+          <option key={s.span} value={s.span}>
+            {s.label}
+          </option>
+        ))}
+      </select>
+      <button
+        className="nx-home__wctl-x"
+        title="Remove from Home"
+        aria-label="Remove from Home"
+        onClick={onRemove}
+      >
+        ×
+      </button>
+    </span>
+  ) : null
+
+  /**
+   * A widget whose kind nothing registered.
+   *
+   * Written by a newer Nexus, or by an add-on that is not installed. It is
+   * shown rather than hidden, and — critically — it is still in the array, so
+   * saving the dashboard writes it back untouched instead of quietly
+   * discarding somebody's widget.
+   */
+  if (!definition) {
+    return (
+      <div className="nx-home__slot" style={{ gridColumn: `span ${instance.span}` }}>
+        <Panel title={instance.kind} actions={controls}>
+          <div className="nx-home__hint nx-type-data">
+            No widget registered for “{instance.kind}”. It has been left in place.
+          </div>
+        </Panel>
+      </div>
+    )
+  }
+
+  const body = <definition.Component config={instance.config} ctx={ctx} />
+
+  return (
+    <div className="nx-home__slot" style={{ gridColumn: `span ${instance.span}` }}>
+      {definition.frame === 'bare' ? (
+        <>
+          {editing && <div className="nx-home__bare-ctl">{controls}</div>}
+          {body}
+        </>
+      ) : (
+        <Panel
+          title={definition.label}
+          dense={definition.dense}
+          actions={controls ?? definition.actions?.(ctx)}
+        >
+          {body}
+        </Panel>
+      )}
+    </div>
+  )
+}
+
+// ------------------------------------------------------------------
+// Home
+// ------------------------------------------------------------------
+
+export function Home() {
+  const openPage = useAppStore((s) => s.openPage)
+  const createPage = useAppStore((s) => s.createPage)
+  const openTodayEntry = useAppStore((s) => s.openTodayEntry)
+  const setActiveView = useAppStore((s) => s.setActiveView)
+  const setTrackerMode = useAppStore((s) => s.setTrackerMode)
+  const setPagePinned = useAppStore((s) => s.setPagePinned)
+  const capture = useAppStore((s) => s.capture)
+  const patchPage = useAppStore((s) => s.patchPage)
+  const pages = useAppStore((s) => s.pages)
+  const types = useAppStore((s) => s.types)
+
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null)
+  const [editing, setEditing] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  // Bumped by anything a widget changes — a capture, a task ticked off. The
+  // page list cannot serve as that signal: capturing into today's entry edits
+  // a page rather than adding one, so the list comes back the same length and
+  // nothing would reload.
+  const [reloadKey, setReloadKey] = useState(0)
+  const reload = useCallback(() => setReloadKey((n) => n + 1), [])
+
+  const today = useToday()
+
+  const loadDashboard = useCallback(async () => {
+    try {
+      const raw = await window.api.dashboard.get()
+      // Never trust the blob: it may have been written by another build, by an
+      // add-on, or by hand. `normaliseDashboard` repairs what it can.
+      setDashboard(raw ? normaliseDashboard(JSON.parse(raw)) : DEFAULT_DASHBOARD)
+      setError(null)
+    } catch (e) {
+      // A dashboard that will not parse is not a reason to lose Home.
+      console.error('[nexus] could not read the saved dashboard', e)
+      setDashboard(DEFAULT_DASHBOARD)
+    }
+  }, [])
+
+  useEffect(() => {
+    void loadDashboard()
+  }, [loadDashboard])
+
+  /** Write the arrangement through, and keep what is on screen either way. */
+  const persist = useCallback(async (next: Dashboard) => {
+    setDashboard(next)
+    try {
+      await window.api.dashboard.set(JSON.stringify(next))
+    } catch (e) {
+      console.error('[nexus] could not save the dashboard', e)
+      toast.error('Could not save the layout')
+    }
+  }, [])
+
+  /**
+   * The narrowed surface every widget is given. Built once and memoised on
+   * what it closes over — a fresh object each render would refetch every
+   * widget that lists `ctx` in a dependency array.
+   */
+  const ctx = useMemo<WidgetContext>(
+    () => ({
+      today,
+      pages,
+      types,
+      openPage,
+      goToTracker: (mode) => {
+        setTrackerMode(mode)
+        setActiveView('tracker')
+      },
+      openTodayEntry,
+      reload,
+      read: {
+        journalPeek: () => window.api.journal.peek(),
+        tasksInRange: (from, to) => window.api.tasks.inRange(from, to),
+        tasksOverdue: (before) => window.api.tasks.overdue(before),
+        storage: () => window.api.stats.getStorage(),
+        graph: () => window.api.stats.getGraph(),
+        habitCandidates: () => window.api.habits.candidates(),
+        habitDays: (typeId, dateKey, booleanKey, from, to) =>
+          window.api.habits.days(typeId, dateKey, booleanKey, from, to)
+      },
+      write: {
+        // The write goes into the block, so the renderer's cached body for
+        // that page is now behind. Handing a stale document back to the editor
+        // is how a page saves over what was changed elsewhere.
+        setTaskDone: async (pageId, blockId, done) => {
+          const page = await window.api.tasks.setDone(pageId, blockId, done)
+          patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+        },
+        setTaskDue: async (pageId, blockId, due) => {
+          const page = await window.api.tasks.setDue(pageId, blockId, due)
+          patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+        },
+        setPinned: (pageId, pinned) => setPagePinned(pageId, pinned),
+        checkInHabit: (typeId, dateKey, booleanKey, date, done) =>
+          window.api.habits.checkIn(typeId, dateKey, booleanKey, date, done),
+        capture
+      }
+    }),
+    [
+      today,
+      pages,
+      types,
+      openPage,
+      openTodayEntry,
+      reload,
+      setActiveView,
+      setTrackerMode,
+      setPagePinned,
+      patchPage,
+      capture,
+      // Not read directly — it is what makes a widget refetch after a write.
+      reloadKey
+    ]
+  )
+
+  const widgets = dashboard?.widgets ?? []
+
+  const move = (index: number, delta: -1 | 1) => {
+    const next = [...widgets]
+    const to = index + delta
+    if (to < 0 || to >= next.length) return
+    ;[next[index], next[to]] = [next[to], next[index]]
+    void persist({ version: 1, widgets: next })
+  }
+
+  const remove = (index: number) =>
+    void persist({ version: 1, widgets: widgets.filter((_, i) => i !== index) })
+
+  const setSpan = (index: number, span: WidgetSpan) =>
+    void persist({
+      version: 1,
+      widgets: widgets.map((w, i) => (i === index ? { ...w, span } : w))
+    })
+
+  const add = (kind: string) => {
+    const definition = widgetFor(kind)
+    if (!definition) return
+    setAdding(false)
+    void persist({
+      version: 1,
+      widgets: [
+        ...widgets,
+        {
+          // Unique per instance rather than per kind: the same widget twice —
+          // two views, two habit strips — has to be a thing you can do.
+          id: `w-${kind}-${Date.now().toString(36)}`,
+          kind,
+          config: {},
+          span: definition.defaultSpan
+        }
+      ]
+    })
+  }
+
+  const resetLayout = () => void persist(DEFAULT_DASHBOARD)
+
+  if (error) {
+    return <ErrorState label="Could not load Home" detail={error} onRetry={() => void loadDashboard()} />
+  }
+
+  if (dashboard === null) return <div className="nx-type-data">Loading…</div>
+
+  if (pages.length === 0) {
+    return (
+      <EmptyState
+        text="Nothing here yet"
+        meta="Nexus is empty. Start today's entry, or make a page — everything on this screen fills in from what you write."
+        action={
+          <div className="nx-home__empty-actions">
+            <Button onClick={() => void openTodayEntry()}>Start today&apos;s entry</Button>
+            <Button variant="ghost" onClick={() => void createPage()}>
+              New page
+            </Button>
+          </div>
+        }
+      />
+    )
+  }
+
+  return (
+    <div className="nx-home">
+      <div className="nx-home__head">
+        <DayHeader />
+        <div className="nx-home__head-actions">
+          {editing && (
+            <>
+              <Button variant="quiet" onClick={() => setAdding((v) => !v)}>
+                {adding ? 'Cancel' : '+ Widget'}
+              </Button>
+              <Button variant="quiet" onClick={resetLayout}>
+                Reset
+              </Button>
+            </>
+          )}
+          <Button
+            variant={editing ? 'primary' : 'quiet'}
+            onClick={() => {
+              setEditing((v) => !v)
+              setAdding(false)
+            }}
+          >
+            {editing ? 'Done' : 'Edit Home'}
+          </Button>
+        </div>
+      </div>
+
+      {adding && (
+        <div className="nx-home__adder">
+          {WIDGET_DEFINITIONS.map((definition) => (
+            <button key={definition.kind} className="nx-home__add-card" onClick={() => add(definition.kind)}>
+              <span className="nx-home__add-name">{definition.label}</span>
+              <span className="nx-type-data">{definition.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className={`nx-home__grid ${editing ? 'is-editing' : ''}`}>
+        {widgets.map((instance, index) => (
+          <WidgetSlot
+            key={instance.id}
+            instance={instance}
+            ctx={ctx}
+            editing={editing}
+            onRemove={() => remove(index)}
+            onMove={(delta) => move(index, delta)}
+            onSpan={(span) => setSpan(index, span)}
+          />
+        ))}
+
+        {widgets.length === 0 && (
+          <div className="nx-home__hint nx-type-data" style={{ gridColumn: 'span 12' }}>
+            Home is empty. Hit <strong>Edit Home</strong> and add a widget, or reset to the default
+            layout.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}

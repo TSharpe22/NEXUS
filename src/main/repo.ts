@@ -797,6 +797,24 @@ export function setSetting(key: string, value: string | null): void {
     .run(key, value)
 }
 
+/**
+ * Home's layout.
+ *
+ * One `settings` row rather than a table: there is exactly one dashboard, and
+ * `Dashboard` is precisely the shape a row would hold when there is a second.
+ * Stored and returned as raw JSON text — the renderer owns `normaliseDashboard`
+ * and is the only place that needs to understand the blob, so the main process
+ * deliberately does not parse, validate or repair it. An add-on's widget config
+ * travelling through here untouched is the point.
+ */
+export function getDashboard(): string | null {
+  return getSetting('home.dashboard')
+}
+
+export function setDashboard(json: string | null): void {
+  setSetting('home.dashboard', json)
+}
+
 /** Page id to the relative path the mirror last wrote for it. */
 export function getMirrorManifest(): Map<string, string> {
   const rows = getDb().prepare('SELECT page_id, rel_path FROM mirror_files').all() as {

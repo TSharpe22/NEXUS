@@ -411,6 +411,15 @@ export interface NexusAPI {
      */
     setCaptureAccelerator(accelerator: string): Promise<{ accelerator: string; active: boolean }>
   }
+  dashboard: {
+    /**
+     * Home's stored layout as raw JSON, or null when it has never been
+     * changed. The renderer parses and repairs it — see `normaliseDashboard`.
+     */
+    get(): Promise<string | null>
+    /** Passing null forgets the layout, so Home falls back to the default. */
+    set(json: string | null): Promise<void>
+  }
   inbox: {
     /** The inbox page if it exists, without making one. */
     get(): Promise<Page | null>

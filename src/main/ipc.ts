@@ -239,6 +239,22 @@ export function registerIpcHandlers(): void {
       rethrow('prefs:get', e)
     }
   })
+  ipcMain.handle('dashboard:get', () => {
+    try {
+      return repo.getDashboard()
+    } catch (e) {
+      rethrow('dashboard:get', e)
+    }
+  })
+
+  ipcMain.handle('dashboard:set', (_, json: string | null) => {
+    try {
+      repo.setDashboard(json === null ? null : String(json))
+    } catch (e) {
+      rethrow('dashboard:set', e)
+    }
+  })
+
   ipcMain.handle('prefs:setDayStartHour', (_, hour: number) => {
     try {
       return repo.setDayStartHour(Number(hour))

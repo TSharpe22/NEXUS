@@ -1,19 +1,35 @@
 /* ----------------------------------------------------------------
    Home — the day on one screen.
 
-   Laid out to fit the window without scrolling: the page is a column of
-   fixed-height bands with one flexible row, and each panel scrolls its own
-   list rather than pushing the page taller. Below 1100px that stops being
-   possible and the grids collapse, at which point the page scrolls like any
-   other view.
+   One twelve-column grid, filled from a stored list of widgets. The old
+   layout was a column of fixed-height bands sized to fit the window exactly,
+   which only worked because the six panels in it were known in advance. A
+   dashboard the user arranges can be any length, so Home scrolls now, and a
+   widget gets a readable minimum height instead of a share of the viewport.
    ---------------------------------------------------------------- */
 
 .nx-home {
   display: flex;
   flex-direction: column;
   gap: var(--nx-space-3);
-  height: 100%;
   min-height: 0;
+}
+
+.nx-home__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--nx-space-4);
+}
+
+.nx-home__head .nx-home__day {
+  flex: 1 1 auto;
+}
+
+.nx-home__head-actions {
+  display: flex;
+  gap: var(--nx-space-2);
+  flex-shrink: 0;
 }
 
 /* Panels here are flex columns so a list inside can take the leftover height
@@ -73,39 +89,126 @@
 
 /* ---- The two grids ---- */
 
+/* Twelve columns, because it divides by 2, 3 and 4 — which is exactly the
+   set of widths `WIDGET_SPANS` offers. A span is stored on the widget and
+   written as an inline `grid-column`, so the arrangement lives in the vault
+   rather than in this file. */
 .nx-home__grid {
   display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--nx-space-5);
-  min-height: 0;
-}
-
-/* Proportional rather than fixed side columns: with `1fr 360px 300px`, a
-   1280-wide window left Today narrower than either panel beside it, which is
-   backwards for the one thing the screen is about. The minimums are what each
-   panel needs to stay readable — 21 habit cells, a title and a type name. */
-.nx-home__grid--top {
-  grid-template-columns: minmax(0, 1.5fr) minmax(280px, 1fr) minmax(230px, 0.85fr);
-  flex: 1 1 auto;
+  align-items: start;
   margin-top: var(--nx-space-2);
 }
 
-.nx-home__grid--bottom {
-  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr) minmax(200px, 0.75fr);
-  flex: 0 0 250px;
+.nx-home__slot {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-/* One column under the width where three still read. The page scrolls from
-   here down — a dashboard that fits one screen is the goal, not a rule worth
-   crushing panels for. */
-@media (max-width: 1100px) {
-  .nx-home {
-    height: auto;
-  }
+/* A readable floor rather than a share of the viewport: with an arbitrary
+   number of widgets there is no row height to divide up. */
+.nx-home__slot .nx-panel {
+  min-height: 240px;
+  max-height: 460px;
+}
 
-  .nx-home__grid--top,
-  .nx-home__grid--bottom {
-    grid-template-columns: minmax(0, 1fr);
-    flex: 0 0 auto;
+/* The capture box is a control, not a readout — it should be exactly as tall
+   as it needs to be. */
+.nx-home__slot:has(.nx-home__capture) .nx-panel,
+.nx-home__bare-ctl + * {
+  min-height: 0;
+}
+
+/* ---- Edit mode ---- */
+
+.nx-home__grid.is-editing .nx-panel {
+  border-style: dashed;
+  border-color: var(--nx-border-2);
+}
+
+.nx-home__wctl {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--nx-space-1);
+}
+
+.nx-home__wctl button {
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  line-height: 1;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+
+.nx-home__wctl button:hover {
+  border-color: var(--nx-accent);
+  color: var(--nx-accent);
+}
+
+.nx-home__wctl .nx-select {
+  font-size: 11px;
+  padding: 2px 4px;
+}
+
+.nx-home__wctl-x:hover {
+  border-color: var(--nx-critical) !important;
+  color: var(--nx-critical) !important;
+}
+
+.nx-home__bare-ctl {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: var(--nx-space-1);
+}
+
+/* ---- The add-a-widget tray ---- */
+
+.nx-home__adder {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--nx-space-2);
+  padding: var(--nx-space-3);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-surface);
+}
+
+.nx-home__add-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-items: flex-start;
+  text-align: left;
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-surface-raised);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  cursor: pointer;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-home__add-card:hover {
+  border-color: var(--nx-accent);
+}
+
+.nx-home__add-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+/* Under the width where a twelve-column grid still reads, every widget takes
+   the full row. The stored spans are untouched — this is a display rule. */
+@media (max-width: 1100px) {
+  .nx-home__slot {
+    grid-column: span 12 !important;
   }
 }
 
