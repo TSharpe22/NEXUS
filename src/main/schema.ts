@@ -64,7 +64,7 @@ let db: Database.Database
  *     behind it were renumbered rather than left claiming a number that is
  *     now taken.
  */
-export const SCHEMA_VERSION = 11
+export const SCHEMA_VERSION = 12
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -523,6 +523,46 @@ function migratePropertyDefinitions(): void {
  * the definition's slug), so a page's property values can be read without
  * joining through its type.
  */
+/**
+ * Move `type = 'number'` values that were stored as text into `value_number`.
+ *
+ * Deliberately in TypeScript rather than in one `UPDATE … WHERE CAST(…)`.
+ * SQLite's CAST does not fail on a non-numeric string, it returns 0 — so
+ * "n/a" would become zero — and the obvious round-trip guard,
+ * `CAST(CAST(value_text AS REAL) AS TEXT) = value_text`, rejects every integer
+ * in the table, because that cast renders -750 as "-750.0". A first draft of
+ * this shipped that guard and repaired nothing; the test below is what caught
+ * it.
+ *
+ * `Number()` has neither problem: it returns NaN for anything that is not
+ * wholly a number, and nothing here trusts a value it cannot re-render back to
+ * the exact text that was stored. Anything else is left where it is. A number
+ * that was never a number is somebody's note to themselves, and this is a
+ * repair, not a cleanup.
+ */
+function repairStrandedNumbers(): void {
+  const rows = db
+    .prepare(
+      `SELECT id, value_text FROM properties
+        WHERE type = 'number' AND value_number IS NULL
+          AND value_text IS NOT NULL AND trim(value_text) <> ''`
+    )
+    .all() as { id: string; value_text: string }[]
+
+  const update = db.prepare('UPDATE properties SET value_number = ?, value_text = NULL WHERE id = ?')
+
+  for (const row of rows) {
+    const text = row.value_text.trim()
+    const parsed = Number(text)
+    if (!Number.isFinite(parsed)) continue
+    // The round trip is the guard: "007" and "1e3" are numbers to `Number()`
+    // but the user typed something a plain number will not give back, and
+    // rewriting what somebody typed is not this function's business.
+    if (String(parsed) !== text) continue
+    update.run(parsed, row.id)
+  }
+}
+
 function migratePropertyValues(): void {
   if (!tableExists('property_values')) return
 
@@ -767,6 +807,15 @@ export function applySchema(
     // there is nothing to alter and nothing to rewrite. Unlike `page_fts` and
     // `tasks` this is user data: a view is a question somebody wrote down, and
     // no projection can invent it back, so it is never rebuilt.
+
+    // v12. Numbers stranded in `value_text`. The same shape of repair as v6
+    // and for the same underlying reason: `setProperty` picked its column from
+    // the runtime type of the value rather than from the declared one, so a
+    // caller passing a form's string — `set(id, 'pnl', 'number', '-750')` —
+    // stored a row typed `number` with nothing in `value_number`. Everything
+    // that displays a property reads it back fine; everything that compares
+    // one reads `value_number` and misses it entirely.
+    if (version < 12) repairStrandedNumbers()
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`)
   })

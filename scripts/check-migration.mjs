@@ -451,6 +451,57 @@ check('foreign keys satisfied', v8.pragma('foreign_key_check'), [])
 v8.close()
 
 // ------------------------------------------------------------------
+// v11 file: numbers that `setProperty` left in value_text.
+//
+// The repair is the interesting half. SQLite's CAST turns 'n/a' into 0 rather
+// than failing, and the obvious round-trip guard written in SQL rejects every
+// integer in the table — CAST(CAST('-750' AS REAL) AS TEXT) is '-750.0'. So
+// what has to hold is that plain numbers move, and that everything a person
+// might have typed instead of a number stays exactly as they typed it.
+// ------------------------------------------------------------------
+console.log('\nv11 file with numbers stored as text:')
+const v11Path = join(dir, 'v11-numbers.db')
+const v11 = new Database(v11Path)
+v11.pragma('foreign_keys = OFF')
+applySchema(v11, () => null)
+v11.exec(`
+  INSERT INTO pages (id, type_id, title, content) VALUES ('n1','note','Trade','[]');
+  INSERT INTO properties (id, page_id, key, type, value_text) VALUES
+    ('a','n1','pnl',    'number', '-750'),
+    ('b','n1','entry',  'number', '5688'),
+    ('c','n1','risk',   'number', '0.5'),
+    ('d','n1','padded', 'number', '  2  '),
+    ('e','n1','words',  'number', 'n/a'),
+    ('f','n1','partial','number', '12abc'),
+    ('g','n1','zeros',  'number', '007'),
+    ('h','n1','blank',  'number', '   '),
+    ('i','n1','note',   'text',   '42');
+`)
+v11.pragma('user_version = 11')
+
+applySchema(v11, () => null)
+const numberOf = (id) => v11.prepare('SELECT value_number, value_text FROM properties WHERE id = ?').get(id)
+check('a negative integer moves to value_number', numberOf('a'), { value_number: -750, value_text: null })
+check('a positive integer moves too', numberOf('b'), { value_number: 5688, value_text: null })
+check('a decimal moves', numberOf('c'), { value_number: 0.5, value_text: null })
+check('surrounding whitespace does not stop it', numberOf('d'), { value_number: 2, value_text: null })
+check('a word is left exactly as typed', numberOf('e'), { value_number: null, value_text: 'n/a' })
+check('and so is something only partly numeric', numberOf('f'), { value_number: null, value_text: '12abc' })
+check('a padded number nobody meant as 7 is left alone', numberOf('g'), { value_number: null, value_text: '007' })
+check('blank stays blank', numberOf('h'), { value_number: null, value_text: '   ' })
+check('a text property holding digits is not touched', numberOf('i'), { value_number: null, value_text: '42' })
+check('the file moves to the current version', v11.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+
+// A repair, not a recurring cleanup: a number typed back into value_text
+// after the file is stamped is not this step's to move.
+v11.prepare(`UPDATE properties SET value_number = NULL, value_text = '99' WHERE id = 'a'`).run()
+applySchema(v11, () => null)
+check('re-running does not repair again', numberOf('a'), { value_number: null, value_text: '99' })
+v11.pragma('foreign_keys = ON')
+check('foreign keys satisfied', v11.pragma('foreign_key_check'), [])
+v11.close()
+
+// ------------------------------------------------------------------
 // v9 file: pages exists without the pin columns. The step is two ALTERs, so
 // what has to hold is that they land, that nothing arrives pinned, and that
 // a pin already made survives the migration running again — pins are the

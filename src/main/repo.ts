@@ -1746,15 +1746,35 @@ export function setProperty(
 ): Property {
   const db = getDb()
   const id = uuidv4()
-  const text = typeof value === 'string' ? value : null
-  // A relation is the id of another page, and every reader — the panel, the
-  // Tables cell, the mirror's frontmatter — looks for it in `value_relation`.
-  // This wrote it to `value_text` along with everything else, so a relation
-  // saved and then read back empty every time.
-  const valueRelation = type === 'relation' ? text : null
-  const valueText = type === 'date' || type === 'relation' ? null : text
-  const valueNumber = typeof value === 'number' ? value : null
-  const valueDate = type === 'date' ? text : null
+
+  // The column is chosen by the declared `type`, never by the runtime type of
+  // `value`. It used to be the latter for numbers — `typeof value === 'number'`
+  // — which meant a caller doing the obvious thing with a form value:
+  //
+  //     properties.set(pageId, 'pnl', 'number', '-750')
+  //
+  // stored `type = 'number'` with the digits in `value_text` and NULL in
+  // `value_number`. The row then read as a number everywhere it was displayed
+  // and matched nothing at all in `compileFilter`, which compares
+  // `pr.value_number` — so a filter of `pnl < 0` over a page full of losses
+  // returned zero rows, silently, with no way to tell from the panel that
+  // anything was wrong.
+  //
+  // The properties panel happens to coerce with `Number()` before it calls,
+  // which is why this never showed up through the UI. Every other caller —
+  // import, a bulk edit, an add-on, an assistant driving the API — got the
+  // broken row, and the honest fix is for the parameter that says what the
+  // value is to be the one that decides where it goes.
+  const asText = value === null || value === undefined ? null : String(value)
+  const valueRelation = type === 'relation' ? asText : null
+  const valueDate = type === 'date' ? asText : null
+  const valueText = type === 'date' || type === 'relation' || type === 'number' ? null : asText
+
+  // A number that will not parse is stored as no number rather than as NaN:
+  // NaN survives neither SQLite nor JSON, and a null reads correctly as
+  // "nothing here" in every query that touches it.
+  const parsed = value === null || value === undefined || asText === '' ? null : Number(value)
+  const valueNumber = type === 'number' && parsed !== null && Number.isFinite(parsed) ? parsed : null
 
   const read = db.prepare('SELECT * FROM properties WHERE page_id = ? AND key = ?')
   const existing = read.get(pageId, key) as Property | undefined
