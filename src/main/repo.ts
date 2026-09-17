@@ -13,6 +13,7 @@ import {
 import * as lock from './lock'
 import { statSync } from 'fs'
 import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
+import { canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
 import type {
   FilterField,
   FilterLeaf,
@@ -3188,4 +3189,139 @@ export function getPageIdsForTags(tagIds: string[]): string[] {
     .prepare(`SELECT DISTINCT page_id FROM page_tags WHERE tag_id IN (${placeholders})`)
     .all(...tagIds) as { page_id: string }[]
   return rows.map((r) => r.page_id)
+}
+
+// ============================================================
+// Canvases
+// ============================================================
+
+const CANVAS_LIST_COLUMNS = 'id, title, is_deleted, created_at, updated_at'
+
+/** Live canvases, most recently touched first. The documents stay behind. */
+export function listCanvases(): CanvasListItem[] {
+  return getDb()
+    .prepare(`SELECT ${CANVAS_LIST_COLUMNS} FROM canvases WHERE is_deleted = 0 ORDER BY updated_at DESC`)
+    .all() as CanvasListItem[]
+}
+
+export function listTrashedCanvases(): CanvasListItem[] {
+  return getDb()
+    .prepare(`SELECT ${CANVAS_LIST_COLUMNS} FROM canvases WHERE is_deleted = 1 ORDER BY updated_at DESC`)
+    .all() as CanvasListItem[]
+}
+
+export function getCanvas(id: string): Canvas | null {
+  return (getDb().prepare('SELECT * FROM canvases WHERE id = ?').get(id) as Canvas | undefined) ?? null
+}
+
+export function createCanvas(title = ''): Canvas {
+  const id = uuidv4()
+  const ts = now()
+  getDb()
+    .prepare('INSERT INTO canvases (id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
+    .run(id, title.trim(), serializeCanvas({ version: 1, nodes: [], edges: [] }), ts, ts)
+  logActivity(null, 'canvas', `created canvas "${title.trim() || 'Untitled'}"`)
+  return getCanvas(id)!
+}
+
+/**
+ * Write a canvas's title or document.
+ *
+ * The document is normalised on the way in, not only on the way out: whatever
+ * the renderer sent is parsed and re-serialised, so a malformed save can never
+ * become the stored copy that every later read has to repair.
+ */
+export function updateCanvas(id: string, data: { title?: string; content?: string }): Canvas | null {
+  const sets: string[] = []
+  const values: unknown[] = []
+  if (typeof data.title === 'string') {
+    sets.push('title = ?')
+    values.push(data.title)
+  }
+  if (typeof data.content === 'string') {
+    sets.push('content = ?')
+    values.push(serializeCanvas(parseCanvas(data.content)))
+  }
+  if (sets.length === 0) return getCanvas(id)
+  sets.push('updated_at = ?')
+  values.push(now(), id)
+  getDb().prepare(`UPDATE canvases SET ${sets.join(', ')} WHERE id = ?`).run(...values)
+  if (typeof data.content === 'string') projectCanvas(id)
+  return getCanvas(id)
+}
+
+export function trashCanvas(id: string): void {
+  getDb().prepare('UPDATE canvases SET is_deleted = 1, updated_at = ? WHERE id = ?').run(now(), id)
+}
+
+export function restoreCanvas(id: string): void {
+  getDb().prepare('UPDATE canvases SET is_deleted = 0, updated_at = ? WHERE id = ?').run(now(), id)
+}
+
+/** Gone for good. `canvas_refs` cascades. */
+export function deleteCanvasForever(id: string): void {
+  getDb().prepare('DELETE FROM canvases WHERE id = ?').run(id)
+}
+
+/**
+ * A page title → id resolver for `[[links]]` in text cards: case-insensitive,
+ * live pages only, and the most recently edited page when two share a title —
+ * the same tie-break a person scanning the Notes list would make.
+ */
+function pageIdByTitle(): (title: string) => string | null {
+  const rows = getDb()
+    .prepare('SELECT id, title FROM pages WHERE is_deleted = 0 ORDER BY updated_at ASC')
+    .all() as { id: string; title: string }[]
+  const byTitle = new Map<string, string>()
+  for (const row of rows) byTitle.set(row.title.trim().toLowerCase(), row.id)
+  return (title) => byTitle.get(title.trim().toLowerCase()) ?? null
+}
+
+/** Rewrite which pages one canvas refers to, from its document. */
+export function projectCanvas(id: string, resolve = pageIdByTitle()): void {
+  const db = getDb()
+  const row = db.prepare('SELECT content FROM canvases WHERE id = ?').get(id) as { content: string } | undefined
+  const refs = row ? canvasPageRefs(parseCanvas(row.content), resolve) : []
+  const live = new Set(
+    refs.length === 0
+      ? []
+      : (
+          db
+            .prepare(`SELECT id FROM pages WHERE id IN (${refs.map(() => '?').join(', ')})`)
+            .all(...refs) as { id: string }[]
+        ).map((r) => r.id)
+  )
+  const trx = db.transaction(() => {
+    db.prepare('DELETE FROM canvas_refs WHERE canvas_id = ?').run(id)
+    const insert = db.prepare('INSERT OR IGNORE INTO canvas_refs (canvas_id, page_id) VALUES (?, ?)')
+    // A card for a page deleted for good would fail the foreign key; it simply
+    // has no row, which is the truth.
+    for (const pageId of refs) if (live.has(pageId)) insert.run(id, pageId)
+  })
+  trx()
+}
+
+/**
+ * Rebuild every canvas's refs. Run at startup unconditionally rather than only
+ * when empty: a `[[Title]]` in a text card resolves against titles, and a page
+ * renamed since the canvas was last saved would otherwise keep a stale row.
+ * There are tens of canvases, not thousands, so this is not worth being clever.
+ */
+export function ensureCanvasRefs(): void {
+  const resolve = pageIdByTitle()
+  for (const { id } of getDb().prepare('SELECT id FROM canvases').all() as { id: string }[]) {
+    projectCanvas(id, resolve)
+  }
+}
+
+/** The live canvases a page appears on. */
+export function getCanvasesForPage(pageId: string): CanvasListItem[] {
+  return getDb()
+    .prepare(
+      `SELECT c.id, c.title, c.is_deleted, c.created_at, c.updated_at
+       FROM canvas_refs r JOIN canvases c ON c.id = r.canvas_id
+       WHERE r.page_id = ? AND c.is_deleted = 0
+       ORDER BY c.updated_at DESC`
+    )
+    .all(pageId) as CanvasListItem[]
 }

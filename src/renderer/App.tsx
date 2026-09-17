@@ -14,6 +14,7 @@ import { Notes } from './views/Notes'
 import { Views } from './views/Views'
 import { Tracker } from './views/Tracker'
 import { Settings } from './views/Settings'
+import { CanvasScreen } from './canvas/CanvasScreen'
 import './App.css'
 
 const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
@@ -21,6 +22,7 @@ const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
   notes: Notes,
   views: Views,
   tracker: Tracker,
+  canvas: CanvasScreen,
   settings: Settings
 }
 
@@ -45,6 +47,7 @@ export function App() {
   const setActiveView = useAppStore((s) => s.setActiveView)
   const refresh = useAppStore((s) => s.refresh)
   const refreshViews = useAppStore((s) => s.refreshViews)
+  const refreshCanvases = useAppStore((s) => s.refreshCanvases)
   const views = useAppStore((s) => s.views)
   const activeViewId = useAppStore((s) => s.activeViewId)
   const setActiveViewId = useAppStore((s) => s.setActiveViewId)
@@ -76,6 +79,12 @@ export function App() {
   useEffect(() => {
     void refreshViews()
   }, [refreshViews])
+
+  // The palette and a page's backlinks both name canvases, so the list is
+  // loaded at launch rather than the first time the Canvas screen opens.
+  useEffect(() => {
+    void refreshCanvases()
+  }, [refreshCanvases])
 
   /**
    * Which pages are open, asked of the process that actually knows.

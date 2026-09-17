@@ -191,6 +191,25 @@ debugging loop against a hand-rolled selection overlay and a multi-column
 layout, both fighting the editor's internals instead of using what it already
 gave. Same feature, and it survives a BlockNote upgrade.
 
+## Wave 4 — Canvas (schema v14)
+
+Asked for from daily use, alongside the graph fixes: somewhere to arrange
+pages and thoughts spatially, the way Obsidian's canvas does. Three calls were
+made before building, by the user:
+
+- **Its own section, not a kind of page.** Canvases do not sit in the Notes
+  tree and carry no tags or pins. The table is shaped so folders or tags can be
+  added as columns later without touching a document, and that rebuild is
+  deliberately not done yet.
+- **React Flow, not hand-rolled.** See `NEXUS.md` on Canvas for why this is the
+  exception to the graph's hand-written physics.
+- **A mix of card kinds.** Markdown text cards for speed, page cards that open
+  the real block editor in place, one editor mounted at a time.
+
+**Left, deliberately:** images and file cards, web-link cards, pasting cards
+between canvases, canvases on the graph as hubs, and folders or tags for
+canvases. Each is additive to the stored format.
+
 ## Deferred
 
 **Tracker.** Known to be weaker than it should be. Left alone deliberately:

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { BacklinkResult } from '@shared/types'
+import type { CanvasListItem } from '@shared/canvas'
 import { useAppStore } from '../store/app-store'
 
 interface Props {
@@ -8,13 +9,25 @@ interface Props {
 
 export function BacklinksPanel({ pageId }: Props) {
   const openPage = useAppStore((s) => s.openPage)
+  const openCanvas = useAppStore((s) => s.openCanvas)
   const [expanded, setExpanded] = useState(false)
   const [backlinks, setBacklinks] = useState<BacklinkResult[]>([])
   const [loading, setLoading] = useState(true)
+  /**
+   * Canvases this page is on. Listed with the backlinks rather than beside
+   * them: "where else does this page appear" is one question, and a canvas
+   * card is as much an answer to it as a mention is.
+   */
+  const [canvases, setCanvases] = useState<CanvasListItem[]>([])
 
   const fetchBacklinks = useCallback(async () => {
     setLoading(true)
-    setBacklinks(await window.api.links.getBacklinks(pageId))
+    const [links, onCanvases] = await Promise.all([
+      window.api.links.getBacklinks(pageId),
+      window.api.canvases.forPage(pageId)
+    ])
+    setBacklinks(links)
+    setCanvases(onCanvases)
     setLoading(false)
   }, [pageId])
 
@@ -35,11 +48,11 @@ export function BacklinksPanel({ pageId }: Props) {
         >
           <path d="M4 3l4 3-4 3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
-        Backlinks ({loading ? '…' : backlinks.length})
+        Backlinks ({loading ? '…' : backlinks.length + canvases.length})
       </button>
 
       {expanded &&
-        (backlinks.length === 0 ? (
+        (backlinks.length + canvases.length === 0 ? (
           <div className="nx-backlinks__empty">No other pages link here</div>
         ) : (
           <div className="nx-backlinks__list">
@@ -59,6 +72,18 @@ export function BacklinksPanel({ pageId }: Props) {
                   )}
                 </div>
                 {bl.context && <div className="nx-backlinks__context">{bl.context}</div>}
+              </button>
+            ))}
+            {canvases.map((canvas) => (
+              <button
+                key={`canvas:${canvas.id}`}
+                className="nx-backlinks__item"
+                onClick={() => openCanvas(canvas.id)}
+              >
+                <div className="nx-backlinks__title">
+                  {canvas.title || 'Untitled canvas'}
+                  <span className="nx-backlinks__via nx-type-data">on canvas</span>
+                </div>
               </button>
             ))}
           </div>

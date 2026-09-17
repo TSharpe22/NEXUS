@@ -1,4 +1,5 @@
 import type { AggregateFn, ViewAggregate, ViewDef, ViewDraft } from './views'
+import type { Canvas, CanvasListItem } from './canvas'
 export type PageWidth = number
 
 export interface Page {
@@ -610,6 +611,19 @@ export interface NexusAPI {
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
+  }
+  canvases: {
+    list(): Promise<CanvasListItem[]>
+    listTrashed(): Promise<CanvasListItem[]>
+    get(id: string): Promise<Canvas | null>
+    create(title?: string): Promise<Canvas>
+    /** `content` is a serialised `CanvasDoc`; it is normalised before it is stored. */
+    update(id: string, data: { title?: string; content?: string }): Promise<Canvas | null>
+    trash(id: string): Promise<void>
+    restore(id: string): Promise<void>
+    remove(id: string): Promise<void>
+    /** The live canvases a page is shown on or linked from. */
+    forPage(pageId: string): Promise<CanvasListItem[]>
   }
   views: {
     list(): Promise<ViewDef[]>

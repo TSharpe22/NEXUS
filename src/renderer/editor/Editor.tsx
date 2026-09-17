@@ -21,6 +21,13 @@ interface EditorProps {
    * title and tags live in here, so the slot has to as well.
    */
   children?: ReactNode
+  /**
+   * The body alone: no icon, title, tag chips or slot. A canvas page card
+   * draws its own header, and a second title inside the card would be two
+   * places to rename one page. Saving is identical — this is the same editor,
+   * not a lighter copy of it.
+   */
+  compact?: boolean
 }
 
 function parseInitialContent(content: string) {
@@ -39,7 +46,7 @@ function parseInitialContent(content: string) {
  * Keyed by page.id in Notes.tsx so a fresh editor instance mounts per page —
  * simpler than trying to imperatively swap BlockNote's document in place.
  */
-export function Editor({ page, children }: EditorProps) {
+export function Editor({ page, children, compact = false }: EditorProps) {
   const [title, setTitle] = useState(page.title)
   const [icon, setIcon] = useState<string | null>(page.icon)
   const titleRef = useRef<HTMLTextAreaElement>(null)
@@ -258,7 +265,9 @@ export function Editor({ page, children }: EditorProps) {
   }
 
   return (
-    <div className="nx-editor" ref={editorRootRef}>
+    <div className={`nx-editor ${compact ? 'nx-editor--compact' : ''}`} ref={editorRootRef}>
+      {!compact && (
+        <>
       <IconPicker value={icon} onChange={(next) => { setIcon(next); void saveIcon(next) }} />
 
       <textarea
@@ -284,6 +293,8 @@ export function Editor({ page, children }: EditorProps) {
       <TagBar pageId={page.id} />
 
       {children}
+        </>
+      )}
 
       <BlockNoteView
         editor={editor}

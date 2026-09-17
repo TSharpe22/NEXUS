@@ -75,8 +75,16 @@ let db: Database.Database
  *     it. The names it holds are the content-addressed SHA-256 filenames the
  *     store already uses, so the table says which bytes a locked page needs
  *     and nothing whatsoever about what it says.
+ * 14 — canvases: `canvases` and `canvas_refs`, both from CURRENT_SCHEMA with
+ *     IF NOT EXISTS, so an existing file picks them up with nothing to alter.
+ *     A canvas is its own table rather than a kind of page: it lives in its
+ *     own section of the app, and the page list, the tracker, views, habits
+ *     and the graph all read `pages` on the assumption that a body is a block
+ *     document. `canvas_refs` is a projection of which pages a canvas shows
+ *     or links to, rebuilt on every save — derived, like `links`, and refilled
+ *     at startup when it is missing.
  */
-export const SCHEMA_VERSION = 13
+export const SCHEMA_VERSION = 14
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -281,6 +289,34 @@ const CURRENT_SCHEMA = `
 
   CREATE INDEX IF NOT EXISTS idx_tasks_due ON tasks(due_date);
   CREATE INDEX IF NOT EXISTS idx_tasks_done ON tasks(is_done);
+
+  -- A canvas. content is a JSON Canvas document (shared/canvas.ts), stored
+  -- whole for the same reason pages.content is: it is one structure with its
+  -- own ids, and exploding it into rows would put half of its shape in the
+  -- schema. User data, never rebuilt. Trashed rather than deleted first, like
+  -- a page, because a board somebody arranged cannot be re-derived either.
+  CREATE TABLE IF NOT EXISTS canvases (
+    id          TEXT PRIMARY KEY,
+    title       TEXT NOT NULL DEFAULT '',
+    content     TEXT NOT NULL DEFAULT '{"version":1,"nodes":[],"edges":[]}',
+    is_deleted  INTEGER NOT NULL DEFAULT 0,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_canvases_deleted ON canvases(is_deleted);
+
+  -- Which pages a canvas shows or links to. A projection of canvases.content,
+  -- rewritten by repo.projectCanvas on every save, so a page can say which
+  -- canvases it is on. Cascades from both ends: a page deleted for good leaves
+  -- a card that draws as missing, and no row claiming otherwise.
+  CREATE TABLE IF NOT EXISTS canvas_refs (
+    canvas_id  TEXT NOT NULL REFERENCES canvases(id) ON DELETE CASCADE,
+    page_id    TEXT NOT NULL REFERENCES pages(id) ON DELETE CASCADE,
+    PRIMARY KEY (canvas_id, page_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_canvas_refs_page ON canvas_refs(page_id);
 `
 
 // ============================================================
@@ -879,6 +915,11 @@ export function applySchema(
     if (!columnExists('pages', 'is_locked')) {
       db.exec('ALTER TABLE pages ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0')
     }
+
+    // v14. Canvases. Both tables come from CURRENT_SCHEMA above with IF NOT
+    // EXISTS, so there is nothing to alter and nothing to rewrite — an existing
+    // vault simply has no canvases yet, and `canvas_refs` is refilled from
+    // `canvases` at startup by `repo.ensureCanvasRefs`.
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`)
   })

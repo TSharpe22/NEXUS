@@ -27,6 +27,7 @@ import { exportPageMarkdown } from './io'
 import { attachmentPath } from './files'
 import { getDataDir } from './database'
 import { extractAttachmentNames, parseDocument } from '../shared/document'
+import { parseCanvas, toJsonCanvas } from '../shared/canvas'
 import type { Page, PageLocation, Folder } from '../shared/types'
 
 const SETTING_ENABLED = 'mirror.enabled'
@@ -52,6 +53,16 @@ const INDEX_FILENAME = '_nexus-index.md'
  */
 const FILES_DIRNAME = '_files'
 const FILE_KEY_PREFIX = ' file:'
+
+/**
+ * Canvases go to one folder of their own, as JSON Canvas files Obsidian opens
+ * directly. They are small and there are few of them, so every pass writes
+ * every canvas — scoped or not — rather than tracking which are dirty: a page
+ * renamed anywhere changes the path a canvas card points at, and working out
+ * which canvases that touches costs more than comparing the files.
+ */
+const CANVAS_DIRNAME = 'Canvases'
+const CANVAS_KEY_PREFIX = ' canvas:'
 
 const DEBOUNCE_MS = 1500
 
@@ -536,6 +547,23 @@ export function syncNow(only?: string[]): MirrorResult {
     // picture already follows.
     if (page.is_locked) continue
     for (const name of extractAttachmentNames(parseDocument(page.content))) copyAttachment(name)
+  }
+
+  // Canvases, whole, every pass. The manifest keeps them under a prefix no
+  // page id can produce, and `desired` is what spares them from the deletion
+  // sweep below.
+  const usedCanvasNames = new Set<string>()
+  for (const canvas of repo.listCanvases()) {
+    const base = safeFileName(canvas.title)
+    let name = base
+    let counter = 2
+    while (usedCanvasNames.has(name.toLowerCase())) name = `${base} (${counter++})`
+    usedCanvasNames.add(name.toLowerCase())
+    const relPath = `${CANVAS_DIRNAME}/${name}.canvas`
+    desired.set(`${CANVAS_KEY_PREFIX}${canvas.id}`, relPath)
+    const full = repo.getCanvas(canvas.id)
+    if (!full) continue
+    writeIfChanged(relPath, toJsonCanvas(parseCanvas(full.content), (pageId) => paths.get(pageId) ?? null))
   }
 
   // The index names every page and its path, so any title or path change

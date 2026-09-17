@@ -64,7 +64,10 @@ export const SHORTCUTS: Shortcut[] = [
   { action: { go: 'notes' }, key: '2', mod: true, display: 'Cmd/Ctrl + 2', label: 'Go to Notes' },
   { action: { go: 'views' }, key: '3', mod: true, display: 'Cmd/Ctrl + 3', label: 'Go to Views' },
   { action: { go: 'tracker' }, key: '4', mod: true, display: 'Cmd/Ctrl + 4', label: 'Go to Tracker' },
-  { action: { go: 'settings' }, key: '5', mod: true, display: 'Cmd/Ctrl + 5', label: 'Go to Settings' }
+  { action: { go: 'settings' }, key: '5', mod: true, display: 'Cmd/Ctrl + 5', label: 'Go to Settings' },
+  // Six rather than renumbering: Settings kept 5 so nobody's fingers learn
+  // a new key for a screen that did not move.
+  { action: { go: 'canvas' }, key: '6', mod: true, display: 'Cmd/Ctrl + 6', label: 'Go to Canvas' }
 ]
 
 /** The editor's own bindings, which BlockNote owns — listed, not handled. */

@@ -142,6 +142,17 @@ const api: NexusAPI = {
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
   },
+  canvases: {
+    list: () => ipcRenderer.invoke('canvases:list'),
+    listTrashed: () => ipcRenderer.invoke('canvases:listTrashed'),
+    get: (id) => ipcRenderer.invoke('canvases:get', id),
+    create: (title) => ipcRenderer.invoke('canvases:create', title),
+    update: (id, data) => ipcRenderer.invoke('canvases:update', id, data),
+    trash: (id) => ipcRenderer.invoke('canvases:trash', id),
+    restore: (id) => ipcRenderer.invoke('canvases:restore', id),
+    remove: (id) => ipcRenderer.invoke('canvases:remove', id),
+    forPage: (pageId) => ipcRenderer.invoke('canvases:forPage', pageId)
+  },
   views: {
     list: () => ipcRenderer.invoke('views:list'),
     get: (id) => ipcRenderer.invoke('views:get', id),

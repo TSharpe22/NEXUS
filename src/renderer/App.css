@@ -149,7 +149,8 @@
    and their rails are meant to meet the sidebar rather than float inside a
    padded page. */
 .nx-content:has(.nx-notes),
-.nx-content:has(.nx-views) {
+.nx-content:has(.nx-views),
+.nx-content:has(.nx-canvas-screen) {
   overflow: hidden;
   padding: 0;
 }

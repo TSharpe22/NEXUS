@@ -1,11 +1,12 @@
 import { create } from 'zustand'
 import type { ViewDef, ViewDraft } from '@shared/views'
+import type { CanvasListItem } from '@shared/canvas'
 import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 import { localDateISO } from '@shared/journal-date'
 import { flushPendingWrites } from '../pending-writes'
 
-export type View = 'home' | 'notes' | 'views' | 'tracker' | 'settings'
+export type View = 'home' | 'notes' | 'views' | 'tracker' | 'canvas' | 'settings'
 
 /**
  * The nav sections, in the order they appear.
@@ -24,6 +25,7 @@ export const VIEW_META: Record<View, { label: string; hint: string }> = {
   notes: { label: 'Notes', hint: 'Write and edit pages' },
   views: { label: 'Views', hint: 'Saved questions about the vault' },
   tracker: { label: 'Tracker', hint: "What's due, week by week" },
+  canvas: { label: 'Canvas', hint: 'Cards, pages and arrows on an open board' },
   settings: { label: 'Settings', hint: 'Types, data, import and export' }
 }
 
@@ -68,6 +70,13 @@ interface AppState {
    */
   views: ViewDef[]
   activeViewId: string | null
+  /**
+   * Canvases, without their documents, and which one is open. In the store for
+   * the same reason views are: a canvas is reachable from the palette and from
+   * a page's backlinks, not only from its own screen.
+   */
+  canvases: CanvasListItem[]
+  activeCanvasId: string | null
   tags: TagWithCount[]
   loaded: boolean
 
@@ -233,6 +242,11 @@ interface AppState {
   deleteView: (id: string) => Promise<void>
   /** Jump to a view from anywhere: switches to Views and selects it. */
   openView: (id: string) => void
+
+  refreshCanvases: () => Promise<void>
+  setActiveCanvasId: (id: string | null) => void
+  /** Jump to a canvas from anywhere: switches to Canvas and selects it. */
+  openCanvas: (id: string) => void
 }
 
 /** How long "saved" stays on screen before the indicator goes quiet again. */
@@ -271,6 +285,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeTypeFilter: [],
   views: [],
   activeViewId: null,
+  canvases: [],
+  activeCanvasId: null,
   activePageTags: [],
 
   saveStatus: 'idle',
@@ -753,7 +769,21 @@ export const useAppStore = create<AppState>((set, get) => ({
     await get().refreshViews()
   },
 
-  openView: (id) => set({ activeView: 'views', activeViewId: id })
+  openView: (id) => set({ activeView: 'views', activeViewId: id }),
+
+  refreshCanvases: async () => {
+    const canvases = await window.api.canvases.list()
+    set((state) => ({
+      canvases,
+      // A canvas trashed from elsewhere should not stay open as if it were live.
+      activeCanvasId:
+        state.activeCanvasId && canvases.some((c) => c.id === state.activeCanvasId) ? state.activeCanvasId : null
+    }))
+  },
+
+  setActiveCanvasId: (id) => set({ activeCanvasId: id }),
+
+  openCanvas: (id) => set({ activeView: 'canvas', activeCanvasId: id })
 }))
 
 /**

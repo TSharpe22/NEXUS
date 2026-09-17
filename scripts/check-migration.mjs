@@ -642,6 +642,40 @@ torn.pragma('foreign_keys = ON')
 check('foreign keys satisfied', torn.pragma('foreign_key_check'), [])
 torn.close()
 
+// ------------------------------------------------------------------
+// v14: canvases arrive in a vault that already has pages, and cascade from
+// both ends.
+// ------------------------------------------------------------------
+console.log('\nv14 canvases on an existing vault:')
+{
+  const v13 = new Database(join(dir, 'v13.db'))
+  v13.pragma('foreign_keys = OFF')
+  applySchema(v13, () => null)
+  // Pretend the file was last written by the previous build: stamp 13 and drop
+  // what v14 adds, then open it again.
+  v13.exec('DROP TABLE canvas_refs; DROP TABLE canvases;')
+  v13.pragma('user_version = 13')
+  v13.prepare(`INSERT INTO pages (id, title, content) VALUES ('keep', 'Kept', '[]')`).run()
+  applySchema(v13, () => null)
+  v13.pragma('foreign_keys = ON')
+  const tables = v13.prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('canvases', 'canvas_refs') ORDER BY name`).all().map((r) => r.name)
+  check('both canvas tables exist', tables, ['canvas_refs', 'canvases'])
+  check('the file moves to the current version', v13.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+  check('existing pages are untouched', v13.prepare(`SELECT title FROM pages WHERE id = 'keep'`).get()?.title, 'Kept')
+  v13.prepare(`INSERT INTO canvases (id, title) VALUES ('c1', 'Board')`).run()
+  v13.prepare(`INSERT INTO canvas_refs (canvas_id, page_id) VALUES ('c1', 'keep')`).run()
+  v13.prepare(`DELETE FROM pages WHERE id = 'keep'`).run()
+  check('deleting a page drops its canvas refs', v13.prepare(`SELECT count(*) c FROM canvas_refs`).get().c, 0)
+  v13.prepare(`INSERT INTO pages (id, title, content) VALUES ('keep2', 'Kept', '[]')`).run()
+  v13.prepare(`INSERT INTO canvas_refs (canvas_id, page_id) VALUES ('c1', 'keep2')`).run()
+  v13.prepare(`DELETE FROM canvases WHERE id = 'c1'`).run()
+  check('deleting a canvas drops its refs', v13.prepare(`SELECT count(*) c FROM canvas_refs`).get().c, 0)
+  check('a new canvas starts as an empty JSON Canvas document',
+    (v13.prepare(`INSERT INTO canvases (id) VALUES ('c2') RETURNING content`).get()).content, '{"version":1,"nodes":[],"edges":[]}')
+  check('foreign keys satisfied', v13.pragma('foreign_key_check'), [])
+  v13.close()
+}
+
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)

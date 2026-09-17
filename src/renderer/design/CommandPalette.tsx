@@ -32,6 +32,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const openPage = useAppStore((s) => s.openPage)
   const setActiveView = useAppStore((s) => s.setActiveView)
   const createPage = useAppStore((s) => s.createPage)
+  const canvases = useAppStore((s) => s.canvases)
+  const openCanvas = useAppStore((s) => s.openCanvas)
 
   /**
    * The palette searches what pages *say*, not only what they are called.
@@ -106,6 +108,15 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     return out.slice(0, LIMIT)
   }, [query, indexed, fuzzyTitles, pages])
 
+  /** Canvases by title. There are few of them and they have no body to index. */
+  const canvasHits = useMemo(() => {
+    if (!query.trim()) return []
+    return new Fuse(canvases, { keys: ['title'], threshold: 0.4 })
+      .search(query)
+      .slice(0, 5)
+      .map((r) => r.item)
+  }, [canvases, query])
+
   if (!open) return null
 
   const select = (fn: () => void) => {
@@ -144,6 +155,20 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                         </span>
                       )}
                     </span>
+                  </Command.Item>
+                ))}
+              </Command.Group>
+            )}
+
+            {canvasHits.length > 0 && (
+              <Command.Group heading="Canvases">
+                {canvasHits.map((canvas) => (
+                  <Command.Item
+                    key={canvas.id}
+                    value={`canvas-${canvas.id}`}
+                    onSelect={() => select(() => openCanvas(canvas.id))}
+                  >
+                    {canvas.title || 'Untitled canvas'}
                   </Command.Item>
                 ))}
               </Command.Group>

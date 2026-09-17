@@ -776,6 +776,42 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  // ---------------------------------------------------------- canvases
+  // Every write names the canvas to the mirror. A canvas id is not a page id,
+  // so it dirties no page file; what it does is start the debounce, and every
+  // mirror pass writes every canvas regardless of scope.
+  const canvasHandler = <A extends unknown[], R>(channel: string, fn: (...args: A) => R, mirrorId?: (...args: A) => string) =>
+    ipcMain.handle(channel, (_, ...args) => {
+      try {
+        const result = fn(...(args as A))
+        if (mirrorId) mirror.scheduleSync(mirrorId(...(args as A)))
+        return result
+      } catch (e) {
+        rethrow(channel, e)
+      }
+    })
+  canvasHandler('canvases:list', () => repo.listCanvases())
+  canvasHandler('canvases:listTrashed', () => repo.listTrashedCanvases())
+  canvasHandler('canvases:get', (id: string) => repo.getCanvas(id))
+  ipcMain.handle('canvases:create', (_, title?: string) => {
+    try {
+      const canvas = repo.createCanvas(title)
+      mirror.scheduleSync(canvas.id)
+      return canvas
+    } catch (e) {
+      rethrow('canvases:create', e)
+    }
+  })
+  canvasHandler(
+    'canvases:update',
+    (id: string, data: { title?: string; content?: string }) => repo.updateCanvas(id, data),
+    (id) => id
+  )
+  canvasHandler('canvases:trash', (id: string) => repo.trashCanvas(id), (id) => id)
+  canvasHandler('canvases:restore', (id: string) => repo.restoreCanvas(id), (id) => id)
+  canvasHandler('canvases:remove', (id: string) => repo.deleteCanvasForever(id), (id) => id)
+  canvasHandler('canvases:forPage', (pageId: string) => repo.getCanvasesForPage(pageId))
+
   // ---------------------------------------------------------- views
   ipcMain.handle('views:list', () => {
     try {
@@ -1013,6 +1049,7 @@ export function registerIpcHandlers(): void {
       repo.ensureSearchIndex()
       repo.ensureTaskIndex()
       repo.ensureLinkIndex()
+      repo.ensureCanvasRefs()
 
       for (const win of BrowserWindow.getAllWindows()) win.webContents.reload()
       return { keptAt }

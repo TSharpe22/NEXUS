@@ -288,6 +288,15 @@ substitutes for the other.
   change long after its body was last touched. `completed_at` is the one field
   the document cannot answer — a checkbox records that it is ticked, never
   when — so the projector carries it across a reprojection.
+- `canvases` — `id, title, content, is_deleted, created_at, updated_at`.
+  `content` is a whole JSON Canvas document (`shared/canvas.ts`), stored as one
+  blob for the reason `pages.content` is. A canvas is its own table rather than
+  a kind of page: the page list, tracker, views, habits and graph all read
+  `pages` on the assumption that a body is a block document.
+- `canvas_refs` — `canvas_id, page_id`. Which pages a canvas shows or links to
+  by `[[Title]]`. A projection rewritten on every canvas save and rebuilt whole
+  at launch (a title-resolved link goes stale when a page is renamed); cascades
+  from both ends.
 - `activity_log` — `id, page_id, event_type, message, created_at`. Written
   whenever a page is created/edited/property-changed. Backs the Activity view
   and read through `activity:getRecent`. There is no Activity view any more;
@@ -824,6 +833,47 @@ Six sections, each a thin view over the same page/property model:
   gap is known, and deliberately left open until there is enough real use to
   say what belongs on such a list.
 
+- **Canvas** — boards of cards and arrows, in the open format Obsidian uses.
+  A list of canvases on the left (with its own trash), the open one on the
+  right, drawn with React Flow (`@xyflow/react`) — the one place Nexus takes a
+  library for interaction rather than hand-rolling it, because pan, zoom,
+  box-select, resize and connection handling are exactly the custom-overlay
+  work the first build died of. Four things are load-bearing.
+
+  **The document is JSON Canvas, with one change.** A card showing a page is
+  `{ type: 'page', pageId }`, not `{ type: 'file', file: 'path.md' }` — a path
+  moves whenever a page is renamed, an id never does. The mirror writes each
+  canvas to `Canvases/<title>.canvas` with page cards turned back into `file`
+  nodes pointing at the mirrored Markdown and colours mapped to JSON Canvas's
+  presets, so the files open in Obsidian as they are. Everything in the
+  document follows the `views.ts` contract: additive changes only, and a node
+  type this build does not know is drawn as a placeholder and written back
+  untouched, never dropped. `repo.updateCanvas` normalises every save on the
+  way in.
+
+  **Three kinds of card, and one editor at a time.** Text cards are Markdown
+  (rendered with `marked`: raw HTML escaped, images shown as their alt text so
+  a card never makes a network call, links opened outside the app, `[[Title]]`
+  resolved to a page on click). Page cards preview a page and, on double-click,
+  mount the real block editor inside the card — `Editor` with `compact`, the
+  same save path as Notes. Only the card being edited has an editor; the rest
+  are previews. "Make page" turns a text card that has outgrown itself into a
+  page and the card into that page's card. Groups are geometric, as in JSON
+  Canvas: a card belongs to a group by lying inside it, and dragging a group
+  carries what is inside.
+
+  **`flowToDoc` and `docToFlow` are the only seam.** React Flow's live state —
+  selection, drag, measured size — never reaches the document. Undo is a
+  cursor over serialised documents, which works only because the round trip
+  through the two functions is exact; the autosave (600ms) and the history
+  both fire only when the serialisation changes and no drag or resize is in
+  progress.
+
+  **Looking is not editing.** The viewport is kept per canvas in
+  `localStorage`, not in the document, so panning never bumps `updated_at` or
+  rewrites the mirror's file. A page's backlinks list the canvases it is on,
+  and the palette finds canvases by title. `scripts/probes/canvas.mjs` drives
+  all of it through the UI and checks what was stored.
 - **Settings** — types, data folder location, snapshots and restore,
   attachments (what is stored, what nothing points at, and the one button
   that deletes it), the day-start hour, the vault mirror, import/export,

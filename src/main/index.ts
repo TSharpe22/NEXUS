@@ -8,6 +8,7 @@ import {
   ensureSearchIndex,
   ensureTaskIndex,
   ensureLinkIndex,
+  ensureCanvasRefs,
   getCaptureAccelerator,
   getSetting,
   setSetting
@@ -242,6 +243,9 @@ if (!app.requestSingleInstanceLock()) {
     // v9 drops `links` to rebuild it with a source discriminator; this refills
     // it from both the documents and the relation properties.
     ensureLinkIndex()
+    // Canvas refs resolve `[[Title]]` against titles, so they are rebuilt
+    // whole on every launch rather than only when missing.
+    ensureCanvasRefs()
     registerIpcHandlers()
     setCaptureTarget(() => mainWindow)
     createWindow()
