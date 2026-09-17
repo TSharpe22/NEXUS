@@ -27,7 +27,7 @@ import { exportPageMarkdown } from './io'
 import { attachmentPath } from './files'
 import { getDataDir } from './database'
 import { extractAttachmentNames, parseDocument } from '../shared/document'
-import { parseCanvas, toJsonCanvas } from '../shared/canvas'
+import { canvasAttachmentNames, parseCanvas, toJsonCanvas } from '../shared/canvas'
 import type { Page, PageLocation, Folder } from '../shared/types'
 
 const SETTING_ENABLED = 'mirror.enabled'
@@ -563,7 +563,15 @@ export function syncNow(only?: string[]): MirrorResult {
     desired.set(`${CANVAS_KEY_PREFIX}${canvas.id}`, relPath)
     const full = repo.getCanvas(canvas.id)
     if (!full) continue
-    writeIfChanged(relPath, toJsonCanvas(parseCanvas(full.content), (pageId) => paths.get(pageId) ?? null))
+    const canvasDoc = parseCanvas(full.content)
+    writeIfChanged(
+      relPath,
+      toJsonCanvas(canvasDoc, (pageId) => paths.get(pageId) ?? null, (name) => `${FILES_DIRNAME}/${name}`)
+    )
+    // Pictures are copied beside the notes as a page's are — every pass,
+    // because canvases are written every pass and `desiredFiles` is what keeps
+    // a scoped pass from deleting the copies.
+    for (const name of canvasAttachmentNames(canvasDoc)) copyAttachment(name)
   }
 
   // The index names every page and its path, so any title or path change

@@ -27,6 +27,8 @@ export interface CanvasActions {
   /** A text card at a screen point — double-clicking inside a group. */
   createTextAt(clientX: number, clientY: number): void
   openPage(pageId: string): void
+  /** Show an image card's picture at its own proportions, keeping its width. */
+  fitImage(id: string, naturalWidth: number, naturalHeight: number): void
   /** Follow a `[[Title]]`: open the page with that title, or make it. */
   openTitle(title: string): Promise<void>
 }

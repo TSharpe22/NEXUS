@@ -13,7 +13,7 @@ import {
 import * as lock from './lock'
 import { statSync } from 'fs'
 import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
-import { canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
+import { canvasAttachmentNames, canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
 import type {
   FilterField,
   FilterLeaf,
@@ -175,6 +175,11 @@ export function getReferencedAttachments(): Set<string> {
   // that table exists. See SCHEMA_VERSION note 13.
   const locked = db.prepare('SELECT name FROM locked_attachments').all() as { name: string }[]
   for (const row of locked) names.add(row.name)
+  // Canvases hold pictures too, and trashed ones count for the same reason a
+  // trashed page does. Missing this would make "reclaim space" delete every
+  // image off every canvas.
+  const canvases = db.prepare('SELECT content FROM canvases').all() as { content: string }[]
+  for (const row of canvases) for (const name of canvasAttachmentNames(parseCanvas(row.content))) names.add(name)
   return names
 }
 

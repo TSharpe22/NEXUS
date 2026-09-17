@@ -27,6 +27,8 @@ export interface CardData extends Record<string, unknown> {
   pageId?: string
   /** groups */
   label?: string
+  /** images: the attachment's stored name */
+  file?: string
   /**
    * The stored node as it was read, for fields this build does not draw. An
    * unknown node type is written back from this, whole; a known one has its
@@ -65,6 +67,7 @@ export function docToFlow(doc: CanvasDoc): { nodes: CardNode[]; edges: LinkEdge[
     if (node.type === 'text') data.text = (node as { text: string }).text
     if (node.type === 'page') data.pageId = (node as { pageId: string }).pageId
     if (node.type === 'group') data.label = (node as { label?: string }).label
+    if (node.type === 'image') data.file = (node as { file: string }).file
     return {
       id: node.id,
       type: known ? node.type : 'unknown',
@@ -110,6 +113,7 @@ export function flowToDoc(nodes: CardNode[], edges: LinkEdge[]): CanvasDoc {
     else delete base.color
     if (node.type === 'text') base.text = node.data.text ?? ''
     if (node.type === 'page') base.pageId = node.data.pageId
+    if (node.type === 'image') base.file = node.data.file
     if (node.type === 'group') {
       if (node.data.label) base.label = node.data.label
       else delete base.label

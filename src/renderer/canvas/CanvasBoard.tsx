@@ -17,7 +17,8 @@ import {
 } from '@xyflow/react'
 import '@xyflow/react/dist/base.css'
 import toast from 'react-hot-toast'
-import { CARD_SIZE, parseCanvas, serializeCanvas, type CanvasColor, type Canvas } from '@shared/canvas'
+import { CARD_SIZE, MAX_IMAGE_CARD, parseCanvas, serializeCanvas, type CanvasColor, type Canvas } from '@shared/canvas'
+import { attachmentName } from '@shared/attachments'
 import { useAppStore } from '../store/app-store'
 import { useDebounce } from '../hooks/use-debounce'
 import { registerPendingWrite } from '../pending-writes'
@@ -160,13 +161,26 @@ function Board({ canvas }: { canvas: Canvas }) {
   }, [flow])
 
   const addCard = useCallback(
-    (type: 'text' | 'page' | 'group', centre: { x: number; y: number }, data: Partial<CardData> = {}) => {
-      const size = CARD_SIZE[type]
+    (
+      type: 'text' | 'page' | 'group' | 'image',
+      centre: { x: number; y: number },
+      data: Partial<CardData> = {},
+      size: { width: number; height: number } = CARD_SIZE[type]
+    ) => {
       const id = uid()
+      // A second paste or "+ text" in the same spot steps down and right
+      // rather than landing exactly on the first, where it would look like
+      // nothing happened.
+      const position = { x: Math.round(centre.x - size.width / 2), y: Math.round(centre.y - size.height / 2) }
+      const taken = flow.getNodes()
+      for (let i = 0; i < 20 && taken.some((n) => Math.abs(n.position.x - position.x) < 8 && Math.abs(n.position.y - position.y) < 8); i++) {
+        position.x += 32
+        position.y += 32
+      }
       const node: CardNode = {
         id,
         type,
-        position: { x: Math.round(centre.x - size.width / 2), y: Math.round(centre.y - size.height / 2) },
+        position,
         width: size.width,
         height: size.height,
         zIndex: type === 'group' ? 0 : 1,
@@ -182,7 +196,52 @@ function Board({ canvas }: { canvas: Canvas }) {
       if (type === 'group') setEditingId(id)
       return id
     },
-    [setNodes, setEdges]
+    [setNodes, setEdges, flow]
+  )
+
+  /**
+   * Put pictures on the canvas: stored in the attachment store exactly as a
+   * picture pasted into a page is, then placed as cards sized to their own
+   * proportions. Several at once are fanned out rather than stacked.
+   */
+  const imageInput = useRef<HTMLInputElement>(null)
+  const addImages = useCallback(
+    async (files: File[], centre: { x: number; y: number }) => {
+      const images = files.filter((f) => f.type.startsWith('image/'))
+      if (images.length === 0) return
+      let offset = 0
+      for (const file of images) {
+        try {
+          const bytes = new Uint8Array(await file.arrayBuffer())
+          const stored = await window.api.files.store(bytes, file.name || `pasted.${file.type.split('/')[1] ?? 'png'}`)
+          const name = attachmentName(stored.url)
+          if (!name) continue
+          const size = await new Promise<{ width: number; height: number }>((resolve) => {
+            const url = URL.createObjectURL(file)
+            const img = new Image()
+            img.onload = () => {
+              const scale = Math.min(1, MAX_IMAGE_CARD.width / img.naturalWidth, MAX_IMAGE_CARD.height / img.naturalHeight)
+              resolve({
+                width: Math.max(60, Math.round(img.naturalWidth * scale)),
+                height: Math.max(40, Math.round(img.naturalHeight * scale))
+              })
+              URL.revokeObjectURL(url)
+            }
+            img.onerror = () => {
+              resolve({ ...CARD_SIZE.image })
+              URL.revokeObjectURL(url)
+            }
+            img.src = url
+          })
+          addCard('image', { x: centre.x + offset, y: centre.y + offset }, { file: name }, size)
+          offset += 32
+        } catch (e) {
+          console.error('[nexus] could not add a picture to the canvas', e)
+          toast.error('Could not add that picture')
+        }
+      }
+    },
+    [addCard]
   )
 
   const onConnect = useCallback(
@@ -322,6 +381,16 @@ function Board({ canvas }: { canvas: Canvas }) {
         void save.flush()
         storeOpenPage(pageId)
       },
+      fitImage: (id, naturalWidth, naturalHeight) => {
+        if (!naturalWidth || !naturalHeight) return
+        setNodes((current) =>
+          current.map((n) =>
+            n.id === id
+              ? { ...n, height: Math.round(((n.width ?? CARD_SIZE.image.width) * naturalHeight) / naturalWidth) }
+              : n
+          )
+        )
+      },
       openTitle: async (title) => {
         const wanted = title.trim().toLowerCase()
         const match = [...useAppStore.getState().pages]
@@ -399,6 +468,34 @@ function Board({ canvas }: { canvas: Canvas }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [editingId, travel, flow, setNodes, setEdges])
 
+  /**
+   * Paste onto the canvas: a picture becomes an image card, plain text a text
+   * card. Only when nothing that takes text has focus — a paste into a card,
+   * the title or the block editor is theirs.
+   */
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.nodeName === 'INPUT' || target.nodeName === 'TEXTAREA' || target.isContentEditable || target.closest('.nokey'))) return
+      if (!wrapperRef.current?.isConnected) return
+      const files = Array.from(e.clipboardData?.files ?? [])
+      if (files.some((f) => f.type.startsWith('image/'))) {
+        e.preventDefault()
+        void addImages(files, viewCentre())
+        return
+      }
+      const text = e.clipboardData?.getData('text/plain')
+      if (text && text.trim()) {
+        e.preventDefault()
+        const id = addCard('text', viewCentre(), { text })
+        // A pasted card is finished, not a draft to keep typing into.
+        setEditingId((current) => (current === id ? null : current))
+      }
+    }
+    window.addEventListener('paste', onPaste)
+    return () => window.removeEventListener('paste', onPaste)
+  }, [addImages, addCard, viewCentre])
+
   // Arrowheads take the arrow's colour, which React Flow wants on the edge
   // object rather than from CSS.
   const drawnEdges = useMemo(
@@ -429,6 +526,18 @@ function Board({ canvas }: { canvas: Canvas }) {
           if ((e.target as Element).classList.contains('react-flow__pane')) {
             addCard('text', flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }))
           }
+        }}
+        onDragOver={(e) => {
+          if (e.dataTransfer.types.includes('Files')) {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'copy'
+          }
+        }}
+        onDrop={(e) => {
+          const files = Array.from(e.dataTransfer.files)
+          if (files.length === 0) return
+          e.preventDefault()
+          void addImages(files, flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }))
         }}
       >
         <ReactFlow<CardNode, LinkEdge>
@@ -483,6 +592,21 @@ function Board({ canvas }: { canvas: Canvas }) {
             <button onClick={() => addCard('group', viewCentre())} title="A labelled region that carries what is inside it">
               + group
             </button>
+            <button onClick={() => imageInput.current?.click()} title="A picture (or paste one, or drop files on the canvas)">
+              + image
+            </button>
+            <input
+              ref={imageInput}
+              type="file"
+              accept="image/*"
+              multiple
+              hidden
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? [])
+                e.target.value = ''
+                void addImages(files, viewCentre())
+              }}
+            />
             <span className="nx-canvas-bar__sep" />
             <button onClick={() => travel(-1)} disabled={cursor.current === 0} title="Undo (Cmd/Ctrl + Z)">
               undo

@@ -20,6 +20,8 @@
  *     edited by a later Nexus must survive being opened in this one.
  */
 
+import { ATTACHMENT_NAME_RE } from './attachments'
+
 /**
  * A card's colour: the semantic tokens, never a palette of the canvas's own.
  * `critical` is allowed here where the graph leaves it out — a card marked red
@@ -66,13 +68,24 @@ export interface CanvasGroupNode extends NodeBase {
   label?: string
 }
 
+/**
+ * A picture, held in the attachment store like one pasted into a page. `file`
+ * is the stored name — the SHA-256 of its bytes and an extension — not a URL
+ * and not a path, so the same screenshot on a page and on a canvas is one file,
+ * and the mirror decides where it sits on disk.
+ */
+export interface CanvasImageNode extends NodeBase {
+  type: 'image'
+  file: string
+}
+
 /** A node from a later build. Carried, never interpreted. */
 export interface CanvasUnknownNode extends NodeBase {
   type: string
   [key: string]: unknown
 }
 
-export type CanvasNode = CanvasTextNode | CanvasPageNode | CanvasGroupNode
+export type CanvasNode = CanvasTextNode | CanvasPageNode | CanvasGroupNode | CanvasImageNode
 
 export interface CanvasEdge {
   id: string
@@ -112,8 +125,12 @@ export const EMPTY_CANVAS: CanvasDoc = { version: 1, nodes: [], edges: [] }
 export const CARD_SIZE = {
   text: { width: 260, height: 140 },
   page: { width: 320, height: 220 },
-  group: { width: 520, height: 360 }
+  group: { width: 520, height: 360 },
+  image: { width: 320, height: 240 }
 } as const
+
+/** The largest an image card starts at. It keeps its aspect ratio inside this box. */
+export const MAX_IMAGE_CARD = { width: 480, height: 400 }
 
 /** The smallest a card may be resized to. */
 export const MIN_CARD = { width: 140, height: 60 }
@@ -123,7 +140,7 @@ const isColor = (v: unknown): v is CanvasColor => CANVAS_COLORS.includes(v as Ca
 const isSide = (v: unknown): v is CanvasSide => CANVAS_SIDES.includes(v as CanvasSide)
 
 export function isKnownNode(node: CanvasNode | CanvasUnknownNode): node is CanvasNode {
-  return node.type === 'text' || node.type === 'page' || node.type === 'group'
+  return node.type === 'text' || node.type === 'page' || node.type === 'group' || node.type === 'image'
 }
 
 /**
@@ -153,7 +170,6 @@ export function parseCanvas(content: string | null | undefined): CanvasDoc {
     const n = entry as Record<string, unknown>
     if (typeof n.id !== 'string' || !n.id || seen.has(n.id)) continue
     if (typeof n.type !== 'string' || !isNumber(n.x) || !isNumber(n.y)) continue
-    seen.add(n.id)
 
     const defaults = CARD_SIZE[n.type as keyof typeof CARD_SIZE] ?? CARD_SIZE.text
     const base = {
@@ -170,9 +186,15 @@ export function parseCanvas(content: string | null | undefined): CanvasDoc {
     if (n.type === 'text') base.text = typeof n.text === 'string' ? n.text : ''
     else if (n.type === 'page') {
       if (typeof n.pageId !== 'string' || !n.pageId) continue
+    } else if (n.type === 'image') {
+      // The name is the whole of the traversal defence for attachments; a
+      // card that names anything else is not one of ours and is not kept.
+      if (typeof n.file !== 'string' || !ATTACHMENT_NAME_RE.test(n.file)) continue
     } else if (n.type === 'group') {
       if ('label' in base && typeof base.label !== 'string') delete base.label
     }
+    // Only a node that is kept can be an arrow's end.
+    seen.add(n.id)
     nodes.push(base as unknown as CanvasNode | CanvasUnknownNode)
   }
 
@@ -231,6 +253,17 @@ export function canvasPageRefs(doc: CanvasDoc, titleToId: (title: string) => str
   return [...ids]
 }
 
+/** Every attachment a canvas's image cards point at. */
+export function canvasAttachmentNames(doc: CanvasDoc): string[] {
+  const names = new Set<string>()
+  for (const node of doc.nodes) {
+    if (node.type === 'image' && typeof (node as CanvasImageNode).file === 'string') {
+      names.add((node as CanvasImageNode).file)
+    }
+  }
+  return [...names]
+}
+
 /**
  * JSON Canvas's preset colours, "1" to "6": red, orange, yellow, green, cyan,
  * purple. The mapping is by meaning rather than by hue — `accent` is Nexus's
@@ -248,9 +281,14 @@ const JSON_CANVAS_COLOR: Record<CanvasColor, string> = {
  * The document as Obsidian reads it. `pathFor` gives a page's path inside the
  * mirror, or null for a page that has none (trashed, deleted, locked pages all
  * still have one) — a card whose page has gone becomes a text card saying so,
- * rather than a file node pointing at nothing.
+ * rather than a file node pointing at nothing. `fileFor` gives an attachment's
+ * path inside the mirror; image cards become `file` nodes pointing at it.
  */
-export function toJsonCanvas(doc: CanvasDoc, pathFor: (pageId: string) => string | null): string {
+export function toJsonCanvas(
+  doc: CanvasDoc,
+  pathFor: (pageId: string) => string | null,
+  fileFor: (name: string) => string
+): string {
   const nodes = doc.nodes.map((node) => {
     const { color, ...rest } = node as CanvasNode & { color?: CanvasColor }
     const base: Record<string, unknown> = { ...rest }
@@ -260,6 +298,7 @@ export function toJsonCanvas(doc: CanvasDoc, pathFor: (pageId: string) => string
       const file = pathFor(pageId)
       return file ? { ...withoutId, type: 'file', file } : { ...withoutId, type: 'text', text: '*A page that no longer exists.*' }
     }
+    if (node.type === 'image') return { ...base, type: 'file', file: fileFor((node as CanvasImageNode).file) }
     return base
   })
   const edges = doc.edges.map((edge) => {

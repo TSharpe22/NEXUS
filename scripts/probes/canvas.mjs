@@ -340,6 +340,99 @@ state = await doc()
 check('deleting a card takes its arrows with it', !state.doc.nodes.some((n) => n.id === textNode.id) && state.doc.edges.length === 0)
 check('a card that goes takes its [[link]] ref with it', (await page.evaluate((id) => window.api.canvases.forPage(id), pages.training)).length === 0)
 
+// ---------------------------------------------------------------- images
+log('— images —')
+/** A real PNG, drawn in the page: `w`×`h`, one colour. */
+const makePng = (w, h, colour) =>
+  page.evaluateHandle(async ({ w, h, colour }) => {
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const g = c.getContext('2d')
+    g.fillStyle = colour
+    g.fillRect(0, 0, w, h)
+    const blob = await new Promise((r) => c.toBlob(r, 'image/png'))
+    return new File([blob], `drawn-${w}x${h}.png`, { type: 'image/png' })
+  }, { w, h, colour })
+
+const imageCount = async () => (await doc()).doc.nodes.filter((n) => n.type === 'image').length
+let spot = await emptySpot()
+const wide = await makePng(400, 200, '#69b48a')
+await page.evaluate(({ file, x, y }) => {
+  const dt = new DataTransfer()
+  dt.items.add(file)
+  const target = document.elementFromPoint(x, y)
+  target.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true }))
+  target.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, clientX: x, clientY: y, bubbles: true, cancelable: true }))
+}, { file: wide, x: spot.x, y: spot.y })
+await sleep(SAVE_WAIT + 300)
+state = await doc()
+const dropped = state.doc.nodes.find((n) => n.type === 'image')
+check('dropping a picture file makes an image card', !!dropped)
+check('the card names a stored attachment, not a path', /^[0-9a-f]{64}\.png$/.test(dropped?.file ?? ''), dropped?.file)
+check('and starts at the picture\'s proportions', dropped && Math.abs(dropped.width / dropped.height - 2) < 0.05, `${dropped?.width}×${dropped?.height}`)
+check('the picture draws', await page.evaluate((id) => {
+  const img = document.querySelector(`[data-id="${id}"] img`)
+  return !!img && img.complete && img.naturalWidth === 400
+}, dropped.id))
+
+const tall = await makePng(120, 240, '#7ea3c9')
+await clickEmpty()
+await page.evaluate((file) => {
+  const dt = new DataTransfer()
+  dt.items.add(file)
+  document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+}, tall)
+await sleep(SAVE_WAIT + 300)
+check('pasting a picture makes an image card', (await imageCount()) === 2)
+
+await clickEmpty()
+await page.evaluate(() => {
+  const dt = new DataTransfer()
+  dt.setData('text/plain', 'pasted thought')
+  document.body.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+})
+await sleep(SAVE_WAIT)
+check('pasting text makes a text card', (await doc()).doc.nodes.some((n) => n.type === 'text' && n.text === 'pasted thought'))
+check('a paste into a text field is left to the field', await page.evaluate(async () => {
+  const before = (await window.api.canvases.get((await window.api.canvases.list())[0].id)).content
+  const input = document.querySelector('.nx-canvas-main__title')
+  input.focus()
+  const dt = new DataTransfer()
+  dt.setData('text/plain', 'not a card')
+  input.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }))
+  await new Promise((r) => setTimeout(r, 1200))
+  input.blur()
+  const after = (await window.api.canvases.get((await window.api.canvases.list())[0].id)).content
+  return !after.includes('not a card') && before.length > 0
+}))
+
+// Resizing an image keeps its shape. Fitted first: by now the board is
+// bigger than the window, and a handle off-screen cannot be grabbed.
+await page.click('.nx-canvas-bar button:text-is("fit")')
+await sleep(500)
+await clickCard(dropped.id)
+await sleep(200)
+const imgCorner = await centre(`[data-id="${dropped.id}"] .react-flow__resize-control.handle.bottom.right`)
+await page.mouse.move(imgCorner.x, imgCorner.y)
+await page.mouse.down()
+for (let i = 1; i <= 8; i++) await page.mouse.move(imgCorner.x + i * 15, imgCorner.y + i * 2)
+await page.mouse.up()
+await sleep(SAVE_WAIT)
+const resizedImg = (await doc()).doc.nodes.find((n) => n.id === dropped.id)
+check('resizing an image keeps its proportions', Math.abs(resizedImg.width / resizedImg.height - 2) < 0.08 && resizedImg.width > dropped.width, `${resizedImg.width}×${resizedImg.height}`)
+
+const stats = await page.evaluate(() => window.api.files.stats())
+check('reclaiming space counts canvas pictures as in use', stats.unreferencedCount === 0, JSON.stringify(stats))
+await page.evaluate(() => window.api.files.reclaim())
+await page.evaluate(() => window.location.reload())
+await page.waitForSelector('.nx-app')
+await page.keyboard.press(`${MOD}+6`)
+await page.waitForSelector('.react-flow__node-image img')
+await sleep(900)
+check('and a reclaim leaves them on disk', await page.evaluate(() =>
+  [...document.querySelectorAll('.react-flow__node-image img')].every((img) => img.complete && img.naturalWidth > 0)))
+
 // ---------------------------------------------------------------- persistence
 log('— persistence —')
 await page.evaluate(async (cid) => {
@@ -397,6 +490,8 @@ if (files.includes('Quarter plan.canvas')) {
   const fileNode = written.nodes.find((n) => n.type === 'file')
   check('page cards become JSON Canvas file nodes pointing at the mirrored note', fileNode?.file?.endsWith('.md') && existsSync(join(mirrorDir, fileNode.file)), fileNode?.file)
   check('colours become JSON Canvas presets', written.nodes.some((n) => /^[1-6]$/.test(n.color ?? '')))
+  const pictures = written.nodes.filter((n) => n.type === 'file' && n.file.startsWith('_files/'))
+  check('image cards become file nodes pointing at copied pictures', pictures.length === 2 && pictures.every((n) => existsSync(join(mirrorDir, n.file))), pictures.map((n) => n.file).join(', '))
 }
 
 // ---------------------------------------------------------------- trash

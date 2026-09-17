@@ -13,6 +13,7 @@ import {
 } from '@xyflow/react'
 import { CANVAS_COLORS, MIN_CARD, type CanvasColor } from '@shared/canvas'
 import { documentPreview } from '@shared/document'
+import { attachmentUrl } from '@shared/attachments'
 import { useAppStore } from '../store/app-store'
 import { Editor } from '../editor/Editor'
 import { relativeTime } from '../hooks/use-relative-time'
@@ -79,7 +80,8 @@ function CardFrame({
   editing,
   tools,
   children,
-  onDoubleClick
+  onDoubleClick,
+  keepAspectRatio
 }: {
   id: string
   selected: boolean
@@ -89,6 +91,7 @@ function CardFrame({
   tools?: ReactNode
   children: ReactNode
   onDoubleClick?: (e: React.MouseEvent) => void
+  keepAspectRatio?: boolean
 }) {
   const { remove } = useCanvas()
   const alone = useStore(selectedCount) === 1
@@ -96,6 +99,7 @@ function CardFrame({
     <>
       <NodeResizer
         isVisible={selected && !editing}
+        keepAspectRatio={keepAspectRatio}
         minWidth={MIN_CARD.width}
         minHeight={MIN_CARD.height}
         lineClassName="nx-canvas-resize-line"
@@ -366,6 +370,55 @@ export function GroupCard({ id, data, selected }: NodeProps<CardNode>) {
 }
 
 // ------------------------------------------------------------------
+// Image
+// ------------------------------------------------------------------
+
+export function ImageCard({ id, data, selected }: NodeProps<CardNode>) {
+  const { fitImage } = useCanvas()
+  const [failed, setFailed] = useState(false)
+  const natural = useRef<{ w: number; h: number } | null>(null)
+  const src = data.file ? attachmentUrl(data.file) : ''
+
+  return (
+    <CardFrame
+      id={id}
+      kind="image"
+      selected={selected}
+      color={data.color}
+      keepAspectRatio
+      tools={
+        !failed && (
+          <button
+            onClick={() => natural.current && fitImage(id, natural.current.w, natural.current.h)}
+            title="Undo any stretching: back to the picture's own proportions"
+          >
+            fit to image
+          </button>
+        )
+      }
+    >
+      {failed || !src ? (
+        <div className="nx-canvas-card__missing">
+          <div className="nx-canvas-card__title">A missing picture</div>
+          <div className="nx-type-data">its file is no longer in the attachment store</div>
+        </div>
+      ) : (
+        <img
+          className="nx-canvas-card__image"
+          src={src}
+          alt=""
+          draggable={false}
+          onLoad={(e) => {
+            natural.current = { w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight }
+          }}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </CardFrame>
+  )
+}
+
+// ------------------------------------------------------------------
 // A card from a later build
 // ------------------------------------------------------------------
 
@@ -380,7 +433,7 @@ export function UnknownCard({ id, data, selected }: NodeProps<CardNode>) {
   )
 }
 
-export const CARD_TYPES = { text: TextCard, page: PageCard, group: GroupCard, unknown: UnknownCard }
+export const CARD_TYPES = { text: TextCard, page: PageCard, group: GroupCard, image: ImageCard, unknown: UnknownCard }
 
 // ------------------------------------------------------------------
 // Arrows

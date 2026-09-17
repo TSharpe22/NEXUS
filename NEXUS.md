@@ -865,6 +865,16 @@ Six sections, each a thin view over the same page/property model:
   **`flowToDoc` and `docToFlow` are the only seam.** React Flow's live state —
   selection, drag, measured size — never reaches the document. Undo is a
   cursor over serialised documents, which works only because the round trip
+  **Pictures are attachments, like a page's.** Paste one, drop files on the
+  board, or use "+ image": each is written to the attachment store and the
+  card stores only its content-addressed name (`{ type: 'image', file }`),
+  sized to the picture's proportions and resized with them. Pasting plain text
+  onto the board makes a text card; a paste into anything that takes text is
+  left to it. `repo.getReferencedAttachments` walks every canvas, trash
+  included, because reclaim deletes what that set does not name — without it,
+  "reclaim space" would empty every canvas of its pictures. The mirror copies
+  them to `_files/` and writes image cards as `file` nodes pointing there.
+
   through the two functions is exact; the autosave (600ms) and the history
   both fire only when the serialisation changes and no drag or resize is in
   progress.
