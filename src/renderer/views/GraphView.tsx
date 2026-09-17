@@ -23,6 +23,8 @@ interface Props {
   showTags?: boolean
   /** Draw each folder as a hub its pages, and its child folders, are tied to. */
   showFolders?: boolean
+  /** Draw each canvas as a hub tied to the pages it shows or links to. */
+  showCanvases?: boolean
   colour?: GraphColour
   pins?: GraphPins
   onPinsChange?: (next: GraphPins) => void
@@ -45,7 +47,7 @@ interface Vec {
   fixed?: boolean
 }
 
-type NodeKind = 'page' | 'tag' | 'folder'
+type NodeKind = 'page' | 'tag' | 'folder' | 'canvas'
 
 interface SimNode {
   id: string
@@ -243,6 +245,7 @@ export function GraphView({
   layoutKey,
   showTags = false,
   showFolders = false,
+  showCanvases = false,
   colour = 'none',
   pins = EMPTY_PINS,
   onPinsChange,
@@ -251,6 +254,7 @@ export function GraphView({
   controls
 }: Props) {
   const openPage = useAppStore((s) => s.openPage)
+  const openCanvas = useAppStore((s) => s.openCanvas)
   const activePageId = useAppStore((s) => s.activePageId)
   const types = useAppStore((s) => s.types)
 
@@ -370,6 +374,21 @@ export function GraphView({
       }
     }
 
+    if (showCanvases) {
+      const live = new Set(graph.nodes.map((n) => n.id))
+      for (const canvas of graph.canvases ?? []) {
+        const pageIds = canvas.page_ids.filter((id) => live.has(id))
+        nodes.push({
+          id: `canvas:${canvas.id}`,
+          kind: 'canvas',
+          title: canvas.title || 'Untitled canvas',
+          degree: pageIds.length,
+          refId: canvas.id
+        })
+        for (const pageId of pageIds) edges.push({ source: pageId, target: `canvas:${canvas.id}`, hub: true })
+      }
+    }
+
     const present = new Set(nodes.map((n) => n.id))
     return {
       nodes,
@@ -377,7 +396,7 @@ export function GraphView({
       pageCount: graph.nodes.length,
       linkCount: graph.edges.length
     }
-  }, [graph, showTags, showFolders])
+  }, [graph, showTags, showFolders, showCanvases])
 
   /**
    * Which page nodes carry a standing label. Everything, until there are
@@ -953,6 +972,7 @@ export function GraphView({
   const nodeTone = (node: SimNode): { className: string; tone?: string } => {
     if (node.kind === 'tag') return { className: '', tone: node.tone }
     if (node.kind === 'folder') return { className: '' }
+    if (node.kind === 'canvas') return { className: '', tone: 'info' }
     if (colour === 'recency') return { className: recencyClass(daysSince(node.updated_at, nowMs)) }
     if (colour === 'type') return { className: '', tone: node.type_id ? typeTone.get(node.type_id) : undefined }
     return { className: '' }
@@ -1023,7 +1043,7 @@ export function GraphView({
                 labelled.has(node.id) ||
                 node.id === hovered ||
                 active
-              const clickable = node.kind === 'page' || (node.kind === 'tag' && !!onOpenTag)
+              const clickable = node.kind === 'page' || node.kind === 'canvas' || (node.kind === 'tag' && !!onOpenTag)
               return (
                 <g
                   key={node.id}
@@ -1061,6 +1081,7 @@ export function GraphView({
                     }
                     if (node.kind === 'page') openPage(node.id)
                     else if (node.kind === 'tag' && node.refId) onOpenTag?.(node.refId)
+                    else if (node.kind === 'canvas' && node.refId) openCanvas(node.refId)
                   }}
                 >
                   <circle className="nx-graph__node-hit" r={r + 8} />
@@ -1078,6 +1099,13 @@ export function GraphView({
                       height={r * 1.6}
                       transform="rotate(45)"
                     />
+                  ) : node.kind === 'canvas' ? (
+                    // A board: wider than it is tall, and split by a rule, so
+                    // it can never be read as a folder's square at a glance.
+                    <g className="nx-graph__node-dot nx-graph__node-dot--hub nx-graph__node-dot--canvas">
+                      <rect x={-r * 1.15} y={-r * 0.75} width={r * 2.3} height={r * 1.5} />
+                      <line x1={-r * 0.2} y1={-r * 0.75} x2={-r * 0.2} y2={r * 0.75} />
+                    </g>
                   ) : (
                     <rect
                       className="nx-graph__node-dot nx-graph__node-dot--hub"

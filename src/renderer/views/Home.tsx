@@ -180,6 +180,7 @@ export function Home() {
   const patchPage = useAppStore((s) => s.patchPage)
   const pages = useAppStore((s) => s.pages)
   const types = useAppStore((s) => s.types)
+  const canvases = useAppStore((s) => s.canvases)
   const views = useAppStore((s) => s.views)
 
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
@@ -236,6 +237,7 @@ export function Home() {
       pages,
       types,
       views,
+      canvases,
       openPage,
       goToTracker: (mode) => {
         setTrackerMode(mode)
@@ -284,6 +286,7 @@ export function Home() {
       pages,
       types,
       views,
+      canvases,
       openPage,
       openTodayEntry,
       reload,

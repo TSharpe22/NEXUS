@@ -206,9 +206,11 @@ made before building, by the user:
 - **A mix of card kinds.** Markdown text cards for speed, page cards that open
   the real block editor in place, one editor mounted at a time.
 
-**Left, deliberately:** images and file cards, web-link cards, pasting cards
-between canvases, canvases on the graph as hubs, and folders or tags for
-canvases. Each is additive to the stored format.
+Followed by pictures on canvases (paste, drop, or pick; stored as
+attachments and counted by reclaim) and canvases as hubs on the Home graph.
+
+**Left, deliberately:** web-link cards, copying cards between canvases, and
+folders or tags for canvases. Each is additive to the stored format.
 
 ## Deferred
 

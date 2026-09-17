@@ -101,6 +101,20 @@
   stroke-width: 1.5;
 }
 
+.nx-graph__node-dot--canvas rect,
+.nx-graph__node-dot--canvas line {
+  fill: var(--nx-surface-sunken);
+  stroke: var(--nx-graph-tone);
+  stroke-width: 1.5;
+}
+
+.nx-graph__node:hover .nx-graph__node-dot--canvas rect,
+.nx-graph__node:hover .nx-graph__node-dot--canvas line,
+.nx-graph__node--lit .nx-graph__node-dot--canvas rect,
+.nx-graph__node--lit .nx-graph__node-dot--canvas line {
+  stroke: var(--nx-accent);
+}
+
 .nx-graph__node-pin {
   fill: none;
   stroke: var(--nx-text-dim);
@@ -141,7 +155,8 @@
 }
 
 .nx-graph__node--tag .nx-graph__node-label,
-.nx-graph__node--folder .nx-graph__node-label {
+.nx-graph__node--folder .nx-graph__node-label,
+.nx-graph__node--canvas .nx-graph__node-label {
   fill: var(--nx-text);
   font-size: calc(11px * var(--nx-graph-label-scale, 1));
 }

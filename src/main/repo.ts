@@ -2973,7 +2973,22 @@ export function getGraph(): GraphData {
     .prepare('SELECT id, name, parent_folder_id FROM folders ORDER BY sort_order ASC')
     .all() as GraphData['folders']
 
-  return { nodes, edges, tags, folders }
+  // From the refs projection, not by parsing documents: it already answers
+  // exactly this, and it is current as of the last canvas save.
+  const canvases = (
+    db.prepare('SELECT id, title FROM canvases WHERE is_deleted = 0 ORDER BY updated_at DESC').all() as {
+      id: string
+      title: string
+    }[]
+  ).map((c) => ({ ...c, page_ids: [] as string[] }))
+  const canvasById = new Map(canvases.map((c) => [c.id, c]))
+  for (const ref of db
+    .prepare('SELECT r.canvas_id, r.page_id FROM canvas_refs r JOIN pages p ON p.id = r.page_id AND p.is_deleted = 0')
+    .all() as { canvas_id: string; page_id: string }[]) {
+    canvasById.get(ref.canvas_id)?.page_ids.push(ref.page_id)
+  }
+
+  return { nodes, edges, tags, folders, canvases }
 }
 
 export function getGraphPreview(): GraphPreview {

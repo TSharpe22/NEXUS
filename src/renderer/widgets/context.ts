@@ -1,4 +1,5 @@
 import type { ViewAggregate, ViewDef } from '@shared/views'
+import type { CanvasListItem } from '@shared/canvas'
 import type {
   CaptureTarget,
   GraphData,
@@ -42,6 +43,8 @@ export interface WidgetContext {
    * panel changing its mind about what it is.
    */
   views: ViewDef[]
+  /** Canvases without their documents. A save changes `updated_at`, which is what a widget refetches on. */
+  canvases: CanvasListItem[]
 
   openPage(id: string): void
   goToTracker(mode: TrackerMode): void

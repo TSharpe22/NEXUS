@@ -714,12 +714,15 @@ Six sections, each a thin view over the same page/property model:
   read. Hub ties are longer, weaker, dashed springs, because membership is a
   looser claim than a link somebody wrote. "Links" in the legend and on the
   Vault panel still counts only links. Clicking a tag hub opens Notes filtered
-  to that tag; a folder hub is inert.
+  to that tag; a folder hub is inert. Canvases are hubs too (a board-shaped
+  mark, tied to every page a canvas shows or links to, read from
+  `canvas_refs`), and clicking one opens it — so a page's place on a board is
+  visible from Home, not only from its backlinks.
 
   Everything else about it is kept on the widget instance, so `{}` — every
   dashboard written before these settings — is a valid graph: `size` (S / M / L,
   default M at 420px; Home's 460px panel cap is lifted for this one panel),
-  `tags`, `folders`, `colour` (`recency` by default, or `type`, or `none`), and
+  `tags`, `folders`, `canvases`, `colour` (`recency` by default, or `type`, or `none`), and
   `pins`. Right-clicking a node pins it at its current world position and
   writes the pin into `pins`; dragging a pinned node moves the pin; anything
   unpinned is let go on release and settles back. The full view (⤢) is the same
@@ -862,9 +865,6 @@ Six sections, each a thin view over the same page/property model:
   Canvas: a card belongs to a group by lying inside it, and dragging a group
   carries what is inside.
 
-  **`flowToDoc` and `docToFlow` are the only seam.** React Flow's live state —
-  selection, drag, measured size — never reaches the document. Undo is a
-  cursor over serialised documents, which works only because the round trip
   **Pictures are attachments, like a page's.** Paste one, drop files on the
   board, or use "+ image": each is written to the attachment store and the
   card stores only its content-addressed name (`{ type: 'image', file }`),
@@ -875,6 +875,9 @@ Six sections, each a thin view over the same page/property model:
   "reclaim space" would empty every canvas of its pictures. The mirror copies
   them to `_files/` and writes image cards as `file` nodes pointing there.
 
+  **`flowToDoc` and `docToFlow` are the only seam.** React Flow's live state —
+  selection, drag, measured size — never reaches the document. Undo is a
+  cursor over serialised documents, which works only because the round trip
   through the two functions is exact; the autosave (600ms) and the history
   both fire only when the serialisation changes and no drag or resize is in
   progress.

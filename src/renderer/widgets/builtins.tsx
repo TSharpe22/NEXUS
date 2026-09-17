@@ -33,7 +33,7 @@ const SIDE_ROWS = 7
  */
 const LOOSE_END_LIMIT = 50
 
-const EMPTY_GRAPH: GraphData = { nodes: [], edges: [], tags: [], folders: [] }
+const EMPTY_GRAPH: GraphData = { nodes: [], edges: [], tags: [], folders: [], canvases: [] }
 const EMPTY_PINS: GraphPins = {}
 
 // ------------------------------------------------------------------
@@ -382,7 +382,8 @@ function graphSignature(g: GraphData): string {
     g.nodes.map((n) => [n.id, n.title, n.degree, n.type_id, n.folder_id, n.tag_ids, n.updated_at.slice(0, 10)]),
     g.edges.map((e) => e.source + e.target),
     g.tags,
-    g.folders
+    g.folders,
+    g.canvases
   ])
 }
 
@@ -401,6 +402,7 @@ export function GraphWidget({ ctx, config, setConfig }: WidgetProps) {
   const size: GraphSize = config.size === 'S' || config.size === 'L' ? config.size : 'M'
   const showTags = config.tags !== false
   const showFolders = config.folders !== false
+  const showCanvases = config.canvases !== false
   const colour: GraphColour = GRAPH_COLOURS.includes(config.colour as GraphColour)
     ? (config.colour as GraphColour)
     : 'recency'
@@ -430,7 +432,7 @@ export function GraphWidget({ ctx, config, setConfig }: WidgetProps) {
       clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctx.pages, ctx.types])
+  }, [ctx.pages, ctx.types, ctx.canvases])
 
   useEffect(() => {
     if (!expanded) return
@@ -457,6 +459,9 @@ export function GraphWidget({ ctx, config, setConfig }: WidgetProps) {
       </button>
       <button aria-pressed={showFolders} onClick={() => set({ folders: !showFolders })} title="Draw folders as hubs">
         folders
+      </button>
+      <button aria-pressed={showCanvases} onClick={() => set({ canvases: !showCanvases })} title="Draw canvases as hubs">
+        canvases
       </button>
       <span className="nx-graph__toolbar-sep" />
       <button
@@ -485,6 +490,7 @@ export function GraphWidget({ ctx, config, setConfig }: WidgetProps) {
       layoutKey={GRAPH_LAYOUT_KEY}
       showTags={showTags}
       showFolders={showFolders}
+      showCanvases={showCanvases}
       colour={colour}
       pins={pins}
       onPinsChange={(next) => set({ pins: next })}

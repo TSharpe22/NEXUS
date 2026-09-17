@@ -214,6 +214,37 @@ await page.click('.nx-graph__toolbar button:has-text("colour")')
 await sleep(300)
 check('colour cycles to type', await page.evaluate(() => /colour: type/.test(document.querySelector('.nx-graph__toolbar').innerText)))
 
+// Canvases are hubs too, tied to the pages they show.
+await page.evaluate(async (pageIds) => {
+  const c = await window.api.canvases.create('Board of three')
+  const nodes = pageIds.slice(0, 3).map((pageId, i) => ({ id: `n${i}`, type: 'page', pageId, x: i * 400, y: 0, width: 320, height: 220 }))
+  await window.api.canvases.update(c.id, { content: JSON.stringify({ version: 1, nodes, edges: [] }) })
+}, ids)
+await page.evaluate(() => window.location.reload())
+await page.waitForSelector('.nx-graph__node', { timeout: 30_000 })
+await sleep(4000)
+const canvasHub = await page.evaluate(() => {
+  const hub = document.querySelector('.nx-graph__node--canvas')
+  if (!hub) return null
+  const id = hub.getAttribute('data-node-id')
+  const lines = [...document.querySelectorAll('.nx-graph__edge--hub')].length
+  return { id, label: hub.querySelector('text')?.textContent, lines }
+})
+check('a canvas is drawn as a hub', canvasHub?.label === 'Board of three', JSON.stringify(canvasHub))
+const graphData = await page.evaluate(() => window.api.stats.getGraph())
+check('tied to the pages it shows', graphData.canvases?.[0]?.page_ids.length === 3)
+await page.click('.nx-graph__toolbar button:text-is("canvases")')
+await sleep(600)
+check('the canvases toggle hides them', await page.evaluate(() => !document.querySelector('.nx-graph__node--canvas')))
+await page.click('.nx-graph__toolbar button:text-is("canvases")')
+await sleep(2500)
+const hubAt = await centreOf('.nx-graph__node--canvas .nx-graph__node-dot')
+await page.mouse.click(hubAt.x, hubAt.y)
+await sleep(1200)
+check('clicking a canvas hub opens that canvas', await page.evaluate(() => document.querySelector('.nx-canvas-main__title')?.value === 'Board of three'))
+await page.keyboard.press('Control+1')
+await sleep(2500)
+
 // A tag hub opens the Notes list filtered to that tag.
 await sleep(2500)
 const tagAt = await centreOf('.nx-graph__node--tag .nx-graph__node-dot')

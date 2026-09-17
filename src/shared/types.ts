@@ -319,6 +319,8 @@ export interface GraphData {
   edges: GraphEdge[]
   tags: Pick<Tag, 'id' | 'name' | 'color'>[]
   folders: Pick<Folder, 'id' | 'name' | 'parent_folder_id'>[]
+  /** Live canvases, with the pages each one shows or links to. */
+  canvases: { id: string; title: string; page_ids: string[] }[]
 }
 
 // ============================================================
