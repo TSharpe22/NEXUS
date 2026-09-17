@@ -63,8 +63,20 @@ let db: Database.Database
  *     everything a type is *for* was unreadable without it, and the phases
  *     behind it were renumbered rather than left claiming a number that is
  *     now taken.
+ * 13 — per-page passwords: `pages.is_locked`, and `locked_attachments`, the
+ *     one thing about a locked page that still has to be readable. Purely
+ *     additive — one ALTER guarded by `columnExists` and one CREATE TABLE IF
+ *     NOT EXISTS — and every page in an existing vault starts unlocked.
+ *
+ *     `locked_attachments` exists because reclaiming space walks every
+ *     document for the attachment names still in use, and a locked document
+ *     cannot be walked. Without it, the first sweep after locking a page with
+ *     a picture in it would decide that picture was unreferenced and delete
+ *     it. The names it holds are the content-addressed SHA-256 filenames the
+ *     store already uses, so the table says which bytes a locked page needs
+ *     and nothing whatsoever about what it says.
  */
-export const SCHEMA_VERSION = 12
+export const SCHEMA_VERSION = 13
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -119,6 +131,11 @@ const CURRENT_SCHEMA = `
     is_deleted  INTEGER NOT NULL DEFAULT 0,
     is_pinned   INTEGER NOT NULL DEFAULT 0,
     pinned_at   TEXT,
+    -- 1 when the content column holds an encrypted envelope, not a document.
+    -- A column rather than a look at the blob because every list query reads
+    -- the page without its body, and "is this page locked" is a question the
+    -- sidebar asks about a hundred rows at a time.
+    is_locked   INTEGER NOT NULL DEFAULT 0,
     created_at  TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at  TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -161,6 +178,17 @@ const CURRENT_SCHEMA = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_views_order ON views(sort_order);
+
+  -- The attachment names a locked page still refers to. See SCHEMA_VERSION
+  -- note 13: it is what keeps reclaim() from deleting the pictures out of a
+  -- page it cannot read. No foreign key, for the same reason mirror_files has
+  -- none — the rows are cleaned up explicitly, on hard delete, so nothing can
+  -- drop them out from under a sweep that is already running.
+  CREATE TABLE IF NOT EXISTS locked_attachments (
+    page_id  TEXT NOT NULL,
+    name     TEXT NOT NULL,
+    PRIMARY KEY (page_id, name)
+  );
 
   -- Backlinks, from two places a page can point at another.
   --
@@ -842,6 +870,15 @@ export function applySchema(
     // that displays a property reads it back fine; everything that compares
     // one reads `value_number` and misses it entirely.
     if (version < 12) repairStrandedNumbers()
+
+    // v13. Per-page passwords. `locked_attachments` comes from CURRENT_SCHEMA
+    // above; only the column needs saying twice, because that statement
+    // creates `pages` only when it is absent. Additive and idempotent, and
+    // every existing page starts unlocked — there is nothing to rewrite,
+    // because a page nobody has locked yet already holds a plain document.
+    if (!columnExists('pages', 'is_locked')) {
+      db.exec('ALTER TABLE pages ADD COLUMN is_locked INTEGER NOT NULL DEFAULT 0')
+    }
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`)
   })

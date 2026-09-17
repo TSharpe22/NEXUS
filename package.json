@@ -13,13 +13,14 @@
     "postinstall": "electron-rebuild -f -w better-sqlite3",
     "check:app": "electron-vite build && xvfb-run -a node scripts/check-app.mjs",
     "check:daily": "electron-vite build && xvfb-run -a node scripts/check-daily.mjs",
-    "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:files && npm run check:app && npm run check:daily",
+    "check": "npm run typecheck && npm run check:migration && npm run check:backup && npm run check:files && npm run check:lock && npm run check:app && npm run check:daily",
     "check:backup": "node scripts/check-backup.mjs",
     "icon": "node scripts/make-icon.mjs",
     "dist": "electron-vite build && electron-builder --linux",
     "dist:dir": "electron-vite build && electron-builder --linux dir",
     "update": "npm run dist && sudo dpkg -i dist/nexus_*_amd64.deb",
-    "check:files": "node scripts/check-files.mjs"
+    "check:files": "node scripts/check-files.mjs",
+    "check:lock": "node scripts/check-lock.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.24.2",

@@ -63,11 +63,22 @@ Borders are always 1px hairlines. No shadows, no elevation — panels separate b
 
 ## Iconography
 
-Simple geometric forms only (square, circle, diamond) — no illustrative icon sets.
+Two sets, on one grid, at one stroke weight. Nothing else.
+
+**State marks** — square, circle, diamond (`Icon.tsx`). These carry meaning the *app* assigned: which nav item is current, which node is selected, how severe a callout is.
 
 - **1.5px outline stroke** as the default.
 - **Filled** reserved for the single "selected/active" state (current nav item, current node) — never for anything else.
 - **Callout markers** get distinction from shape × colour rather than from an icon set: three shapes across the four semantic colours is twelve legible variants, which is what an icon picker would have bought. Outline, like everything else — the marker is not a selected state.
+
+**Label glyphs** — the named set in `Glyph.tsx`. These carry meaning the *user* assigned: the mark on a page, a type, a saved view. A closed vocabulary of ~50, drawn on a 16×16 box inside 1.5–14.5, 1.5px stroke, round caps and joins.
+
+- **`currentColor`, always.** A glyph takes the colour of whatever it sits in — dim in a meta row, accent in a selected one — so it belongs to the row rather than sitting on top of it. Never given a colour of its own.
+- **Never filled.** Filled still means selected, and a label is not a state.
+- **Closed set, not an icon library.** A fixed vocabulary is what makes fifty marks read as one system; a search box over ten thousand is what makes them read as fifty exceptions.
+- **No emoji anywhere in the product surface.** They are another vendor's colour artwork at another vendor's metrics — three colour families and a different picture on every machine, in a shell built from two greys and one emerald.
+
+Both sets are `aria-hidden`: a glyph is redundant with the text beside it, and the two things that have no text beside them (state marks) are conveyed by the row's own styling too.
 
 ## Motion
 

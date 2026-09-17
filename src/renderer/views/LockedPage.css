@@ -1,0 +1,59 @@
+/* Centred in the reading column rather than in the panel, so opening a locked
+   page does not shift the eye away from where the editor's text will appear. */
+.nx-locked {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--nx-space-3);
+  max-width: 460px;
+  padding: var(--nx-space-7) 0;
+}
+
+.nx-locked__mark {
+  color: var(--nx-text-dim);
+  line-height: 0;
+}
+
+.nx-locked__title {
+  margin: 0;
+  font-family: var(--nx-font-sans);
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--nx-text);
+  overflow-wrap: anywhere;
+}
+
+.nx-locked__meta {
+  margin: 0;
+  max-width: 42em;
+  color: var(--nx-text-muted);
+  line-height: 1.6;
+}
+
+.nx-locked__form {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  margin-top: var(--nx-space-2);
+}
+
+.nx-locked__field {
+  width: 240px;
+  font-family: var(--nx-font-mono);
+  letter-spacing: 0.12em;
+}
+
+/* Holds its line whether or not there is a message, so a refusal does not
+   push the explanatory paragraph down the screen. */
+.nx-locked__error {
+  min-height: 16px;
+  color: var(--nx-critical);
+}
+
+.nx-locked__foot {
+  margin: 0;
+  max-width: 42em;
+  color: var(--nx-text-dim);
+  line-height: 1.6;
+}

@@ -163,7 +163,7 @@ check('block order preserved', content.map((b) => b.type), ['heading', 'paragrap
 check('column contents unwrapped, not dropped', [content[2].content[0].text, content[3].content[0].text], ['left col', 'right col'])
 check('page_width preset coerced to number', p1.page_width, 900)
 check('page_width is a JS number', typeof p1.page_width, 'number')
-check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at', 'folder_id', 'is_pinned', 'pinned_at'])
+check('cover/is_archived columns gone', db.pragma('table_info(pages)').map((c) => c.name), ['id', 'type_id', 'title', 'icon', 'content', 'page_width', 'is_deleted', 'created_at', 'updated_at', 'folder_id', 'is_pinned', 'pinned_at', 'is_locked'])
 
 // v3 — organisation tables. Additive, so they have to appear on a migrated
 // first-build file just as they do on a fresh one.

@@ -3,10 +3,12 @@ import { Toaster } from 'react-hot-toast'
 import { useAppStore, VIEW_META, VIEW_ORDER, View } from './store/app-store'
 import { flushPendingWrites } from './pending-writes'
 import { NavItem } from './design/NavItem'
+import { PageGlyph } from './design/Glyph'
 import { CommandPalette } from './design/CommandPalette'
 import { QuickCapture } from './design/CaptureBar'
 import { useShortcuts } from './hooks/use-shortcuts'
 import { ConfirmHost } from './design/Confirm'
+import { PasswordHost } from './design/PasswordDialog'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
 import { Views } from './views/Views'
@@ -46,6 +48,7 @@ export function App() {
   const views = useAppStore((s) => s.views)
   const activeViewId = useAppStore((s) => s.activeViewId)
   const setActiveViewId = useAppStore((s) => s.setActiveViewId)
+  const refreshUnlocked = useAppStore((s) => s.refreshUnlocked)
   const ActiveComponent = VIEW_COMPONENT[activeView]
 
   /**
@@ -73,6 +76,19 @@ export function App() {
   useEffect(() => {
     void refreshViews()
   }, [refreshViews])
+
+  /**
+   * Which pages are open, asked of the process that actually knows.
+   *
+   * A fresh launch has none, so this is almost always an empty list — but the
+   * renderer can be reloaded without the main process restarting (dev reload,
+   * a crashed window), and then main is still holding keys the store has
+   * forgotten. Without this the app would draw the lock screen over pages it
+   * can already read, and refuse a save it would in fact have accepted.
+   */
+  useEffect(() => {
+    void refreshUnlocked()
+  }, [refreshUnlocked])
 
   // The main process holds the window open while this runs, so a save still
   // sitting in a debounce when you hit quit lands before the database closes.
@@ -128,7 +144,16 @@ export function App() {
               {pinnedViews.map((view) => (
                 <NavItem
                   key={view.id}
-                  label={view.icon ? `${view.icon} ${view.name}` : view.name}
+                  label={
+                    view.icon ? (
+                      <span className="nx-sidebar__pin-label">
+                        <PageGlyph icon={view.icon} size={13} />
+                        {view.name}
+                      </span>
+                    ) : (
+                      view.name
+                    )
+                  }
                   title={`${view.name} — a saved view`}
                   selected={activeView === 'views' && activeViewId === view.id}
                   onClick={() => {
@@ -158,6 +183,7 @@ export function App() {
       <CommandPalette open={searchOpen} onClose={() => setSearchOpen(false)} />
       {captureOpen && <QuickCapture onClose={() => setCaptureOpen(false)} />}
       <ConfirmHost />
+      <PasswordHost />
       <Toaster
         position="bottom-right"
         toastOptions={{

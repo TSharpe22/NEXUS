@@ -277,7 +277,44 @@ function yamlValue(type: string, value: string): string {
   return yamlString(value)
 }
 
+/**
+ * A locked page's file.
+ *
+ * The mirror's whole purpose is that any assistant, editor or backup tool can
+ * read the vault as ordinary files — which is exactly why a locked page cannot
+ * have one. Nor can it simply be left out: the tree would then quietly lose a
+ * page, and the index would disagree with the folder beside it.
+ *
+ * So it keeps its path and its identity and loses its contents. Tags and
+ * properties go too, not just the body — they are the structured half of the
+ * note, and mirroring "mood: relapse" out of a page somebody put a password on
+ * would give away most of what the password was for.
+ */
+function renderLockedPage(page: Page, relPath: string, typeName: string): string {
+  return (
+    [
+      '---',
+      `id: ${yamlString(page.id)}`,
+      `title: ${yamlString(page.title || 'Untitled')}`,
+      `type: ${yamlString(typeName)}`,
+      `created: ${yamlString(page.created_at)}`,
+      `updated: ${yamlString(page.updated_at)}`,
+      'locked: true',
+      `path: ${yamlString(relPath)}`,
+      '---',
+      '',
+      `# ${page.title || 'Untitled'}`,
+      '',
+      'This page is password-protected in Nexus. Its contents are encrypted in',
+      'the database and are deliberately not mirrored here.',
+      ''
+    ].join('\n') + '\n'
+  )
+}
+
 function renderPage(page: Page, relPath: string, typeName: string): string {
+  if (page.is_locked) return renderLockedPage(page, relPath, typeName)
+
   const front = [
     '---',
     `id: ${yamlString(page.id)}`,
@@ -493,6 +530,11 @@ export function syncNow(only?: string[]): MirrorResult {
     const page = repo.getPageById(pageId)
     if (!page) continue
     writeIfChanged(relPath, renderPage(page, relPath, typeNames.get(page.type_id) ?? 'Note'))
+    // A locked page contributes no attachments: its document cannot be read,
+    // and its stub references nothing. Copies made before it was locked are
+    // reclaimed by the next full pass, which is the same rule every removed
+    // picture already follows.
+    if (page.is_locked) continue
     for (const name of extractAttachmentNames(parseDocument(page.content))) copyAttachment(name)
   }
 

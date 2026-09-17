@@ -15,6 +15,15 @@ export interface Page {
   is_pinned: number
   /** When the pin was made, which is what orders Home's list. null when unpinned. */
   pinned_at: string | null
+  /**
+   * 1 when `content` holds an encrypted envelope rather than a document.
+   *
+   * The body of a locked page is unreadable without its password — see
+   * `main/lock.ts` for what that does and does not cover. Everything else on
+   * this interface stays in the clear, title included, because the page list
+   * is built out of it.
+   */
+  is_locked: number
   created_at: string
   updated_at: string
 }
@@ -406,6 +415,30 @@ export interface NexusAPI {
      * already carries `is_pinned` and `pinned_at`.
      */
     setPinned(id: string, pinned: boolean): Promise<void>
+  }
+  /**
+   * Per-page passwords. The password crosses this boundary once per action and
+   * is never stored on either side of it — main turns it into a key, holds the
+   * key for the session, and the renderer forgets the string it typed.
+   */
+  lock: {
+    /** Put a password on a page. Its body is encrypted before this resolves. */
+    set(id: string, password: string): Promise<void>
+    /**
+     * Open a page for this session. Resolves with its plaintext body, or
+     * rejects with a "wrong password" error the caller can show as one.
+     */
+    unlock(id: string, password: string): Promise<string>
+    /** Drop the session key. The page stays encrypted; the next read asks again. */
+    relock(id: string): Promise<void>
+    /** Shut every page that is currently open. */
+    relockAll(): Promise<void>
+    /** Take the password off for good. Requires the password even when open. */
+    remove(id: string, password: string): Promise<void>
+    /** Swap one password for another, verifying the old one by using it. */
+    change(id: string, oldPassword: string, newPassword: string): Promise<void>
+    /** Which pages this session currently holds keys for. */
+    unlockedIds(): Promise<string[]>
   }
   capture: {
     /**

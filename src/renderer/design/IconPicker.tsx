@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { GLYPHS, Glyph, PageGlyph } from './Glyph'
 import './IconPicker.css'
 
 /**
@@ -9,60 +10,15 @@ import './IconPicker.css'
  * and a backlink. Nothing in the renderer ever wrote it, so every one of those
  * readers was rendering a value that could not exist. This is the write.
  *
- * Deliberately a fixed list rather than a full emoji index: a page icon is a
- * glanceable marker, and forty of them chosen for how they read at 16px is
- * more useful than every emoji sorted by codepoint. Typing filters by name, so
- * the list stays reachable by keyboard.
+ * Deliberately a fixed list rather than a full emoji index — and, since the
+ * glyph set landed, deliberately not emoji at all. `Glyph.tsx` says why: a
+ * page icon is a glanceable marker, and fifty marks drawn on one grid at one
+ * stroke weight in the theme's own colour read as a set, where fifty pieces of
+ * somebody else's colour artwork read as fifty exceptions. Typing filters by
+ * name, so the list stays reachable by keyboard.
  */
 
-interface Choice {
-  glyph: string
-  /** What typing in the filter box matches against. */
-  name: string
-}
-
-const CHOICES: Choice[] = [
-  { glyph: '📝', name: 'note write page' },
-  { glyph: '📓', name: 'journal notebook diary' },
-  { glyph: '📅', name: 'calendar date day' },
-  { glyph: '✅', name: 'done check task complete' },
-  { glyph: '🎯', name: 'goal target aim' },
-  { glyph: '🧠', name: 'brain idea think mind' },
-  { glyph: '💡', name: 'idea light bulb' },
-  { glyph: '🔬', name: 'research science lab' },
-  { glyph: '📊', name: 'chart data stats graph' },
-  { glyph: '📈', name: 'up growth trend chart' },
-  { glyph: '💰', name: 'money trading finance' },
-  { glyph: '🏋️', name: 'training gym lift workout' },
-  { glyph: '🏃', name: 'run running cardio' },
-  { glyph: '🥗', name: 'food diet meal nutrition' },
-  { glyph: '😴', name: 'sleep rest bed' },
-  { glyph: '🧘', name: 'meditate calm mind' },
-  { glyph: '📚', name: 'book reading library' },
-  { glyph: '✍️', name: 'writing draft author' },
-  { glyph: '🎓', name: 'study learn school' },
-  { glyph: '🗺️', name: 'map plan route' },
-  { glyph: '🧭', name: 'compass direction navigate' },
-  { glyph: '⚙️', name: 'settings config system' },
-  { glyph: '🔧', name: 'tool fix build' },
-  { glyph: '🧩', name: 'piece puzzle component' },
-  { glyph: '🏗️', name: 'build project construction' },
-  { glyph: '🚀', name: 'launch ship release' },
-  { glyph: '🔥', name: 'hot urgent streak' },
-  { glyph: '⭐', name: 'star favourite important' },
-  { glyph: '📌', name: 'pin pinned keep' },
-  { glyph: '🗃️', name: 'archive box files' },
-  { glyph: '📥', name: 'inbox capture in' },
-  { glyph: '🔗', name: 'link reference connect' },
-  { glyph: '🧵', name: 'thread series thought' },
-  { glyph: '❓', name: 'question open unknown' },
-  { glyph: '⚠️', name: 'warning risk careful' },
-  { glyph: '🌱', name: 'seed new growing draft' },
-  { glyph: '🌳', name: 'tree evergreen mature' },
-  { glyph: '🎨', name: 'design art visual' },
-  { glyph: '🎵', name: 'music audio sound' },
-  { glyph: '🗓️', name: 'week planning schedule' }
-]
+const CHOICES = Object.entries(GLYPHS).map(([key, def]) => ({ key, name: def.name }))
 
 interface Props {
   value: string | null
@@ -100,7 +56,7 @@ export function IconPicker({ value, onChange }: Props) {
   }, [open])
 
   const q = query.trim().toLowerCase()
-  const shown = q ? CHOICES.filter((c) => c.name.includes(q)) : CHOICES
+  const shown = q ? CHOICES.filter((c) => c.name.includes(q) || c.key.includes(q)) : CHOICES
 
   const choose = (icon: string | null) => {
     onChange(icon)
@@ -115,7 +71,11 @@ export function IconPicker({ value, onChange }: Props) {
         title={value ? 'Change icon' : 'Add an icon'}
         aria-label={value ? 'Change page icon' : 'Add a page icon'}
       >
-        {value ?? <span className="nx-iconpick__placeholder">+ icon</span>}
+        {value ? (
+          <PageGlyph icon={value} size={22} />
+        ) : (
+          <span className="nx-iconpick__placeholder">+ icon</span>
+        )}
       </button>
 
       {open && (
@@ -129,19 +89,19 @@ export function IconPicker({ value, onChange }: Props) {
             onKeyDown={(e) => {
               // Enter takes the only remaining match, so a filter that
               // narrows to one thing does not still need the mouse.
-              if (e.key === 'Enter' && shown.length > 0) choose(shown[0].glyph)
+              if (e.key === 'Enter' && shown.length > 0) choose(shown[0].key)
             }}
           />
 
           <div className="nx-iconpick__grid">
             {shown.map((choice) => (
               <button
-                key={choice.glyph}
-                className={`nx-iconpick__cell ${choice.glyph === value ? 'is-current' : ''}`}
-                title={choice.name.split(' ')[0]}
-                onClick={() => choose(choice.glyph)}
+                key={choice.key}
+                className={`nx-iconpick__cell ${choice.key === value ? 'is-current' : ''}`}
+                title={choice.key}
+                onClick={() => choose(choice.key)}
               >
-                {choice.glyph}
+                <Glyph name={choice.key} size={17} />
               </button>
             ))}
             {shown.length === 0 && (

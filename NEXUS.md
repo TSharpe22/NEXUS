@@ -607,6 +607,57 @@ it later isn't a rewrite.
 
 ---
 
+## Page passwords
+
+A page can be given a password from its right-click menu in Notes. What that
+does, precisely, because the difference matters:
+
+**The body is encrypted.** `pages.content` is replaced by an AES-256-GCM
+envelope under a key derived from the password by scrypt (N=2¹⁵, r=8), with a
+fresh salt per page and a fresh IV per save. There is no stored verifier — GCM's
+authentication tag *is* the password check, so a wrong password fails to
+authenticate rather than decrypting into plausible rubbish. `src/main/lock.ts`
+holds all of it and imports no `electron`, so `npm run check:lock` exercises it
+directly.
+
+**Four other copies of the document are dealt with, because a lock that only
+covers the database is a lock on a door in an open field:**
+
+| Copy | What happens |
+|---|---|
+| `page_fts` | Body column emptied. The **title stays indexed** — it is on screen in the sidebar anyway, and hiding it would make a page you can see impossible to jump to. |
+| `tasks` | Dropped. A task's text in the tracker is a readable extract of the document. |
+| `links` | Dropped. So is the sentence around a mention, in a backlink. |
+| The vault mirror | Writes a **stub** — id, title, type, dates, `locked: true` — keeping the page's path and its line in the index but not its contents, tags or properties. |
+| Markdown export | Writes a notice instead of the text, "export everything" included. JSON export round-trips the envelope, so an exported page comes back locked rather than empty. |
+
+**What is *not* encrypted, and is not claimed to be:** the title, the tags, the
+properties, the folder and the dates. The page list, the tag filter and every
+view are built out of those, and encrypting them would mean a locked page could
+not appear in the app at all — a hidden vault, which is a different feature.
+**Put nothing secret in a title.**
+
+**The password is never stored.** It becomes a key, the key is held in the main
+process for as long as the app is running, and it dies with the process.
+Nothing expires it on a timer: a lock that reappears mid-sentence eats the
+sentence. "Lock now" per page and "Lock all" in Settings shut them by hand.
+
+**There is no recovery.** A forgotten password means the body is gone — that is
+what makes it a password rather than a curtain. The one backup that preserves a
+locked page is `backup.ts`, which copies the database with the envelope intact
+and still needs the password to be worth anything.
+
+The safe-by-construction detail worth knowing if you touch this: a stored
+document is always a JSON **array**, an envelope is always a JSON **object**,
+and `parseDocument` returns `[]` for anything that is not an array. So every
+projection that walks a document already produces nothing for a locked page
+rather than producing garbage. The one place that is not enough is
+`appendBlocks` — the only path that writes back what it read — which refuses a
+locked page outright, because "read an empty document, append a line, save it"
+would trade a whole page for one captured sentence.
+
+---
+
 ## Navigation / views
 
 Six sections, each a thin view over the same page/property model:

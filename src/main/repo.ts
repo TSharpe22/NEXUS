@@ -10,6 +10,7 @@ import {
   setCheckedInDocument,
   setDueInDocument
 } from '@shared/document'
+import * as lock from './lock'
 import { statSync } from 'fs'
 import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
 import type {
@@ -161,11 +162,18 @@ export function getAllPages(): Page[] {
  * complete set: a page missed here is a page whose pictures get deleted.
  */
 export function getReferencedAttachments(): Set<string> {
-  const rows = getDb().prepare('SELECT content FROM pages').all() as { content: string | null }[]
+  const db = getDb()
+  const rows = db.prepare('SELECT content FROM pages').all() as { content: string | null }[]
   const names = new Set<string>()
   for (const row of rows) {
     for (const name of extractAttachmentNames(parseDocument(row.content))) names.add(name)
   }
+  // A locked page's document cannot be walked, so the walk above returns
+  // nothing for it and a sweep would conclude its pictures are unreferenced.
+  // The names were recorded when the page was locked; this is the only reason
+  // that table exists. See SCHEMA_VERSION note 13.
+  const locked = db.prepare('SELECT name FROM locked_attachments').all() as { name: string }[]
+  for (const row of locked) names.add(row.name)
   return names
 }
 
@@ -187,7 +195,7 @@ export function getPageLocations(): PageLocation[] {
 
 /** Columns of `pages` except the document body, as one reusable list. */
 const LIST_COLUMNS =
-  'id, type_id, title, icon, page_width, folder_id, is_deleted, is_pinned, pinned_at, created_at, updated_at'
+  'id, type_id, title, icon, page_width, folder_id, is_deleted, is_pinned, pinned_at, is_locked, created_at, updated_at'
 
 /**
  * Every live page without its body, newest first — what the sidebar, the
@@ -242,6 +250,19 @@ export function updatePage(
   data: Partial<Pick<Page, 'title' | 'icon' | 'content' | 'page_width' | 'type_id'>>
 ): void {
   const db = getDb()
+
+  // A locked page takes its body through the envelope on the way in, so every
+  // existing writer — the editor's autosave, an import, a template — keeps
+  // working without knowing this feature exists. The alternative was a second
+  // save path only the editor knew to use, and the first caller that forgot
+  // would write a locked page's document back in the clear.
+  if ('content' in data && typeof data.content === 'string' && isPageLocked(id)) {
+    const held = lock.sessionKey(id)
+    if (!held) throw new Error('This page is locked. Unlock it before saving.')
+    recordLockedAttachments(id, data.content)
+    data = { ...data, content: lock.seal(data.content, held.key, held.salt) }
+  }
+
   const allowed = ['title', 'icon', 'content', 'page_width', 'type_id'] as const
   const sets: string[] = []
   const values: unknown[] = []
@@ -281,6 +302,9 @@ export function hardDeletePage(id: string): void {
   const db = getDb()
   db.prepare('DELETE FROM pages WHERE id = ?').run(id)
   db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(id)
+  // Neither of these has a foreign key to lean on, by design.
+  db.prepare('DELETE FROM locked_attachments WHERE page_id = ?').run(id)
+  lock.forget(id)
 }
 
 export function emptyTrash(): number {
@@ -289,6 +313,9 @@ export function emptyTrash(): number {
   const trx = db.transaction(() => {
     db.prepare(
       'DELETE FROM page_fts WHERE page_id IN (SELECT id FROM pages WHERE is_deleted = 1)'
+    ).run()
+    db.prepare(
+      'DELETE FROM locked_attachments WHERE page_id IN (SELECT id FROM pages WHERE is_deleted = 1)'
     ).run()
     db.prepare('DELETE FROM pages WHERE is_deleted = 1').run()
   })
@@ -309,13 +336,21 @@ export function duplicatePage(id: string): Page {
 
   const newId = uuidv4()
   const ts = now()
+  // `is_locked` and the envelope travel together, so a copy of a locked page
+  // is locked under the same password rather than a plaintext copy of a
+  // secret. Its key is not carried over: the copy has to be unlocked once on
+  // its own, which is the honest reading of "this is a different page".
   db.prepare(
-    `INSERT INTO pages (id, type_id, title, icon, content, page_width, folder_id, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO pages (id, type_id, title, icon, content, page_width, folder_id, is_locked, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     newId, source.type_id, `${source.title} (copy)`, source.icon, source.content,
-    source.page_width, source.folder_id ?? null, ts, ts
+    source.page_width, source.folder_id ?? null, source.is_locked ?? 0, ts, ts
   )
+
+  db.prepare(
+    'INSERT OR IGNORE INTO locked_attachments (page_id, name) SELECT ?, name FROM locked_attachments WHERE page_id = ?'
+  ).run(newId, id)
 
   for (const prop of getPropertiesForPage(id)) {
     setProperty(newId, prop.key, prop.type, propertyValue(prop))
@@ -363,6 +398,230 @@ export function setPagePinned(id: string, pinned: boolean): void {
  */
 
 // ============================================================
+// Per-page passwords
+//
+// `lock.ts` holds the crypto and the note on what is and is not protected.
+// This is the part that has to keep the rest of the database honest about it:
+// a page whose body has just become ciphertext also has an FTS row, a set of
+// projected tasks, a link graph and a mirror file, and every one of those is a
+// readable copy of what was just locked.
+// ============================================================
+
+export function isPageLocked(id: string): boolean {
+  const row = getDb().prepare('SELECT is_locked FROM pages WHERE id = ?').get(id) as
+    | { is_locked: number }
+    | undefined
+  return !!row?.is_locked
+}
+
+/** Whether this session already holds the key — i.e. the page is open. */
+export function isPageUnlocked(id: string): boolean {
+  return lock.isUnlocked(id)
+}
+
+export function unlockedPageIds(): string[] {
+  return lock.unlockedIds()
+}
+
+/**
+ * Note which attachments a locked page needs, from the plaintext, before it
+ * stops being readable. Replaces the whole set rather than adding to it, so a
+ * picture deleted from a locked page stops being pinned on the next save.
+ */
+function recordLockedAttachments(pageId: string, plaintext: string): void {
+  const db = getDb()
+  db.prepare('DELETE FROM locked_attachments WHERE page_id = ?').run(pageId)
+  const insert = db.prepare(
+    'INSERT OR IGNORE INTO locked_attachments (page_id, name) VALUES (?, ?)'
+  )
+  for (const name of extractAttachmentNames(parseDocument(plaintext))) insert.run(pageId, name)
+}
+
+/**
+ * Put a password on a page.
+ *
+ * The order matters and is the reason this is one function rather than a flag
+ * the caller sets: the attachment names are read while the document is still
+ * readable, the body is replaced, and only then are the projections rebuilt
+ * against a page that now reports itself locked. Doing the last step first
+ * would rebuild them from the plaintext and leave the page's tasks and
+ * backlinks standing.
+ */
+export function lockPage(id: string, password: string): void {
+  if (!password) throw new Error('A password is required')
+  const db = getDb()
+  const page = getPageById(id)
+  if (!page) throw new Error(`Page not found: ${id}`)
+  if (page.is_locked) throw new Error('This page already has a password')
+
+  const { key, salt } = lock.newKey(password)
+  const sealed = lock.seal(page.content, key, salt)
+
+  const trx = db.transaction(() => {
+    recordLockedAttachments(id, page.content)
+    db.prepare('UPDATE pages SET content = ?, is_locked = 1, updated_at = ? WHERE id = ?').run(
+      sealed,
+      now(),
+      id
+    )
+  })
+  trx()
+
+  // Held for this session: locking a page you are looking at should not throw
+  // you out of it, and the next keystroke has to have something to save with.
+  lock.remember(id, key, salt)
+  reindexPage(id)
+  projectDocument(id)
+  logActivity(id, 'locked', 'password set')
+}
+
+/**
+ * Open a locked page for this session, returning its plaintext body.
+ *
+ * Throws `WrongPassword` for a wrong password — the only failure the UI has
+ * anything useful to say about.
+ */
+export function unlockPage(id: string, password: string): string {
+  const page = getPageById(id)
+  if (!page) throw new Error(`Page not found: ${id}`)
+
+  const envelope = lock.parseEnvelope(page.content)
+  if (!envelope) {
+    // Not actually locked. Repairs the one state that should not exist — a
+    // page flagged locked whose body is a plain document — rather than
+    // refusing to open a page the user can plainly see is theirs.
+    if (page.is_locked) {
+      getDb().prepare('UPDATE pages SET is_locked = 0 WHERE id = ?').run(id)
+      reindexPage(id)
+      projectDocument(id)
+    }
+    return page.content
+  }
+
+  const key = lock.keyForEnvelope(envelope, password)
+  const plaintext = lock.open(envelope, key)
+  lock.remember(id, key, Buffer.from(envelope.salt, 'base64'))
+  return plaintext
+}
+
+/**
+ * Drop this session's key. The page stays encrypted and its next reader needs
+ * the password again — the cheap half of the pair, and the one that makes
+ * "lock it again now" possible without re-encrypting anything.
+ */
+export function relockPage(id: string): void {
+  lock.forget(id)
+}
+
+/** Every page shuts, without waiting for a quit. */
+export function relockAllPages(): void {
+  lock.forgetAll()
+}
+
+/**
+ * Take the password off a page for good, writing the body back in the clear
+ * and putting it back into search, the tracker and the graph.
+ *
+ * Requires the password even when the page is already open in this session.
+ * Removing protection is exactly the act somebody who found an unattended
+ * machine would perform, and the whole point of the feature is that it costs
+ * the password.
+ */
+export function removePageLock(id: string, password: string): void {
+  const db = getDb()
+  const page = getPageById(id)
+  if (!page) throw new Error(`Page not found: ${id}`)
+
+  const envelope = lock.parseEnvelope(page.content)
+  const plaintext = envelope ? lock.open(envelope, lock.keyForEnvelope(envelope, password)) : page.content
+
+  const trx = db.transaction(() => {
+    db.prepare('UPDATE pages SET content = ?, is_locked = 0, updated_at = ? WHERE id = ?').run(
+      plaintext,
+      now(),
+      id
+    )
+    db.prepare('DELETE FROM locked_attachments WHERE page_id = ?').run(id)
+  })
+  trx()
+
+  lock.forget(id)
+  reindexPage(id)
+  projectDocument(id)
+  logActivity(id, 'unlocked', 'password removed')
+}
+
+/**
+ * Swap one password for another without the body ever touching disk in the
+ * clear. Verifies the old one by decrypting with it, which is the only check
+ * there is — nothing stores a password to compare against.
+ */
+export function changePagePassword(id: string, oldPassword: string, newPassword: string): void {
+  if (!newPassword) throw new Error('A password is required')
+  const page = getPageById(id)
+  if (!page) throw new Error(`Page not found: ${id}`)
+
+  const envelope = lock.parseEnvelope(page.content)
+  if (!envelope) throw new Error('This page has no password')
+
+  const plaintext = lock.open(envelope, lock.keyForEnvelope(envelope, oldPassword))
+  const { key, salt } = lock.newKey(newPassword)
+  getDb()
+    .prepare('UPDATE pages SET content = ?, updated_at = ? WHERE id = ?')
+    .run(lock.seal(plaintext, key, salt), now(), id)
+  lock.remember(id, key, salt)
+  logActivity(id, 'locked', 'password changed')
+}
+
+/**
+ * Restore an encrypted body straight into a page, without re-sealing it.
+ *
+ * The one caller is `io.importJSON`, putting back a page that was exported
+ * while locked. It cannot go through `updatePage`: that seals whatever it is
+ * given under this session's key for this page, and this body is already
+ * sealed under a key derived from a password nobody here has typed.
+ *
+ * The envelope is validated rather than trusted — a file claiming to be locked
+ * whose body is not an envelope would otherwise produce a page flagged locked
+ * that no password can ever open.
+ */
+export function importLockedBody(id: string, envelopeJson: string): void {
+  if (!lock.parseEnvelope(envelopeJson)) {
+    throw new Error('That file is marked as locked but carries no encrypted body')
+  }
+  getDb()
+    .prepare('UPDATE pages SET content = ?, is_locked = 1, updated_at = ? WHERE id = ?')
+    .run(envelopeJson, now(), id)
+  reindexPage(id)
+  projectDocument(id)
+}
+
+/**
+ * A page as the editor should see it: decrypted when this session holds the
+ * key, and refused when it does not.
+ *
+ * `getPageById` deliberately stays raw — the mirror, an export and a
+ * duplicate all want the bytes as stored — so the decision about which of the
+ * two a caller wants is made by which function it calls, not by a flag.
+ */
+export function getPageForEditing(id: string): Page | null {
+  const page = getPageById(id)
+  if (!page || !page.is_locked) return page
+
+  const held = lock.sessionKey(id)
+  const envelope = lock.parseEnvelope(page.content)
+  if (!held || !envelope) return null
+  try {
+    return { ...page, content: lock.open(envelope, held.key) }
+  } catch {
+    // The held key does not open this envelope — the password was changed in
+    // another window, or the row was replaced under us. Asking again is right.
+    lock.forget(id)
+    return null
+  }
+}
+
+// ============================================================
 // Quick capture
 // ============================================================
 
@@ -401,6 +660,14 @@ function appendBlocks(
 ): Page {
   const page = getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
+  // Without this, a capture aimed at a locked page would read its envelope as
+  // an empty document, append one line to the nothing it found, and save that
+  // over the real body — the whole page traded for one captured sentence.
+  // `parseDocument` tolerating an unreadable body is right everywhere it is
+  // read and wrong on the one path that writes what it read back.
+  if (page.is_locked) {
+    throw new Error(`"${page.title || 'Untitled'}" is locked. Unlock it before writing to it.`)
+  }
 
   const document = parseDocument(page.content)
 
@@ -930,14 +1197,18 @@ export function documentToPlainText(content: string | null): string {
 export function reindexPage(pageId: string): void {
   const db = getDb()
   db.prepare('DELETE FROM page_fts WHERE page_id = ?').run(pageId)
-  const page = db.prepare('SELECT title, content FROM pages WHERE id = ?').get(pageId) as
-    | { title: string; content: string }
+  const page = db.prepare('SELECT title, content, is_locked FROM pages WHERE id = ?').get(pageId) as
+    | { title: string; content: string; is_locked: number }
     | undefined
   if (!page) return
   db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)').run(
     pageId,
     page.title || '',
-    documentToPlainText(page.content)
+    // A locked page keeps its title in the index and loses its body from it.
+    // Dropping the row entirely was the first instinct and is wrong: the title
+    // is on screen in the sidebar either way, so hiding it from search only
+    // makes a page you can see impossible to jump to. The body is the secret.
+    page.is_locked ? '' : documentToPlainText(page.content)
   )
 }
 
@@ -956,11 +1227,15 @@ export function reindexPage(pageId: string): void {
  * is the same rule applied to the rest.
  */
 export function projectDocument(pageId: string): void {
-  const row = getDb().prepare('SELECT content FROM pages WHERE id = ?').get(pageId) as
-    | { content: string | null }
+  const row = getDb().prepare('SELECT content, is_locked FROM pages WHERE id = ?').get(pageId) as
+    | { content: string | null; is_locked: number }
     | undefined
   if (!row) return
-  const blocks = parseDocument(row.content)
+  // Both projections are readable summaries of the document — a task's text
+  // in the tracker, a mention's surrounding sentence in a backlink — so a
+  // locked page projects an empty document, which is what clears the rows it
+  // had before it was locked.
+  const blocks = row.is_locked ? [] : parseDocument(row.content)
   syncLinks(pageId, extractLinkTargets(blocks))
   projectTasks(pageId, blocks)
 }
@@ -970,13 +1245,18 @@ export function rebuildSearchIndex(): number {
   const db = getDb()
   const trx = db.transaction(() => {
     db.prepare('DELETE FROM page_fts').run()
-    const rows = db.prepare('SELECT id, title, content FROM pages').all() as {
+    const rows = db.prepare('SELECT id, title, content, is_locked FROM pages').all() as {
       id: string
       title: string
       content: string
+      is_locked: number
     }[]
     const insert = db.prepare('INSERT INTO page_fts (page_id, title, body) VALUES (?, ?, ?)')
-    for (const row of rows) insert.run(row.id, row.title || '', documentToPlainText(row.content))
+    // Same rule as `reindexPage`: title in, body out. A rebuild that forgot it
+    // would put every locked page's text back into the index in one pass.
+    for (const row of rows) {
+      insert.run(row.id, row.title || '', row.is_locked ? '' : documentToPlainText(row.content))
+    }
     return rows.length
   })
   return trx()

@@ -1,7 +1,14 @@
+import type { ReactNode } from 'react'
 import './NavItem.css'
 
 interface NavItemProps {
-  label: string
+  /**
+   * ReactNode rather than string because a pinned view carries a glyph, and
+   * the glyph is an element. It used to be interpolated into the label —
+   * `${view.icon} ${view.name}` — which worked only for as long as an icon
+   * was an emoji.
+   */
+  label: ReactNode
   selected: boolean
   onClick: () => void
   title?: string

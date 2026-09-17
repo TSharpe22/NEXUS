@@ -224,3 +224,12 @@
 .nx-due__clear:hover {
   color: var(--nx-critical);
 }
+
+/* A pinned view's glyph and its name are one label, so they wrap and truncate
+   together rather than the mark sliding away from the words it belongs to. */
+.nx-sidebar__pin-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}

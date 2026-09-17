@@ -153,9 +153,14 @@ export function registerIpcHandlers(): void {
       rethrow('pages:getAllSummary', e)
     }
   })
+  // `getPageForEditing`, not `getPageById`: this is the channel the editor
+  // loads a body through, so a locked page must arrive decrypted when the
+  // session holds its key and must not arrive at all when it does not.
+  // Returning the envelope would put ciphertext into a BlockNote document and
+  // let the next autosave write it back as the page's real content.
   ipcMain.handle('pages:getById', (_, id: string) => {
     try {
-      return repo.getPageById(id)
+      return repo.getPageForEditing(id)
     } catch (e) {
       rethrow('pages:getById', e)
     }
@@ -226,6 +231,73 @@ export function registerIpcHandlers(): void {
       rethrow('pages:setPinned', e)
     }
   })
+  // ---- Per-page passwords ----
+  //
+  // Every one of these takes the password as an argument and none of them
+  // returns it, stores it, or logs it. `rethrow` prefixes the channel onto the
+  // message, which is why `unlock` is careful to keep the message it throws
+  // short and constant — an error string is the one thing from in here that
+  // reaches a console.
+  ipcMain.handle('lock:set', (_, id: string, password: string) => {
+    try {
+      repo.lockPage(id, password)
+      // The mirror holds a plaintext copy of this page on disk right now.
+      // Flushed rather than scheduled: a debounce means a window of seconds
+      // where the app says "locked" and the folder still says everything.
+      mirror.scheduleSync(id)
+      mirror.flushPending()
+    } catch (e) {
+      rethrow('lock:set', e)
+    }
+  })
+  ipcMain.handle('lock:unlock', (_, id: string, password: string) => {
+    try {
+      return repo.unlockPage(id, password)
+    } catch (e) {
+      rethrow('lock:unlock', e)
+    }
+  })
+  ipcMain.handle('lock:relock', (_, id: string) => {
+    try {
+      repo.relockPage(id)
+    } catch (e) {
+      rethrow('lock:relock', e)
+    }
+  })
+  ipcMain.handle('lock:relockAll', () => {
+    try {
+      repo.relockAllPages()
+    } catch (e) {
+      rethrow('lock:relockAll', e)
+    }
+  })
+  ipcMain.handle('lock:remove', (_, id: string, password: string) => {
+    try {
+      repo.removePageLock(id, password)
+      // The page is readable again, so the mirror's stub has to become the
+      // page. Same reasoning as above, in the other direction.
+      mirror.scheduleSync(id)
+      mirror.flushPending()
+    } catch (e) {
+      rethrow('lock:remove', e)
+    }
+  })
+  ipcMain.handle('lock:change', (_, id: string, oldPassword: string, newPassword: string) => {
+    try {
+      repo.changePagePassword(id, oldPassword, newPassword)
+      mirror.scheduleSync(id)
+    } catch (e) {
+      rethrow('lock:change', e)
+    }
+  })
+  ipcMain.handle('lock:unlockedIds', () => {
+    try {
+      return repo.unlockedPageIds()
+    } catch (e) {
+      rethrow('lock:unlockedIds', e)
+    }
+  })
+
   // ---- Preferences ----
   ipcMain.handle('prefs:get', () => {
     try {

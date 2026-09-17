@@ -54,6 +54,8 @@ export function Settings() {
   const setDayStartHour = useAppStore((s) => s.setDayStartHour)
   const setTaskSection = useAppStore((s) => s.setTaskSection)
   const setCaptureAccelerator = useAppStore((s) => s.setCaptureAccelerator)
+  const unlockedPageIds = useAppStore((s) => s.unlockedPageIds)
+  const relockAll = useAppStore((s) => s.relockAll)
   const [sectionDraft, setSectionDraft] = useState(prefs.taskSection)
 
   // The stored value is the truth; the draft only exists while it is being
@@ -449,6 +451,35 @@ export function Settings() {
             </div>
           </>
         )}
+      </Panel>
+
+      <Panel title="Passwords">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">
+              {unlockedPageIds.length === 0
+                ? 'Nothing is open'
+                : `${unlockedPageIds.length} page${unlockedPageIds.length === 1 ? '' : 's'} open`}
+            </div>
+            <div className="nx-type-data">
+              A page you unlock stays open until you shut it or quit — nothing expires on a
+              timer, because a lock that reappears mid-sentence eats the sentence. Set a
+              password by right-clicking a page in Notes. The body is encrypted; the title,
+              tags and properties are not, because the page list is built from them.
+            </div>
+          </div>
+          <Button
+            variant="ghost"
+            disabled={unlockedPageIds.length === 0}
+            onClick={async () => {
+              const count = unlockedPageIds.length
+              await relockAll()
+              toast.success(`${count} page${count === 1 ? '' : 's'} locked`)
+            }}
+          >
+            Lock all
+          </Button>
+        </div>
       </Panel>
 
       <Panel title="Shortcuts">

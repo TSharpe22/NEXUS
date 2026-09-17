@@ -112,6 +112,23 @@ export function exportPageMarkdown(pageId: string, href?: AttachmentHref): strin
   const page = repo.getPageById(pageId)
   if (!page) throw new Error(`Page not found: ${pageId}`)
 
+  // Markdown is plaintext by definition, so a locked page exports a notice
+  // rather than its contents — including inside "Export everything", which is
+  // the path that would otherwise write every locked page out in the clear the
+  // first time somebody backed the vault up. The backup that *does* preserve
+  // a locked page is `backup.ts`, which copies the database with the envelope
+  // intact and needs the password to be worth anything.
+  if (page.is_locked) {
+    return [
+      `# ${page.title || 'Untitled'}`,
+      '',
+      'This page is password-protected. Its contents are encrypted in the Nexus',
+      'database and cannot be exported as text. Remove the password first, or',
+      'use a database backup, which keeps the encrypted body as it is.',
+      ''
+    ].join('\n')
+  }
+
   // `parseDocument` rather than a bare JSON.parse: one unparseable body used
   // to throw and take the whole vault's export down with it. Every other
   // reader of a document already tolerates this.
@@ -127,6 +144,18 @@ export function exportPageJSON(pageId: string): string {
   // markdown export uses it: one unparseable body threw and took the export of
   // that page down with it, when an empty document is a better answer than no
   // file at all.
+  // A locked page round-trips as its envelope. Unlike the markdown export
+  // there is nothing lost by doing so — the file is unreadable without the
+  // password either way — and it means a page exported and re-imported comes
+  // back locked rather than coming back empty.
+  if (page.is_locked) {
+    return JSON.stringify(
+      { title: page.title, icon: page.icon, locked: true, content: page.content },
+      null,
+      2
+    )
+  }
+
   return JSON.stringify(
     { title: page.title, icon: page.icon, content: parseDocument(page.content) },
     null,
@@ -441,12 +470,22 @@ export function importMarkdown(content: string, filename: string): Page {
 }
 
 export function importJSON(content: string): Page {
-  const parsed = JSON.parse(content) as { title?: string; icon?: string; content?: unknown }
+  const parsed = JSON.parse(content) as {
+    title?: string
+    icon?: string
+    locked?: boolean
+    content?: unknown
+  }
   const page = repo.createPage()
-  repo.updatePage(page.id, {
-    title: parsed.title ?? 'Untitled',
-    icon: parsed.icon ?? null,
-    content: JSON.stringify(parsed.content ?? [])
-  })
+  repo.updatePage(page.id, { title: parsed.title ?? 'Untitled', icon: parsed.icon ?? null })
+
+  // A locked export carries its envelope as a string. It goes back in as one,
+  // through the path that also sets the flag — `updatePage` would have sealed
+  // it a second time under this session's key, which the file does not have.
+  if (parsed.locked && typeof parsed.content === 'string') {
+    repo.importLockedBody(page.id, parsed.content)
+  } else {
+    repo.updatePage(page.id, { content: JSON.stringify(parsed.content ?? []) })
+  }
   return repo.getPageById(page.id)!
 }

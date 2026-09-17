@@ -3230,6 +3230,234 @@ const heldFrame = await page.evaluate(async () => {
 check('a selected page never falls through to "No page selected"', heldFrame === false)
 await sleep(1000)
 
+// ------------------------------------------------------------ page passwords
+// `check:lock` covers the crypto in isolation — that a sealed body does not
+// contain its plaintext, that a wrong password is refused, that the tag catches
+// tampering. What it cannot see is everything around it, which is where a lock
+// actually leaks: the search index, the projections, the markdown export and
+// the vault folder are four readable copies of a document, and a feature that
+// encrypts the fifth one while leaving those standing is a lock on a door in
+// an open field.
+//
+// So the assertions here are mostly negative, and deliberately so. Each one
+// names a place the text used to be and checks that it is gone.
+log('\n— per-page passwords —')
+await nav('Notes')
+
+// A distinctive token. Split on a hyphen so the FTS tokeniser indexes
+// "PASSPHRASE" as a word — searching for the whole string would fail for
+// reasons that have nothing to do with locking, and pass just as quietly.
+const SECRET = 'PASSPHRASE-CANARY-8891'
+const PASSWORD = 'the-tide-goes-out'
+
+const sealedId = await page.evaluate(async (secret) => {
+  const store = window.nexus.store
+  const created = await window.api.pages.create()
+  await window.api.pages.update(created.id, {
+    title: 'Sealed page',
+    content: JSON.stringify([
+      { id: 'lk1', type: 'paragraph', props: {}, content: [{ type: 'text', text: secret, styles: {} }] },
+      { id: 'lk2', type: 'checkListItem', props: { checked: false }, content: [{ type: 'text', text: 'a secret task @2031-01-02', styles: {} }] }
+    ])
+  })
+  await store.getState().refresh()
+  store.getState().openPage(created.id)
+  return created.id
+}, SECRET)
+await sleep(900)
+
+// The baseline. Without these three, every "it is gone" below would pass on a
+// page whose text was never findable in the first place.
+const beforeSearch = await page.evaluate(() => window.api.search.pages('PASSPHRASE'))
+check('before locking, the text is in the search index',
+  beforeSearch.some((r) => r.page.id === sealedId))
+const beforeTasks = await page.evaluate((id) => window.api.tasks.forPage(id), sealedId)
+check('and its checkbox reached the tracker', beforeTasks.length === 1, JSON.stringify(beforeTasks.length))
+const beforeExport = await page.evaluate((id) => window.api.io.exportPageMarkdown(id), sealedId)
+check('and it exports as text', beforeExport.includes(SECRET))
+
+// --- the gesture the feature is reached by
+await page.locator('.nx-tree-row--page', { hasText: 'Sealed page' }).first().click({ button: 'right' })
+await page.waitForSelector('.nx-menu', { timeout: 4000 }).catch(() => {})
+const menuLabels = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-menu__item')].map((b) => b.innerText.trim())
+)
+check('right-clicking a page opens a menu', menuLabels.length > 0, JSON.stringify(menuLabels))
+check('which offers a password', menuLabels.some((l) => /set a password/i.test(l)))
+
+await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-menu__item')].find((b) => /set a password/i.test(b.innerText))?.click()
+)
+await page.waitForSelector('.nx-pwd', { timeout: 4000 }).catch(() => {})
+check('choosing it asks for one', await page.evaluate(() => !!document.querySelector('.nx-pwd')))
+check('twice, so a typo cannot lock a page out of reach',
+  (await page.evaluate(() => document.querySelectorAll('.nx-pwd__field input').length)) === 2)
+
+// A mismatch has to be caught here rather than encrypted under whichever of
+// the two was typed second.
+await page.locator('.nx-pwd__field input').nth(0).fill(PASSWORD)
+await page.locator('.nx-pwd__field input').nth(1).fill(PASSWORD + '-typo')
+await page.evaluate(() => document.querySelector('.nx-pwd button[type=submit]')?.click())
+await sleep(300)
+check('two that disagree are refused',
+  /do not match/i.test(await page.evaluate(() => document.querySelector('.nx-pwd__error')?.innerText ?? '')))
+check('and the dialog stays open to try again',
+  await page.evaluate(() => !!document.querySelector('.nx-pwd')))
+
+await page.locator('.nx-pwd__field input').nth(0).fill(PASSWORD)
+await page.locator('.nx-pwd__field input').nth(1).fill(PASSWORD)
+await page.evaluate(() => document.querySelector('.nx-pwd button[type=submit]')?.click())
+await page.waitForSelector('.nx-pwd', { state: 'detached', timeout: 8000 }).catch(() => {})
+check('a matching pair closes it', await page.evaluate(() => !document.querySelector('.nx-pwd')))
+
+// --- what is actually on disk now
+// `pages.getAll()` is the raw read — `getById` decrypts for a session that
+// holds the key, which is exactly what must not be trusted here.
+const sealedRow = await page.evaluate(
+  async (id) => (await window.api.pages.getAll()).find((p) => p.id === id) ?? null,
+  sealedId
+)
+check('the page is flagged locked', sealedRow?.is_locked === 1, JSON.stringify(sealedRow?.is_locked))
+check('its stored body is an envelope', !!sealedRow?.content.includes('nexus-locked'))
+check('the text is not in the stored body', !sealedRow?.content.includes(SECRET))
+check('nor is the checkbox text', !sealedRow?.content.includes('a secret task'))
+
+const afterSearch = await page.evaluate(() => window.api.search.pages('PASSPHRASE'))
+check('search can no longer find the body', !afterSearch.some((r) => r.page.id === sealedId))
+const stillFindable = await page.evaluate(() => window.api.search.pages('Sealed'))
+check('but the title still finds the page — it was never secret',
+  stillFindable.some((r) => r.page.id === sealedId))
+
+const afterTasks = await page.evaluate((id) => window.api.tasks.forPage(id), sealedId)
+check('its task left the tracker', afterTasks.length === 0, JSON.stringify(afterTasks.length))
+
+const afterExport = await page.evaluate((id) => window.api.io.exportPageMarkdown(id), sealedId)
+check('exporting it gives a notice, not the text', !afterExport.includes(SECRET))
+check('and says why', /password-protected/i.test(afterExport))
+const exportAll = await page.evaluate(() => window.api.io.exportAllMarkdown())
+check('"export everything" does not leak it either',
+  !exportAll.some((f) => f.content.includes(SECRET)))
+
+// The vault folder is the fourth readable copy, and the one somebody points an
+// assistant at. Its own section above already tore its folder down, so this
+// takes a fresh one — which is also the harder case: a mirror that has never
+// seen this page has to write it as a stub on the *first* pass, not merely
+// avoid refreshing a plaintext file it wrote earlier.
+const lockMirrorDir = join(tmpdir(), `nexus-lockmirror-${Date.now()}`)
+mkdirSync(lockMirrorDir, { recursive: true })
+await page.evaluate(async (dir) => {
+  await window.api.mirror.setFolder(dir)
+  return window.api.mirror.syncNow()
+}, lockMirrorDir)
+await sleep(500)
+const lockMirrorFiles = []
+const walkLockMirror = (dir) => {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name)
+    if (entry.isDirectory()) walkLockMirror(full)
+    else lockMirrorFiles.push(full)
+  }
+}
+walkLockMirror(lockMirrorDir)
+check('the mirror wrote a tree to compare against', lockMirrorFiles.length > 1, JSON.stringify(lockMirrorFiles.length))
+const leakingFiles = lockMirrorFiles.filter((f) => readFileSync(f, 'utf-8').includes(SECRET))
+check('no file in the vault folder holds the text', leakingFiles.length === 0, JSON.stringify(leakingFiles))
+const stubFiles = lockMirrorFiles.filter((f) => readFileSync(f, 'utf-8').includes('locked: true'))
+check('the page is still in the tree, as a stub', stubFiles.length === 1, JSON.stringify(stubFiles.length))
+check('and the stub is where the index says the page is',
+  lockMirrorFiles.some((f) => f.endsWith('_nexus-index.md') && readFileSync(f, 'utf-8').includes('Sealed page')))
+await page.evaluate(() => window.api.mirror.setFolder(null))
+rmSync(lockMirrorDir, { recursive: true, force: true })
+
+// --- the page stays open after being locked
+check('locking a page you are reading does not throw you out of it',
+  await page.evaluate(() => !!document.querySelector('.bn-editor')))
+const savedWhileLocked = await page.evaluate(async (id) => {
+  const store = window.nexus.store
+  const body = JSON.stringify([
+    { id: 'lk1', type: 'paragraph', props: {}, content: [{ type: 'text', text: 'PASSPHRASE-CANARY-8891 and one more line', styles: {} }] }
+  ])
+  await window.api.pages.update(id, { content: body })
+  store.getState().patchPage(id, { content: body })
+  return (await window.api.pages.getAll()).find((p) => p.id === id)?.content ?? ''
+}, sealedId)
+check('and a save made while it is open is re-sealed, not written in the clear',
+  savedWhileLocked.includes('nexus-locked') && !savedWhileLocked.includes('one more line'))
+
+// --- shutting it again
+await page.locator('.nx-tree-row--page', { hasText: 'Sealed page' }).first().click({ button: 'right' })
+await page.waitForSelector('.nx-menu', { timeout: 4000 }).catch(() => {})
+await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-menu__item')].find((b) => /^lock now$/i.test(b.innerText.trim()))?.click()
+)
+await sleep(900)
+check('"Lock now" replaces the editor with the lock screen',
+  await page.evaluate(() => !!document.querySelector('.nx-locked') && !document.querySelector('.bn-editor')))
+check('and the decrypted body leaves the renderer',
+  await page.evaluate((id) => window.nexus.store.getState().pageContent[id] === undefined, sealedId))
+
+await page.locator('.nx-locked__field').fill('not-the-password')
+await page.evaluate(() => document.querySelector('.nx-locked__form button[type=submit]')?.click())
+await sleep(1500)
+check('a wrong password is refused',
+  /wrong password/i.test(await page.evaluate(() => document.querySelector('.nx-locked__error')?.innerText ?? '')))
+check('and the page stays shut', await page.evaluate(() => !!document.querySelector('.nx-locked')))
+
+await page.locator('.nx-locked__field').fill(PASSWORD)
+await page.evaluate(() => document.querySelector('.nx-locked__form button[type=submit]')?.click())
+await page.waitForSelector('.bn-editor', { timeout: 8000 }).catch(() => {})
+const reopened = await page.evaluate(() => document.querySelector('.bn-editor')?.innerText ?? 'NO_EDITOR')
+check('the right one opens it', reopened.includes('PASSPHRASE'), JSON.stringify(reopened.slice(0, 60)))
+
+// --- taking the password off again
+await page.locator('.nx-tree-row--page', { hasText: 'Sealed page' }).first().click({ button: 'right' })
+await page.waitForSelector('.nx-menu', { timeout: 4000 }).catch(() => {})
+await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-menu__item')].find((b) => /remove password/i.test(b.innerText))?.click()
+)
+await page.waitForSelector('.nx-pwd', { timeout: 4000 }).catch(() => {})
+await page.locator('.nx-pwd__field input').nth(0).fill('still-not-it')
+await page.evaluate(() => document.querySelector('.nx-pwd button[type=submit]')?.click())
+await sleep(1500)
+check('removing it needs the password even while the page is open',
+  await page.evaluate(() => !!document.querySelector('.nx-pwd')))
+const removalError = await page.evaluate(() => document.querySelector('.nx-pwd__error')?.innerText ?? '')
+// Exact, not a substring match. Electron wraps a rejected invoke in its own
+// prefix and `rethrow` adds the channel on top, so "contains wrong password"
+// passes on the raw "Error invoking remote method 'lock:remove': …" that used
+// to be shown to the user verbatim.
+check('and says so in English', removalError.trim() === 'Wrong password.', JSON.stringify(removalError))
+
+await page.locator('.nx-pwd__field input').nth(0).fill(PASSWORD)
+await page.evaluate(() => document.querySelector('.nx-pwd button[type=submit]')?.click())
+await page.waitForSelector('.nx-pwd', { state: 'detached', timeout: 8000 }).catch(() => {})
+await sleep(600)
+const unsealed = await page.evaluate(
+  async (id) => (await window.api.pages.getAll()).find((p) => p.id === id) ?? null,
+  sealedId
+)
+check('the body is in the clear again', unsealed?.is_locked === 0 && !unsealed?.content.includes('nexus-locked'))
+check('with the text intact', !!unsealed?.content.includes('PASSPHRASE'))
+const backInSearch = await page.evaluate(() => window.api.search.pages('PASSPHRASE'))
+check('and it is back in the search index', backInSearch.some((r) => r.page.id === sealedId))
+
+// --- one left locked, to be found still locked after a restart
+const acrossRestartId = await page.evaluate(async (secret) => {
+  const store = window.nexus.store
+  const created = await window.api.pages.create()
+  await window.api.pages.update(created.id, {
+    title: 'Locked across a restart',
+    content: JSON.stringify([
+      { id: 'rs1', type: 'paragraph', props: {}, content: [{ type: 'text', text: secret, styles: {} }] }
+    ])
+  })
+  await window.api.lock.set(created.id, 'second-password')
+  await store.getState().refresh()
+  return created.id
+}, 'RESTART-CANARY-4417')
+check('a second page is locked for the restart check',
+  (await page.evaluate(async (id) => (await window.api.pages.getAll()).find((p) => p.id === id)?.is_locked, acrossRestartId)) === 1)
+
 // ---------------------------------------------------------------- snapshots
 // `check:backup` covers the rotation policy in isolation; what it cannot see
 // is the wiring — that a launch actually takes one, that the write-ahead log
@@ -3289,6 +3517,31 @@ check('the body edit was written before the window closed',
   !!quitProbe && quitProbe.content.includes('EDIT-AT-QUIT'))
 check('and so was the title edit',
   !!quitProbe && quitProbe.title.includes('TITLE-AT-QUIT'), JSON.stringify(quitProbe?.title))
+
+// A key lives in the main process and dies with it, so the page a session
+// unlocked must be shut again in the next one. This is the assertion that
+// separates a password from a preference.
+const afterRestart = await relaunchedWindow.evaluate(
+  async (id) => {
+    const raw = (await window.api.pages.getAll()).find((p) => p.id === id) ?? null
+    return {
+      locked: raw?.is_locked,
+      leaks: !!raw?.content.includes('RESTART-CANARY-4417'),
+      unlocked: await window.api.lock.unlockedIds(),
+      readable: await window.api.pages.getById(id)
+    }
+  },
+  acrossRestartId
+)
+check('a locked page is still locked after a restart', afterRestart.locked === 1)
+check('its text is still not on disk in the clear', !afterRestart.leaks)
+check('no key survived the quit', afterRestart.unlocked.length === 0, JSON.stringify(afterRestart.unlocked))
+check('and the editor is refused a body for it', afterRestart.readable === null)
+
+await relaunchedWindow.evaluate((id) => window.nexus.store.getState().openPage(id), acrossRestartId)
+await sleep(900)
+check('opening it shows the lock screen',
+  await relaunchedWindow.evaluate(() => !!document.querySelector('.nx-locked')))
 
 const snapshots = existsSync(backupDir) ? readdirSync(backupDir) : []
 check('relaunching an existing vault takes one', snapshots.length === 1, JSON.stringify(snapshots))

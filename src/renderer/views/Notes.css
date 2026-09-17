@@ -580,7 +580,7 @@
 }
 
 .nx-tree-row__icon {
-  width: 12px;
+  width: 14px;
 }
 
 .nx-tree-row__main {
@@ -865,4 +865,14 @@
 .nx-tree-row--page.is-selected {
   background: var(--nx-accent-tint-soft, var(--nx-accent-tint));
   box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+/* The lock in a row's meta line. Dim like the text it sits in — a locked page
+   is a fact to notice when you look, not a thing to flag from across the room. */
+.nx-tree-row__lock {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 5px;
+  vertical-align: -1px;
+  color: var(--nx-text-dim);
 }

@@ -3,6 +3,7 @@ import type { ViewDef, ViewDraft } from '@shared/views'
 import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 import { localDateISO } from '@shared/journal-date'
+import { flushPendingWrites } from '../pending-writes'
 
 export type View = 'home' | 'notes' | 'views' | 'tracker' | 'settings'
 
@@ -82,6 +83,15 @@ interface AppState {
    * empty and then saved that emptiness over the real one.
    */
   pageContent: Record<string, string>
+  /**
+   * Pages whose password has been given this session.
+   *
+   * Mirrors the key cache the main process holds — main is the authority, this
+   * is what the renderer draws from, and `refreshUnlocked()` puts the two back
+   * in step. Held as a list rather than a set because zustand compares by
+   * reference and every consumer of it wants a stable one.
+   */
+  unlockedPageIds: string[]
 
   /** Folder ids currently expanded in the Notes tree; persisted. */
   expandedFolderIds: string[]
@@ -182,6 +192,19 @@ interface AppState {
    */
   patchPage: (id: string, patch: Partial<Page>) => void
 
+  /** Put a password on a page. Its body is encrypted before this resolves. */
+  lockPage: (id: string, password: string) => Promise<void>
+  /** Open a page for this session. Rejects on a wrong password. */
+  unlockPage: (id: string, password: string) => Promise<void>
+  /** Shut a page again without removing its password. */
+  relockPage: (id: string) => Promise<void>
+  /** Shut every page that is currently open. */
+  relockAll: () => Promise<void>
+  /** Take the password off for good. Requires it even while the page is open. */
+  removePageLock: (id: string, password: string) => Promise<void>
+  changePagePassword: (id: string, oldPassword: string, next: string) => Promise<void>
+  refreshUnlocked: () => Promise<void>
+
   createFolder: (name: string, parentFolderId: string | null) => Promise<Folder>
   renameFolder: (id: string, name: string) => Promise<void>
   moveFolder: (id: string, parentFolderId: string | null) => Promise<void>
@@ -237,6 +260,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   pages: [],
   trashed: [],
   pageContent: {},
+  unlockedPageIds: [],
   types: [],
   folders: [],
   tags: [],
@@ -318,6 +342,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   loadPageContent: async (id) => {
     if (get().pageContent[id] !== undefined) return
+    // A locked page has no body to fetch until its password is given, and
+    // `pages.getById` answers null for one rather than handing back the
+    // envelope. Skipped rather than attempted so the console is not a line of
+    // nulls every time the sidebar selection moves across a locked page.
+    const entry = get().pages.find((p) => p.id === id) ?? get().trashed.find((p) => p.id === id)
+    if (entry?.is_locked && !get().unlockedPageIds.includes(id)) return
     const page = await window.api.pages.getById(id)
     if (!page) return
     // Re-checked after the await: a save that landed while this was in flight
@@ -493,6 +523,97 @@ export const useAppStore = create<AppState>((set, get) => ({
           content === undefined ? state.pageContent : { ...state.pageContent, [id]: content }
       }
     }),
+
+  // ----------------------------------------------------------
+  // Per-page passwords
+  //
+  // Nothing here holds a password: each action takes one, hands it to main,
+  // and lets the string go. What the renderer keeps is the *fact* that a page
+  // is open, so it knows whether to draw the editor or the lock screen.
+  // ----------------------------------------------------------
+
+  lockPage: async (id, password) => {
+    // The editor may be sitting on up to 600ms of typing. Sealing before that
+    // lands would encrypt the older document and then let the debounce write
+    // the newer one — correctly sealed, but only because `updatePage` catches
+    // it; flushing first means what gets locked is what is on screen.
+    await flushPendingWrites()
+    await window.api.lock.set(id, password)
+    // The page stays open — locking what you are looking at should not throw
+    // you out of it — so its body stays in `pageContent` and its id joins the
+    // unlocked list. Main made the same decision with the key.
+    set((state) => ({
+      pages: state.pages.map((p) => (p.id === id ? { ...p, is_locked: 1 } : p)),
+      unlockedPageIds: state.unlockedPageIds.includes(id)
+        ? state.unlockedPageIds
+        : [...state.unlockedPageIds, id]
+    }))
+  },
+
+  unlockPage: async (id, password) => {
+    const content = await window.api.lock.unlock(id, password)
+    set((state) => ({
+      pageContent: { ...state.pageContent, [id]: content },
+      unlockedPageIds: state.unlockedPageIds.includes(id)
+        ? state.unlockedPageIds
+        : [...state.unlockedPageIds, id]
+    }))
+  },
+
+  relockPage: async (id) => {
+    // Before the key goes, not after. Dropping it first makes the editor
+    // unmount, and unmounting flushes its pending save into a page main can
+    // no longer encrypt — the last few seconds of typing lost to an error
+    // toast, at the exact moment the user asked for the page to be safe.
+    await flushPendingWrites()
+    await window.api.lock.relock(id)
+    set((state) => {
+      // The decrypted body has to leave the renderer too. Leaving it in
+      // `pageContent` would mean "lock" shut the door on a room the app was
+      // still holding a photograph of — the editor would remount from it.
+      const { [id]: _dropped, ...rest } = state.pageContent
+      return {
+        pageContent: rest,
+        unlockedPageIds: state.unlockedPageIds.filter((x) => x !== id)
+      }
+    })
+  },
+
+  relockAll: async () => {
+    await flushPendingWrites()
+    await window.api.lock.relockAll()
+    set((state) => {
+      const shut = new Set(state.unlockedPageIds)
+      const pageContent: Record<string, string> = {}
+      for (const [id, body] of Object.entries(state.pageContent)) {
+        if (!shut.has(id)) pageContent[id] = body
+      }
+      return { pageContent, unlockedPageIds: [] }
+    })
+  },
+
+  removePageLock: async (id, password) => {
+    await window.api.lock.remove(id, password)
+    set((state) => ({
+      pages: state.pages.map((p) => (p.id === id ? { ...p, is_locked: 0 } : p)),
+      unlockedPageIds: state.unlockedPageIds.filter((x) => x !== id)
+    }))
+    // The body is in the clear again, and the copy the store holds was
+    // decrypted from the same bytes, so there is nothing to re-fetch.
+  },
+
+  changePagePassword: async (id, oldPassword, next) => {
+    await window.api.lock.change(id, oldPassword, next)
+    set((state) => ({
+      unlockedPageIds: state.unlockedPageIds.includes(id)
+        ? state.unlockedPageIds
+        : [...state.unlockedPageIds, id]
+    }))
+  },
+
+  refreshUnlocked: async () => {
+    set({ unlockedPageIds: await window.api.lock.unlockedIds() })
+  },
 
   // ----------------------------------------------------------
   // Folders

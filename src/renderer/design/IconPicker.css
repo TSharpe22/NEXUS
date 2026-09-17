@@ -23,8 +23,16 @@
   transition: background var(--nx-motion), border-color var(--nx-motion);
 }
 
+/* A glyph is drawn at currentColor, so the button's own colour is what
+   makes it read as a set with the title beside it rather than as a picture
+   sitting next to one. Muted at rest, full text colour under the pointer. */
 .nx-iconpick__btn.has-icon {
-  font-size: 26px;
+  color: var(--nx-text-muted);
+  font-size: 22px;
+}
+
+.nx-iconpick__btn.has-icon:hover {
+  color: var(--nx-text);
 }
 
 .nx-iconpick__btn:hover {
@@ -50,7 +58,7 @@
   top: calc(100% + 4px);
   left: 0;
   z-index: 40;
-  width: 268px;
+  width: 288px;
   padding: var(--nx-space-2);
   border: 1px solid var(--nx-border-2);
   border-radius: var(--nx-radius-md);
@@ -66,8 +74,12 @@
   display: grid;
   grid-template-columns: repeat(8, 1fr);
   gap: 2px;
-  max-height: 200px;
+  max-height: 244px;
   overflow-y: auto;
+  /* The vertical scrollbar takes width out of the track, which was enough to
+     push eight cells past the edge and grow a horizontal one underneath them.
+     Nothing here is ever wider than the popup, so there is nothing to reach. */
+  overflow-x: hidden;
 }
 
 .nx-iconpick__cell {
@@ -78,19 +90,21 @@
   border: 1px solid transparent;
   border-radius: var(--nx-radius-sm);
   background: transparent;
-  font-size: 18px;
+  color: var(--nx-text-muted);
   line-height: 1;
   cursor: pointer;
-  transition: background var(--nx-motion);
+  transition: background var(--nx-motion), color var(--nx-motion);
 }
 
 .nx-iconpick__cell:hover {
   background: var(--nx-row-hover);
+  color: var(--nx-text);
 }
 
 .nx-iconpick__cell.is-current {
   border-color: var(--nx-accent);
   background: var(--nx-accent-tint);
+  color: var(--nx-accent);
 }
 
 .nx-iconpick__none {

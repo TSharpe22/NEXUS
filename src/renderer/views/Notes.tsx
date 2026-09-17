@@ -16,6 +16,9 @@ import { TagFilter } from './TagFilter'
 import { TypeFilter } from './TypeFilter'
 import { SaveAsView } from './SaveAsView'
 import { SelectionBar } from './SelectionBar'
+import { LockedPage } from './LockedPage'
+import { MENU_SEPARATOR, type MenuEntry } from '../design/ContextMenu'
+import { askNewPassword, askPassword, passwordDialog } from '../design/PasswordDialog'
 import './Notes.css'
 
 export function Notes() {
@@ -54,6 +57,11 @@ export function Notes() {
   const deletePageForever = useAppStore((s) => s.deletePageForever)
   const emptyTrash = useAppStore((s) => s.emptyTrash)
   const createFolder = useAppStore((s) => s.createFolder)
+  const unlockedPageIds = useAppStore((s) => s.unlockedPageIds)
+  const lockPage = useAppStore((s) => s.lockPage)
+  const relockPage = useAppStore((s) => s.relockPage)
+  const removePageLock = useAppStore((s) => s.removePageLock)
+  const changePagePassword = useAppStore((s) => s.changePagePassword)
   const openTodayEntry = useAppStore((s) => s.openTodayEntry)
   const openInbox = useAppStore((s) => s.openInbox)
 
@@ -97,6 +105,16 @@ export function Notes() {
   }, [activeEntry, contentReady])
 
   const isTrashed = !!activeEntry && trashed.some((p) => p.id === activeEntry.id)
+
+  /**
+   * A page that has a password and has not been given it this session.
+   *
+   * The editor is not mounted for one — not hidden behind an overlay, not
+   * mounted against an empty document. Mounting it would give the autosave a
+   * blank document and one keystroke's opportunity to write it over the real
+   * body the moment the page is unlocked.
+   */
+  const isSealed = !!activeEntry?.is_locked && !unlockedPageIds.includes(activeEntry.id)
 
   const typeName = (typeId: string) => types.find((t) => t.id === typeId)?.name ?? 'Note'
 
@@ -247,6 +265,136 @@ export function Notes() {
       return next.size === current.size ? current : next
     })
   }, [list])
+
+  /**
+   * What a right-click on a page row offers.
+   *
+   * Built here rather than in the tree because every entry needs something
+   * this view already holds — the store, the confirm dialog, the password
+   * dialogs — and the tree's job is knowing where the click landed.
+   *
+   * The password entries change shape with the page: an unprotected page can
+   * only be given one, a locked page can be shut, re-keyed or freed. There is
+   * deliberately no "unlock" here — that is what opening the page does, and an
+   * unlock prompt in a menu would be a second way to do the same thing with
+   * nowhere to say what a locked page is.
+   */
+  const pageMenu = useCallback(
+    (page: PageListItem): MenuEntry[] => {
+      const label = page.title || 'Untitled'
+      const unlocked = unlockedPageIds.includes(page.id)
+
+      const entries: MenuEntry[] = [
+        {
+          label: 'Open',
+          icon: 'note',
+          onSelect: () => setActivePageId(page.id)
+        },
+        {
+          label: page.is_pinned ? 'Unpin from Home' : 'Pin to Home',
+          icon: 'pin',
+          onSelect: () => setPagePinned(page.id, !page.is_pinned)
+        },
+        {
+          label: 'Duplicate',
+          icon: 'layers',
+          onSelect: () => void duplicatePage(page.id)
+        },
+        MENU_SEPARATOR
+      ]
+
+      if (!page.is_locked) {
+        entries.push({
+          label: 'Set a password…',
+          icon: 'lock',
+          onSelect: () => {
+            void askNewPassword(
+              `Set a password for “${label}”`,
+              'The body of this page is encrypted with it and leaves search, the tracker, exports and the vault folder. The title, tags and properties stay readable. There is no recovery — a forgotten password means the page is gone.',
+              async (password) => {
+                await lockPage(page.id, password)
+                toast.success('Password set')
+              }
+            )
+          }
+        })
+      } else {
+        if (unlocked) {
+          entries.push({
+            label: 'Lock now',
+            icon: 'shield',
+            onSelect: async () => {
+              await relockPage(page.id)
+              toast.success(`“${label}” locked`)
+            }
+          })
+        }
+        entries.push({
+          label: 'Change password…',
+          icon: 'key',
+          onSelect: () => {
+            void passwordDialog({
+              title: `Change the password on “${label}”`,
+              message: 'The body is decrypted with the old password and re-encrypted with the new one. It never touches the disk in between.',
+              confirmLabel: 'Change password',
+              fields: [
+                { key: 'old', label: 'Current password' },
+                { key: 'next', label: 'New password' },
+                { key: 'confirm', label: 'Repeat the new one' }
+              ],
+              validate: (v) => {
+                if (!v.old) return 'The current password is required.'
+                if (!v.next) return 'A new password is required.'
+                if (v.next !== v.confirm) return 'The new ones do not match.'
+                return null
+              },
+              submit: async (v) => {
+                await changePagePassword(page.id, v.old, v.next)
+                toast.success('Password changed')
+              }
+            })
+          }
+        })
+        entries.push({
+          label: 'Remove password…',
+          icon: 'unlock',
+          danger: true,
+          onSelect: () => {
+            void askPassword(
+              `Remove the password from “${label}”`,
+              'The body is written back in plain text and returns to search, the tracker, exports and the vault folder.',
+              'Remove password',
+              async (password) => {
+                await removePageLock(page.id, password)
+                toast.success('Password removed')
+              },
+              true
+            )
+          }
+        })
+      }
+
+      entries.push(MENU_SEPARATOR, {
+        label: 'Move to trash',
+        icon: 'archive',
+        danger: true,
+        onSelect: () => void trashPage(page.id)
+      })
+
+      return entries
+    },
+    [
+      unlockedPageIds,
+      setActivePageId,
+      setPagePinned,
+      duplicatePage,
+      lockPage,
+      relockPage,
+      removePageLock,
+      changePagePassword,
+      trashPage
+    ]
+  )
 
   const handleDeleteForever = async (page: PageListItem) => {
     const label = page.title || 'Untitled'
@@ -435,6 +583,7 @@ export function Notes() {
               onTrash={(page) => trashPage(page.id)}
               selected={selected}
               onRowClick={handleRowClick}
+              pageMenu={pageMenu}
             />
           )}
         </div>
@@ -468,7 +617,9 @@ export function Notes() {
                 held frame, not "no page selected" — falling through to the
                 empty state would flash it on every switch between pages.
               */}
-              {activePage ? (
+              {isSealed ? (
+                <LockedPage page={activeEntry} />
+              ) : activePage ? (
                 <>
                   <Editor key={activePage.id} page={activePage}>
                     <PropertiesPanel page={activePage} />

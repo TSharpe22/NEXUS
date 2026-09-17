@@ -51,6 +51,16 @@ const api: NexusAPI = {
     move: (id, folderId) => ipcRenderer.invoke('pages:move', id, folderId),
     setPinned: (id, pinned) => ipcRenderer.invoke('pages:setPinned', id, pinned)
   },
+  lock: {
+    set: (id, password) => ipcRenderer.invoke('lock:set', id, password),
+    unlock: (id, password) => ipcRenderer.invoke('lock:unlock', id, password),
+    relock: (id) => ipcRenderer.invoke('lock:relock', id),
+    relockAll: () => ipcRenderer.invoke('lock:relockAll'),
+    remove: (id, password) => ipcRenderer.invoke('lock:remove', id, password),
+    change: (id, oldPassword, newPassword) =>
+      ipcRenderer.invoke('lock:change', id, oldPassword, newPassword),
+    unlockedIds: () => ipcRenderer.invoke('lock:unlockedIds')
+  },
   capture: {
     line: (text, target) => ipcRenderer.invoke('capture:line', text, target)
   },

@@ -3,6 +3,8 @@ import { SearchHighlight } from '../design/SearchHighlight'
 import type { Folder, Page, PageListItem } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { Icon } from '../design/Icon'
+import { PageGlyph, Glyph } from '../design/Glyph'
+import { ContextMenu, type MenuEntry, type MenuState } from '../design/ContextMenu'
 import { relativeTime } from '../hooks/use-relative-time'
 
 /**
@@ -64,6 +66,15 @@ interface Props {
    * intentions and only the list knows what the last-clicked row was.
    */
   onRowClick: (page: PageListItem, modifiers: { toggle: boolean; range: boolean }) => void
+  /**
+   * The right-click menu for one page, built by Notes rather than here.
+   *
+   * The tree knows where the click landed; it does not know what a page can
+   * have done to it — that is spread across the store, a confirm dialog and
+   * the password dialogs, and pulling all of it in here would make the folder
+   * tree the place those live.
+   */
+  pageMenu: (page: PageListItem) => MenuEntry[]
 }
 
 export function FolderTree({
@@ -76,7 +87,8 @@ export function FolderTree({
   onTrash,
   onTogglePin,
   selected,
-  onRowClick
+  onRowClick,
+  pageMenu
 }: Props) {
   const folders = useAppStore((s) => s.folders)
   const expandedFolderIds = useAppStore((s) => s.expandedFolderIds)
@@ -91,6 +103,7 @@ export function FolderTree({
 
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
+  const [menu, setMenu] = useState<MenuState | null>(null)
 
   const foldersByParent = useMemo(() => {
     const map = new Map<string, Folder[]>()
@@ -183,14 +196,36 @@ export function FolderTree({
         dragPayload = null
       }}
       onClick={(e) => onRowClick(page, { toggle: e.metaKey || e.ctrlKey, range: e.shiftKey })}
+      onContextMenu={(e) => {
+        e.preventDefault()
+        e.stopPropagation()
+        // The menu acts on the row it opened over, so a right-click outside
+        // the current selection moves the selection to it first. Right-
+        // clicking *inside* a multi-row selection leaves it alone, which is
+        // what every file manager does and what makes a bulk action reachable.
+        if (!selected.has(page.id)) onRowClick(page, { toggle: false, range: false })
+        setMenu({ x: e.clientX, y: e.clientY, entries: pageMenu(page) })
+      }}
     >
-      <span className="nx-tree-row__icon">
-        <Icon
-          shape={selected.has(page.id) ? 'square' : 'circle'}
-          size={9}
-          filled={selected.has(page.id) || page.id === activePageId}
-          color={selected.has(page.id) ? 'var(--nx-accent)' : undefined}
-        />
+      {/* A page that has been given a glyph shows it here instead of the
+          state marker. The marker's job is telling active from selected, and
+          the row already says both — accent rule, accent tint — so the slot
+          is better spent on the mark the user chose to recognise the page by.
+          Pages with no glyph keep the marker, which is most of them. */}
+      <span
+        className="nx-tree-row__icon"
+        style={selected.has(page.id) ? { color: 'var(--nx-accent)' } : undefined}
+      >
+        {page.icon ? (
+          <PageGlyph icon={page.icon} size={13} />
+        ) : (
+          <Icon
+            shape={selected.has(page.id) ? 'square' : 'circle'}
+            size={9}
+            filled={selected.has(page.id) || page.id === activePageId}
+            color={selected.has(page.id) ? 'var(--nx-accent)' : undefined}
+          />
+        )}
       </span>
       <span className="nx-tree-row__main">
         <span className="nx-tree-row__title">{page.title || 'Untitled'}</span>
@@ -201,6 +236,14 @@ export function FolderTree({
         )}
         <span className="nx-tree-row__meta nx-type-data">
           {typeName(page.type_id)} · {relativeTime(page.updated_at)}
+          {/* Said in the meta line rather than as a badge on the title: it is
+              a fact about the page, on the same footing as its type, and a
+              locked page is otherwise indistinguishable from any other. */}
+          {!!page.is_locked && (
+            <span className="nx-tree-row__lock" title="Password-protected">
+              <Glyph name="lock" size={10} />
+            </span>
+          )}
         </span>
       </span>
       <span className="nx-tree-row__actions">
@@ -378,6 +421,7 @@ export function FolderTree({
     >
       {(foldersByParent.get(ROOT) ?? []).map((folder) => renderFolder(folder, 0))}
       {(pagesByFolder.get(ROOT) ?? []).map((page) => renderPage(page, 0))}
+      <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )
 }
