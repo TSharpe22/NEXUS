@@ -192,6 +192,13 @@ await unlockWith(page, 'second secret')
 await page.waitForSelector('.nx-app', { timeout: 10_000 }).catch(() => {})
 check('the new one works', await isApp(page))
 
+// The lock button beside the wordmark.
+await page.click('.nx-sidebar__lock')
+await sleep(900)
+check('the lock button in the sidebar locks', await isLockScreen(page))
+await unlockWith(page, 'second secret')
+await page.waitForSelector('.nx-app', { timeout: 10_000 }).catch(() => {})
+
 // Quitting while locked should not wait out the renderer flush timeout.
 await page.evaluate(() => window.api.appLock.lock())
 await sleep(800)
@@ -217,6 +224,9 @@ page = await app.firstWindow()
 await page.waitForSelector('.nx-applock__panel, .nx-app', { timeout: 20_000 })
 await sleep(500)
 check('once removed, Nexus opens without asking', await isApp(page))
+await page.click('.nx-sidebar__lock')
+await sleep(700)
+check('without a password, the lock button goes to Settings instead', await isApp(page) && (await page.evaluate(() => /App lock/.test(document.body.innerText))))
 
 await app.close()
 log(failed ? `\n${failed} failed` : '\nall passed')

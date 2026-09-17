@@ -64,6 +64,41 @@
   gap: var(--nx-space-5);
 }
 
+.nx-sidebar__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--nx-space-2);
+  padding-right: var(--nx-space-1);
+}
+
+/* Quiet until wanted: dim like the nav beside it, accent on hover. */
+.nx-sidebar__lock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  color: var(--nx-text-dim);
+  cursor: pointer;
+  transition: color var(--nx-motion), border-color var(--nx-motion), background var(--nx-motion);
+}
+
+.nx-sidebar__lock:hover {
+  color: var(--nx-accent);
+  border-color: var(--nx-border-2);
+  background: var(--nx-surface-raised);
+}
+
+.nx-sidebar__lock:focus-visible {
+  outline: 1.5px solid var(--nx-accent);
+  outline-offset: -1.5px;
+}
+
 .nx-sidebar__logo {
   color: var(--nx-accent);
   font-family: var(--nx-font-sans);

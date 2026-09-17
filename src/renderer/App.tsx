@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Toaster } from 'react-hot-toast'
+import toast, { Toaster } from 'react-hot-toast'
 import { useAppStore, VIEW_META, VIEW_ORDER, View } from './store/app-store'
 import { flushPendingWrites } from './pending-writes'
 import { NavItem } from './design/NavItem'
-import { PageGlyph } from './design/Glyph'
+import { Glyph, PageGlyph } from './design/Glyph'
+import { lockApp } from './AppLockGate'
 import { CommandPalette } from './design/CommandPalette'
 import { QuickCapture } from './design/CaptureBar'
 import { useShortcuts } from './hooks/use-shortcuts'
@@ -135,7 +136,28 @@ export function App() {
   return (
     <div className="nx-app">
       <aside className="nx-sidebar">
-        <div className="nx-sidebar__logo">NEXUS</div>
+        <div className="nx-sidebar__head">
+          <div className="nx-sidebar__logo">NEXUS</div>
+          <button
+            className="nx-sidebar__lock"
+            title="Lock Nexus (Cmd/Ctrl + Shift + L)"
+            aria-label="Lock Nexus"
+            onClick={() => {
+              void window.api.appLock.status().then((s) => {
+                if (s.enabled) {
+                  void lockApp()
+                  return
+                }
+                // Without a password there is nothing to lock with. Take the
+                // click to the place that fixes that, rather than ignoring it.
+                setActiveView('settings')
+                toast('Set a password in App lock first')
+              })
+            }}
+          >
+            <Glyph name="lock" size={14} />
+          </button>
+        </div>
         <nav className="nx-sidebar__nav">
           {VIEW_ORDER.map((view) => (
             <NavItem
