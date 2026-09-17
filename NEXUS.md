@@ -889,8 +889,31 @@ Six sections, each a thin view over the same page/property model:
   all of it through the UI and checks what was stored.
 - **Settings** — types, data folder location, snapshots and restore,
   attachments (what is stored, what nothing points at, and the one button
-  that deletes it), the day-start hour, the vault mirror, import/export,
-  keyboard shortcuts.
+  that deletes it), the day-start hour, the vault mirror, the app lock,
+  import/export, keyboard shortcuts.
+
+  **The app lock locks the app, not the files.** A password to open Nexus,
+  and a lock that comes back after a chosen idle time (no input *in Nexus*),
+  when the computer sleeps or its screen locks, or on Cmd/Ctrl+Shift+L. It is
+  off until a password is set. Settings says plainly what it does not do:
+  `nexus.db`, attachments and the mirror stay readable to anything running as
+  you, and nothing here changes a byte of them. Four decisions hold it up.
+
+  - **Enforced in main.** `app-lock.ts` wraps `ipcMain.handle` before any
+    handler is registered, so while locked every channel but `applock:*`
+    refuses — a reload, devtools or a renderer bug gets nothing to draw with.
+    Wrapping registration rather than checking in each handler is what makes
+    it impossible to add a channel the lock does not cover.
+  - **The app unmounts.** `AppLockGate` renders the lock screen *instead of*
+    the app, not over it, so nothing a page said is left in the DOM.
+  - **Flush, then lock.** Every lock writes out pending edits first; a
+    debounced save landing after the lock would be refused and lost. Page
+    passwords are forgotten on every app lock, in main and in the store.
+  - **scrypt, with its cost stored.** The hash lives in `settings` as
+    `scrypt$N$r$p$salt$hash` at page-password cost; wrong guesses past three
+    wait 1s, doubling to 30s. A forgotten password is recoverable by anyone
+    with the files — deleting the `appLock.hash` setting — which is the same
+    boundary the feature already draws.
 
   **Types are managed here, and only here.** Before this they had no home at
   all: a type could be *created* only from a magic `__new__` entry inside the

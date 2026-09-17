@@ -4,6 +4,7 @@ import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
 import { TypesPanel } from './TypesPanel'
+import { AppLockPanel } from './AppLockPanel'
 import { confirmDialog } from '../design/Confirm'
 import { dayStartLabel } from '@shared/day'
 import { formatBytes } from '@shared/format'
@@ -452,6 +453,8 @@ export function Settings() {
           </>
         )}
       </Panel>
+
+      <AppLockPanel />
 
       <Panel title="Passwords">
         <div className="nx-settings__row">

@@ -212,6 +212,33 @@ attachments and counted by reclaim) and canvases as hubs on the Home graph.
 **Left, deliberately:** web-link cards, copying cards between canvases, and
 folders or tags for canvases. Each is additive to the stored format.
 
+## Wave 5 — App lock
+
+A password to open Nexus, idle lock, lock on sleep, lock now. Deliberately a
+lock on the app and not on the files; `NEXUS.md` on Settings has the four
+decisions behind it, and `scripts/probes/app-lock.mjs` checks each one.
+
+## Future — an encrypted vault
+
+The app lock's stated limit is that the files are readable. The feature that
+removes the limit, wanted and not yet scheduled:
+
+- **The database encrypted at rest**, with a key derived from the password:
+  SQLCipher through `better-sqlite3-multiple-ciphers` in place of
+  `better-sqlite3`. The app lock becomes the key prompt rather than a gate.
+- **Attachments and launch snapshots** encrypted too, or the pictures and
+  every backup are the plaintext the database no longer is.
+- **The mirror** turned off, or written only somewhere encrypted — a plain
+  Markdown copy of an encrypted vault undoes it.
+- **No recovery.** A forgotten password is a lost vault, by design, so it
+  needs an explicit exported recovery key and a first-run flow that says so.
+- **A migration** that encrypts an existing vault in place, with a verified
+  copy first — the most dangerous step Nexus would ever run.
+
+It touches opening the database, backups, restore, the mirror and every
+check that reads `nexus.db` directly, so it is a phase with its own plan in
+`PHASES.md` before any code.
+
 ## Deferred
 
 **Tracker.** Known to be weaker than it should be. Left alone deliberately:

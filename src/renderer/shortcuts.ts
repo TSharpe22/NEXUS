@@ -17,6 +17,7 @@ export type ShortcutAction =
   | 'todayEntry'
   | 'inbox'
   | 'focusSearch'
+  | 'lockApp'
   | { go: View }
 
 export interface Shortcut {
@@ -65,6 +66,7 @@ export const SHORTCUTS: Shortcut[] = [
   { action: { go: 'views' }, key: '3', mod: true, display: 'Cmd/Ctrl + 3', label: 'Go to Views' },
   { action: { go: 'tracker' }, key: '4', mod: true, display: 'Cmd/Ctrl + 4', label: 'Go to Tracker' },
   { action: { go: 'settings' }, key: '5', mod: true, display: 'Cmd/Ctrl + 5', label: 'Go to Settings' },
+  { action: 'lockApp', key: 'l', mod: true, shift: true, display: 'Cmd/Ctrl + Shift + L', label: 'Lock Nexus (once it has a password)' },
   // Six rather than renumbering: Settings kept 5 so nobody's fingers learn
   // a new key for a screen that did not move.
   { action: { go: 'canvas' }, key: '6', mod: true, display: 'Cmd/Ctrl + 6', label: 'Go to Canvas' }

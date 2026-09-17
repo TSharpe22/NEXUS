@@ -14,6 +14,7 @@ Build first (`npm run build`), then:
 | `quit.mjs` | Does an edit typed inside the autosave debounce survive closing the window, and `app.quit()`? Does a second launch get its own window on the same vault? |
 | `graph.mjs` | Does the graph settle, fit its panel, and stay interactive? Prints the drawn extent against the panel. |
 | `graph-drag.mjs` | Does a grabbed node stay under the pointer, do its neighbours follow, do pins persist, does the wheel zoom without scrolling Home, do the size setting, the tag and folder hubs and the full view work? |
+| `app-lock.mjs` | Does Nexus stay shut until given its password — through a reload and the IPC surface, after idle and on lock-now — and does nothing typed just before it locks get lost? |
 | `canvas.mjs` | Can a board be built with the mouse and keyboard — cards, page cards, arrows, groups, colour, resize, undo, editing a page in place — and does it survive a reload, the mirror, the trash and a card type from a later build? |
 | `interaction.mjs` | Does dragging a graph node navigate, does a settled graph still move, does chrome text select? |
 | `restore.mjs` | Does restoring a snapshot put the vault back, and leave the window alive to see it? |

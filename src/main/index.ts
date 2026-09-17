@@ -14,6 +14,7 @@ import {
   setSetting
 } from './repo'
 import { flushPending as flushMirror } from './mirror'
+import { guardIpc, initAppLock } from './app-lock'
 import { flushRenderer } from './flush'
 import { attachmentPath, mimeFor } from './files'
 import {
@@ -246,6 +247,10 @@ if (!app.requestSingleInstanceLock()) {
     // Canvas refs resolve `[[Title]]` against titles, so they are rebuilt
     // whole on every launch rather than only when missing.
     ensureCanvasRefs()
+    // Before any handler exists: the guard wraps registration itself, so no
+    // channel can be added that the lock does not cover.
+    guardIpc()
+    initAppLock()
     registerIpcHandlers()
     setCaptureTarget(() => mainWindow)
     createWindow()

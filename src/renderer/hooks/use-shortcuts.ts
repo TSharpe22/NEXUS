@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import toast from 'react-hot-toast'
 import { useAppStore } from '../store/app-store'
 import { SHORTCUTS, matches } from '../shortcuts'
+import { lockApp } from '../AppLockGate'
 
 /**
  * The window-wide keyboard map.
@@ -55,6 +56,13 @@ export function useShortcuts({
           store.openTodayEntry().catch((e) => {
             console.error('[nexus] could not open today\'s entry', e)
             toast.error("Could not open today's entry")
+          })
+          return
+        case 'lockApp':
+          event.preventDefault()
+          void window.api.appLock.status().then((s) => {
+            if (!s.enabled) toast('Set a password in Settings → App lock first')
+            else void lockApp()
           })
           return
         case 'inbox':

@@ -229,6 +229,18 @@ export type PageListItem = Omit<Page, 'content'>
 export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox'
 
 /** The handful of things that are settings rather than data. */
+/** Whether Nexus needs a password to open, and whether it is shut right now. */
+export interface AppLockStatus {
+  enabled: boolean
+  locked: boolean
+  /** Lock after this long with no input in Nexus. 0 is never. */
+  idleSeconds: number
+  /** Lock when the computer sleeps or its screen locks. */
+  lockOnSleep: boolean
+  /** After too many wrong attempts, how long until the next is accepted. */
+  retryInMs: number
+}
+
 export interface Preferences {
   /** Hour 0–23 at which a new day begins. See `shared/day.ts`. */
   dayStartHour: number
@@ -613,6 +625,19 @@ export interface NexusAPI {
   }
   activity: {
     getRecent(limit?: number): Promise<ActivityLogEntry[]>
+  }
+  appLock: {
+    status(): Promise<AppLockStatus>
+    /** Rejects with "Wrong password", or with how long to wait after too many. */
+    unlock(password: string): Promise<AppLockStatus>
+    /** Writes out what is pending, then locks. A no-op without a password. */
+    lock(): Promise<AppLockStatus>
+    /** `current` is required once a password exists. */
+    setPassword(current: string | null, next: string): Promise<AppLockStatus>
+    removePassword(current: string): Promise<AppLockStatus>
+    setIdleSeconds(seconds: number): Promise<AppLockStatus>
+    setLockOnSleep(on: boolean): Promise<AppLockStatus>
+    onChanged(handler: (status: AppLockStatus) => void): () => void
   }
   canvases: {
     list(): Promise<CanvasListItem[]>

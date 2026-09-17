@@ -1,0 +1,59 @@
+/* The lock screen. The whole window, one panel, nothing behind it. */
+
+.nx-applock {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--nx-bg);
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nx-applock__panel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--nx-space-3);
+  width: 280px;
+  padding: var(--nx-space-5);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-surface);
+}
+
+.nx-applock__logo {
+  font-family: var(--nx-font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  color: var(--nx-accent);
+}
+
+.nx-applock__input {
+  width: 100%;
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border: 1px solid var(--nx-border-2);
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-surface-sunken);
+  color: var(--nx-text);
+  font-family: var(--nx-font-mono);
+  font-size: 13px;
+  outline: none;
+  user-select: text;
+  -webkit-user-select: text;
+  transition: border-color var(--nx-motion);
+}
+
+.nx-applock__input:focus {
+  border-color: var(--nx-accent);
+}
+
+.nx-applock__message {
+  min-height: 1.4em;
+  color: var(--nx-text-dim);
+}
+
+.nx-applock__message.is-error {
+  color: var(--nx-critical);
+}

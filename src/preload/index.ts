@@ -142,6 +142,20 @@ const api: NexusAPI = {
   activity: {
     getRecent: (limit) => ipcRenderer.invoke('activity:getRecent', limit)
   },
+  appLock: {
+    status: () => ipcRenderer.invoke('applock:status'),
+    unlock: (password) => ipcRenderer.invoke('applock:unlock', password),
+    lock: () => ipcRenderer.invoke('applock:lock'),
+    setPassword: (current, next) => ipcRenderer.invoke('applock:setPassword', current, next),
+    removePassword: (current) => ipcRenderer.invoke('applock:removePassword', current),
+    setIdleSeconds: (seconds) => ipcRenderer.invoke('applock:setIdleSeconds', seconds),
+    setLockOnSleep: (on) => ipcRenderer.invoke('applock:setLockOnSleep', on),
+    onChanged: (handler) => {
+      const listener = (_: unknown, status: Parameters<typeof handler>[0]): void => handler(status)
+      ipcRenderer.on('applock:changed', listener)
+      return () => ipcRenderer.removeListener('applock:changed', listener)
+    }
+  },
   canvases: {
     list: () => ipcRenderer.invoke('canvases:list'),
     listTrashed: () => ipcRenderer.invoke('canvases:listTrashed'),
