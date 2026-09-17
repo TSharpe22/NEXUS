@@ -32,8 +32,14 @@
   transition: stroke var(--nx-motion), opacity var(--nx-motion);
 }
 
+/* Membership, not a link: present, but quieter than anything you wrote. */
+.nx-graph__edge--hub {
+  stroke-dasharray: 2 3;
+  opacity: 0.7;
+}
+
 .nx-graph__edge--dim {
-  opacity: 0.15;
+  opacity: 0.12;
 }
 
 .nx-graph__edge--active {
@@ -42,12 +48,37 @@
 }
 
 .nx-graph__node {
+  --nx-graph-tone: var(--nx-text-dim);
   cursor: pointer;
-  transition: opacity var(--nx-motion);
 }
 
-.nx-graph__node--dim {
-  opacity: 0.25;
+.nx-graph__node--inert {
+  cursor: grab;
+}
+
+/* Dimmed on the marks themselves, not on the group. Opacity on a <g> makes
+   Chromium flatten the group into a layer of its own, and a software-rendered
+   window draws each of those layers as a faint dark box around the node. */
+.nx-graph__node--dim > * {
+  opacity: 0.22;
+}
+
+/* Recency. Four steps rather than a gradient: a step can be read, a shade
+   between two shades cannot. */
+.nx-graph__node--fresh {
+  --nx-graph-tone: var(--nx-accent);
+}
+
+.nx-graph__node--recent {
+  --nx-graph-tone: color-mix(in srgb, var(--nx-accent) 60%, var(--nx-text-dim));
+}
+
+.nx-graph__node--aging {
+  --nx-graph-tone: var(--nx-text-dim);
+}
+
+.nx-graph__node--old {
+  --nx-graph-tone: color-mix(in srgb, var(--nx-text-dim) 55%, var(--nx-surface-sunken));
 }
 
 /* Invisible, larger than the dot — makes small nodes comfortable to grab. */
@@ -56,14 +87,36 @@
 }
 
 .nx-graph__node-dot {
-  fill: var(--nx-text-dim);
+  fill: var(--nx-graph-tone);
   stroke: var(--nx-surface-sunken);
   stroke-width: 2;
-  transition: fill var(--nx-motion);
+  transition: fill var(--nx-motion), stroke var(--nx-motion);
 }
 
-.nx-graph__node:hover .nx-graph__node-dot {
+/* Hubs are outline marks, per the design system: a label glyph is never
+   filled, and a tag or folder is a label rather than a thing. */
+.nx-graph__node-dot--hub {
+  fill: var(--nx-surface-sunken);
+  stroke: var(--nx-graph-tone);
+  stroke-width: 1.5;
+}
+
+.nx-graph__node-pin {
+  fill: none;
+  stroke: var(--nx-text-dim);
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.nx-graph__node:hover .nx-graph__node-dot,
+.nx-graph__node--lit.nx-graph__node--page .nx-graph__node-dot {
   fill: var(--nx-accent);
+}
+
+.nx-graph__node:hover .nx-graph__node-dot--hub,
+.nx-graph__node--lit .nx-graph__node-dot--hub {
+  fill: var(--nx-surface-sunken);
+  stroke: var(--nx-accent);
 }
 
 .nx-graph__node--active .nx-graph__node-dot {
@@ -75,14 +128,50 @@
 .nx-graph__node-label {
   fill: var(--nx-text-dim);
   font-family: var(--nx-font-mono);
-  font-size: 10px;
+  font-size: calc(10px * var(--nx-graph-label-scale, 1));
   pointer-events: none;
   user-select: none;
+  /* A halo in the panel colour, drawn under the glyphs, so a label that
+     crosses an edge or another label stays readable. */
+  paint-order: stroke;
+  stroke: var(--nx-surface-sunken);
+  stroke-width: calc(3px * var(--nx-graph-label-scale, 1));
+  stroke-linejoin: round;
+  transition: fill var(--nx-motion);
+}
+
+.nx-graph__node--tag .nx-graph__node-label,
+.nx-graph__node--folder .nx-graph__node-label {
+  fill: var(--nx-text);
+  font-size: calc(11px * var(--nx-graph-label-scale, 1));
+}
+
+/* Zoomed out: page names only for what the pointer is on and what it touches. */
+.nx-graph--far .nx-graph__node--page .nx-graph__node-label {
+  opacity: 0;
+}
+
+.nx-graph--far .nx-graph__node--page:hover .nx-graph__node-label,
+.nx-graph--far .nx-graph__node--lit .nx-graph__node-label,
+.nx-graph--far .nx-graph__node--active .nx-graph__node-label {
+  opacity: 1;
 }
 
 .nx-graph__node:hover .nx-graph__node-label,
+.nx-graph__node--lit .nx-graph__node-label,
 .nx-graph__node--active .nx-graph__node-label {
   fill: var(--nx-text);
+}
+
+.nx-graph__toolbar {
+  position: absolute;
+  top: var(--nx-space-2);
+  left: var(--nx-space-2);
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--nx-space-1);
+  max-width: calc(100% - 220px);
 }
 
 .nx-graph__controls {
@@ -92,6 +181,8 @@
   display: flex;
   gap: var(--nx-space-1);
 }
+
+.nx-graph__toolbar button,
 
 .nx-graph__controls button {
   background: var(--nx-surface);
@@ -106,6 +197,7 @@
   transition: color var(--nx-motion), border-color var(--nx-motion);
 }
 
+.nx-graph__toolbar button:hover,
 .nx-graph__controls button:hover {
   color: var(--nx-accent);
   border-color: var(--nx-accent);
@@ -127,4 +219,64 @@
 .nx-graph__controls {
   background: var(--nx-surface);
   border-radius: var(--nx-radius-sm);
+}
+
+/* A toolbar toggle that is on. Accent text and border, not a fill: filled is
+   reserved for the one selected thing. */
+.nx-graph__toolbar button[aria-pressed='true'] {
+  color: var(--nx-accent);
+  border-color: color-mix(in srgb, var(--nx-accent) 55%, var(--nx-border));
+}
+
+.nx-graph__toolbar-sep {
+  width: 1px;
+  height: 14px;
+  background: var(--nx-border);
+  margin: 0 2px;
+}
+
+/* ---- The full view ---------------------------------------------------- */
+
+.nx-graph-full {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  background: var(--nx-bg);
+}
+
+.nx-graph-full__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--nx-space-3) var(--nx-space-4);
+  border-bottom: 1px solid var(--nx-border);
+}
+
+.nx-graph-full__title {
+  font-family: var(--nx-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--nx-text-dim);
+}
+
+.nx-graph-full__body {
+  flex: 1;
+  min-height: 0;
+  padding: var(--nx-space-3);
+}
+
+.nx-graph-full__body .nx-graph {
+  border: 1px solid var(--nx-border);
+}
+
+.nx-graph__placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--nx-border);
+  border-radius: var(--nx-radius-md);
 }

@@ -665,8 +665,8 @@ Six sections, each a thin view over the same page/property model:
 - **Home** — the day. Nexus opens here, so the screen answers what today is
   before it answers anything about the vault: the date, a capture box, then
   today's journal entry, the tasks dated today, the habits' last three weeks
-  and the pinned pages. The instrument panel — the force-directed graph (pan,
-  zoom, drag a node, click to open), what has gone quiet, and vault counts —
+  and the pinned pages. The instrument panel — the force-directed graph, what
+  has gone quiet, and vault counts —
   sits underneath rather than above. It is built to fit one window without
   scrolling: two grid rows of fixed height, each panel scrolling its own list
   rather than pushing the page taller, collapsing to one column under 1100px.
@@ -696,6 +696,44 @@ Six sections, each a thin view over the same page/property model:
   `shared/date-range.ts`, and excludes pinned pages: a pin says the page
   matters, and calling it neglected in the same breath is noise. Pages are
   pinned from the Notes list's hover actions and unpinned from either place.
+
+  **The graph draws three axes, and only one of them is links.** `stats:getGraph`
+  returns pages, their links, and — as separate lists — the tags and folders
+  each page sits in. The widget draws tags (diamonds) and folders (squares) as
+  hub nodes when their toggles are on, which they are by default: a vault with
+  no `[[links]]` was otherwise a field of disconnected dots with nothing to
+  read. Hub ties are longer, weaker, dashed springs, because membership is a
+  looser claim than a link somebody wrote. "Links" in the legend and on the
+  Vault panel still counts only links. Clicking a tag hub opens Notes filtered
+  to that tag; a folder hub is inert.
+
+  Everything else about it is kept on the widget instance, so `{}` — every
+  dashboard written before these settings — is a valid graph: `size` (S / M / L,
+  default M at 420px; Home's 460px panel cap is lifted for this one panel),
+  `tags`, `folders`, `colour` (`recency` by default, or `type`, or `none`), and
+  `pins`. Right-clicking a node pins it at its current world position and
+  writes the pin into `pins`; dragging a pinned node moves the pin; anything
+  unpinned is let go on release and settles back. The full view (⤢) is the same
+  component over the whole window, sharing one layout cache (`layoutKey`) with
+  the panel, and the panel unmounts while it is open so the one layout is never
+  simulated twice.
+
+  Four bugs shaped it, and each is a thing not to put back. The `ResizeObserver`
+  was attached once on mount — before the graph was fetched, while the empty
+  state was rendered and there was no SVG to observe — so the graph drew itself
+  centred on x = 0 while pointer maths used the real width: a grabbed node
+  landed half a panel from the cursor, and fit did nothing. Grabbing a settled
+  node scheduled a frame that only re-rendered and was never cleared, so the
+  simulation never restarted and the idle drift stopped for good. And the
+  wheel handler was a React `onWheel`, which React registers as passive, so
+  zooming the graph also scrolled Home. And the loop that ran for the empty
+  first render was the one kicked again when the real nodes arrived — React
+  runs every effect's cleanup before any effect's body, so the seeding effect
+  restarted the *old* `step` — which meant the layout on Home never actually
+  ran: it sat at its seed positions, pages stacked on one another, until
+  something was dragged. The simulation effect now cancels whatever frame is
+  pending and starts its own. `scripts/probes/graph-drag.mjs` checks all four,
+  including that a settled layout has no two pages on top of each other.
 - **Notes** — the page tree and the block editor. A "Today's entry" button at
   the top of the list opens today's journal entry, creating it from the
   Journal type's template if it does not exist yet. Everything it needs — the

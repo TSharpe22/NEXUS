@@ -45,6 +45,8 @@ export interface WidgetContext {
 
   openPage(id: string): void
   goToTracker(mode: TrackerMode): void
+  /** The Notes list, filtered to one tag. */
+  openTag(tagId: string): void
   /** Start today's journal entry, creating it if it does not exist. */
   openTodayEntry(): Promise<Page>
 

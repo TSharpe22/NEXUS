@@ -2930,16 +2930,24 @@ export function getStorageStats(): StorageStats {
 export function getGraph(): GraphData {
   const db = getDb()
 
-  const nodes = db
-    .prepare(
-      `SELECT p.id, p.title, p.type_id, p.updated_at,
-              (SELECT COUNT(*) FROM links l
-                 WHERE l.source_page_id = p.id OR l.target_page_id = p.id) AS degree
-       FROM pages p
-       WHERE p.is_deleted = 0
-       ORDER BY p.updated_at DESC`
-    )
-    .all() as GraphNode[]
+  const nodes = (
+    db
+      .prepare(
+        `SELECT p.id, p.title, p.type_id, p.updated_at, p.folder_id,
+                (SELECT COUNT(*) FROM links l
+                   WHERE l.source_page_id = p.id OR l.target_page_id = p.id) AS degree
+         FROM pages p
+         WHERE p.is_deleted = 0
+         ORDER BY p.updated_at DESC`
+      )
+      .all() as Omit<GraphNode, 'tag_ids'>[]
+  ).map((n) => ({ ...n, tag_ids: [] as string[] }))
+
+  const byId = new Map(nodes.map((n) => [n.id, n]))
+  const memberships = db
+    .prepare('SELECT page_id, tag_id FROM page_tags ORDER BY created_at ASC')
+    .all() as { page_id: string; tag_id: string }[]
+  for (const m of memberships) byId.get(m.page_id)?.tag_ids.push(m.tag_id)
 
   // Restricted to live pages on both ends so the renderer never has to draw an
   // edge to a node it wasn't given.
@@ -2952,7 +2960,14 @@ export function getGraph(): GraphData {
     )
     .all() as GraphEdge[]
 
-  return { nodes, edges }
+  const tags = db
+    .prepare('SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE ASC')
+    .all() as GraphData['tags']
+  const folders = db
+    .prepare('SELECT id, name, parent_folder_id FROM folders ORDER BY sort_order ASC')
+    .all() as GraphData['folders']
+
+  return { nodes, edges, tags, folders }
 }
 
 export function getGraphPreview(): GraphPreview {

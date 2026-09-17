@@ -173,6 +173,8 @@ export function Home() {
   const openTodayEntry = useAppStore((s) => s.openTodayEntry)
   const setActiveView = useAppStore((s) => s.setActiveView)
   const setTrackerMode = useAppStore((s) => s.setTrackerMode)
+  const toggleTagFilter = useAppStore((s) => s.toggleTagFilter)
+  const clearTagFilter = useAppStore((s) => s.clearTagFilter)
   const setPagePinned = useAppStore((s) => s.setPagePinned)
   const capture = useAppStore((s) => s.capture)
   const patchPage = useAppStore((s) => s.patchPage)
@@ -239,6 +241,11 @@ export function Home() {
         setTrackerMode(mode)
         setActiveView('tracker')
       },
+      openTag: (tagId) => {
+        clearTagFilter()
+        toggleTagFilter(tagId)
+        setActiveView('notes')
+      },
       openTodayEntry,
       reload,
       read: {
@@ -282,6 +289,8 @@ export function Home() {
       reload,
       setActiveView,
       setTrackerMode,
+      toggleTagFilter,
+      clearTagFilter,
       setPagePinned,
       patchPage,
       capture,

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import type { GraphData, PageListItem, StorageStats, TrackerTask, ViewRow } from '@shared/types'
 import type { ViewDef } from '@shared/views'
@@ -9,7 +10,7 @@ import { Button } from '../design/Button'
 import { CaptureBar } from '../design/CaptureBar'
 import { Icon } from '../design/Icon'
 import { DueDate } from '../design/DueDate'
-import { GraphView } from '../views/GraphView'
+import { GraphView, type GraphColour, type GraphPins } from '../views/GraphView'
 import { HabitStrips, STRIP_DAYS } from '../views/HabitStrips'
 import { relativeTime } from '../hooks/use-relative-time'
 import type { WidgetProps } from './context'
@@ -32,8 +33,8 @@ const SIDE_ROWS = 7
  */
 const LOOSE_END_LIMIT = 50
 
-/** `GraphView` takes a pixel height rather than filling its box. */
-const GRAPH_HEIGHT = 210
+const EMPTY_GRAPH: GraphData = { nodes: [], edges: [], tags: [], folders: [] }
+const EMPTY_PINS: GraphPins = {}
 
 // ------------------------------------------------------------------
 // Shared pieces
@@ -369,25 +370,162 @@ export function viewWidgetTitle(config: Record<string, unknown>, views: ViewDef[
   return views.find((v) => v.id === viewId)?.name ?? null
 }
 
-export function GraphWidget({ ctx }: WidgetProps) {
-  const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] })
+/** The heights the Home graph comes in. Named, so the toolbar can say which. */
+const GRAPH_SIZES = { S: 260, M: 420, L: 640 } as const
+type GraphSize = keyof typeof GRAPH_SIZES
+const GRAPH_COLOURS: GraphColour[] = ['recency', 'type', 'none']
+const GRAPH_LAYOUT_KEY = 'home'
 
-  // On the page *count*, not on `pages` — that is a fresh array after every
-  // mutation, and GraphView restarts its simulation whenever the node list
-  // changes identity, so refetching per keystroke never lets it settle.
-  const pageCount = ctx.pages.length
+/** Two graphs are the same drawing when their nodes, edges and hubs are. */
+function graphSignature(g: GraphData): string {
+  return JSON.stringify([
+    g.nodes.map((n) => [n.id, n.title, n.degree, n.type_id, n.folder_id, n.tag_ids, n.updated_at.slice(0, 10)]),
+    g.edges.map((e) => e.source + e.target),
+    g.tags,
+    g.folders
+  ])
+}
+
+/**
+ * The graph, with its settings kept on the widget instance.
+ *
+ * Every setting has a default, and a stored config that predates it reads as
+ * that default — `{}` is a valid graph widget, which is what every dashboard
+ * written before these settings existed holds.
+ */
+export function GraphWidget({ ctx, config, setConfig }: WidgetProps) {
+  const [graph, setGraph] = useState<GraphData>(EMPTY_GRAPH)
+  const [expanded, setExpanded] = useState(false)
+  const signature = useRef('')
+
+  const size: GraphSize = config.size === 'S' || config.size === 'L' ? config.size : 'M'
+  const showTags = config.tags !== false
+  const showFolders = config.folders !== false
+  const colour: GraphColour = GRAPH_COLOURS.includes(config.colour as GraphColour)
+    ? (config.colour as GraphColour)
+    : 'recency'
+  const pins = useMemo(
+    () => (config.pins && typeof config.pins === 'object' ? (config.pins as GraphPins) : EMPTY_PINS),
+    [config.pins]
+  )
+
+  // Refetched whenever the vault changes — a new link, a tag, a rename — but
+  // only handed to the graph when what it draws actually differs. `ctx.pages`
+  // is a fresh array after every save, and GraphView re-settles whenever its
+  // node list changes identity, so passing every fetch through would keep a
+  // graph you are typing next to permanently in motion.
   useEffect(() => {
     let cancelled = false
-    void ctx.read.graph().then((data) => {
-      if (!cancelled) setGraph(data)
-    })
+    const timer = setTimeout(() => {
+      void ctx.read.graph().then((data) => {
+        if (cancelled) return
+        const next = graphSignature(data)
+        if (next === signature.current) return
+        signature.current = next
+        setGraph(data)
+      })
+    }, signature.current ? 700 : 0)
     return () => {
       cancelled = true
+      clearTimeout(timer)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageCount])
+  }, [ctx.pages, ctx.types])
 
-  return <GraphView graph={graph} height={GRAPH_HEIGHT} />
+  useEffect(() => {
+    if (!expanded) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation()
+        setExpanded(false)
+      }
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [expanded])
+
+  const set = (patch: Record<string, unknown>) => setConfig({ ...config, ...patch })
+  const openTag = (tagId: string) => {
+    setExpanded(false)
+    ctx.openTag(tagId)
+  }
+
+  const toolbar = (inline: boolean) => (
+    <>
+      <button aria-pressed={showTags} onClick={() => set({ tags: !showTags })} title="Draw tags as hubs">
+        tags
+      </button>
+      <button aria-pressed={showFolders} onClick={() => set({ folders: !showFolders })} title="Draw folders as hubs">
+        folders
+      </button>
+      <span className="nx-graph__toolbar-sep" />
+      <button
+        onClick={() => set({ colour: GRAPH_COLOURS[(GRAPH_COLOURS.indexOf(colour) + 1) % GRAPH_COLOURS.length] })}
+        title="What a node's colour means"
+      >
+        colour: {colour}
+      </button>
+      {inline && (
+        <>
+          <span className="nx-graph__toolbar-sep" />
+          {(Object.keys(GRAPH_SIZES) as GraphSize[]).map((key) => (
+            <button key={key} aria-pressed={size === key} onClick={() => set({ size: key })} title={`${GRAPH_SIZES[key]}px tall`}>
+              {key}
+            </button>
+          ))}
+        </>
+      )}
+    </>
+  )
+
+  const view = (inline: boolean) => (
+    <GraphView
+      graph={graph}
+      height={inline ? GRAPH_SIZES[size] : 'fill'}
+      layoutKey={GRAPH_LAYOUT_KEY}
+      showTags={showTags}
+      showFolders={showFolders}
+      colour={colour}
+      pins={pins}
+      onPinsChange={(next) => set({ pins: next })}
+      onOpenTag={openTag}
+      toolbar={toolbar(inline)}
+      controls={
+        inline ? (
+          <button onClick={() => setExpanded(true)} title="Open the full graph" aria-label="Open the full graph">
+            ⤢
+          </button>
+        ) : null
+      }
+    />
+  )
+
+  return (
+    <>
+      {/* One graph at a time: both would run a simulation over the same shared
+          layout, at twice the speed. */}
+      {expanded ? (
+        <div className="nx-graph__placeholder nx-type-data" style={{ height: GRAPH_SIZES[size] }}>
+          open in the full view · esc to close
+        </div>
+      ) : (
+        view(true)
+      )}
+      {expanded &&
+        createPortal(
+          <div className="nx-graph-full" role="dialog" aria-label="Graph">
+            <div className="nx-graph-full__head">
+              <span className="nx-graph-full__title">Graph</span>
+              <button className="nx-home__link nx-type-data" onClick={() => setExpanded(false)}>
+                close · esc
+              </button>
+            </div>
+            <div className="nx-graph-full__body">{view(false)}</div>
+          </div>,
+          document.body
+        )}
+    </>
+  )
 }
 
 export function StaleWidget({ ctx }: WidgetProps) {
@@ -426,7 +564,7 @@ export function StaleWidget({ ctx }: WidgetProps) {
 
 export function StatsWidget({ ctx }: WidgetProps) {
   const [storage, setStorage] = useState<StorageStats | null>(null)
-  const [graph, setGraph] = useState<GraphData>({ nodes: [], edges: [] })
+  const [graph, setGraph] = useState<GraphData>(EMPTY_GRAPH)
 
   const pageCount = ctx.pages.length
   useEffect(() => {

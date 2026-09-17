@@ -296,6 +296,8 @@ export interface GraphNode {
   updated_at: string
   /** Total links touching this page, in either direction. Drives node size. */
   degree: number
+  folder_id: string | null
+  tag_ids: string[]
 }
 
 export interface GraphEdge {
@@ -303,9 +305,19 @@ export interface GraphEdge {
   target: string
 }
 
+/**
+ * The link graph, plus the two other axes a page sits on.
+ *
+ * `edges` is links only — mentions and relations — and is what "links" counts
+ * everywhere. Tags and folders come as their own lists so the renderer can
+ * draw them as hub nodes when asked to, rather than the main process deciding
+ * that a shared tag is a link.
+ */
 export interface GraphData {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  tags: Pick<Tag, 'id' | 'name' | 'color'>[]
+  folders: Pick<Folder, 'id' | 'name' | 'parent_folder_id'>[]
 }
 
 // ============================================================

@@ -1285,12 +1285,28 @@ log('\n— graph —')
 await nav('Home')
 await sleep(1800)
 check('graph renders nodes', (await page.evaluate(() => document.querySelectorAll('.nx-graph__node').length)) > 0)
-const box = await page.evaluate(() => {
-  const n = document.querySelector('.nx-graph__node-dot')
-  if (!n) return null
-  const r = n.getBoundingClientRect()
-  return { x: r.x + r.width / 2, y: r.y + r.height / 2 }
+// The graph is taller than it was and can sit below the fold of an 820px
+// window, where a click at its coordinates lands on nothing. Bring it on
+// screen first, then pick a page whose dot is actually the topmost thing at its
+// centre — a tag or folder hub can overlap it, and a hub is not a page. The
+// layout is still settling 1.8s in, so a node can be covered for a moment:
+// ask again rather than trusting one frame.
+await page.evaluate(() => document.querySelector('.nx-graph')?.scrollIntoView({ block: 'center', behavior: 'instant' }))
+await sleep(300)
+const findNode = () => page.evaluate(() => {
+  for (const n of document.querySelectorAll('.nx-graph__node--page .nx-graph__node-dot')) {
+    const r = n.getBoundingClientRect()
+    const x = r.x + r.width / 2
+    const y = r.y + r.height / 2
+    if (document.elementFromPoint(x, y)?.closest('.nx-graph__node') === n.closest('.nx-graph__node')) return { x, y }
+  }
+  return null
 })
+let box = null
+for (let attempt = 0; attempt < 10 && !box; attempt++) {
+  box = await findNode()
+  if (!box) await sleep(500)
+}
 check('nodes have real screen positions', !!box && box.x > 0 && box.y > 0, JSON.stringify(box))
 
 // Home shows today's journal entry, and showing a thing must never make it.
@@ -1304,9 +1320,16 @@ check('and it offers to start one rather than showing a blank',
 
 await page.screenshot({ path: SHOT + '/06-home-graph.png' })
 if (box) {
-  await page.mouse.click(box.x, box.y)
-  await sleep(700)
-  check('clicking a node opens the page', await page.evaluate(() => !!document.querySelector('.nx-editor__title')))
+  // Measured and clicked back to back, and retried: a node that drifts out
+  // from under the pointer in between is the settle, not the click handler.
+  let opened = false
+  for (let attempt = 0; attempt < 5 && !opened; attempt++) {
+    const at = attempt === 0 ? box : await findNode()
+    if (at) await page.mouse.click(at.x, at.y)
+    await sleep(700)
+    opened = await page.evaluate(() => !!document.querySelector('.nx-editor__title'))
+  }
+  check('clicking a node opens the page', opened)
 }
 
 // ---------------------------------------------------------------- other views

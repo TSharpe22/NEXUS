@@ -102,11 +102,11 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
   {
     kind: 'graph',
     label: 'Graph',
-    hint: 'Pages and the links between them',
+    hint: 'Pages, the links between them, their tags and folders',
     defaultSpan: 6,
     frame: 'panel',
     dense: true,
-    actions: () => <span className="nx-type-data">click a node to open it</span>,
+    actions: () => <span className="nx-type-data">drag · scroll to zoom · click to open</span>,
     Component: GraphWidget
   },
   {

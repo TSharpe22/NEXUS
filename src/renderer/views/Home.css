@@ -121,6 +121,13 @@
   min-height: 0;
 }
 
+/* The graph sets its own height, from its S / M / L setting. The cap above
+   would clip anything past it — including the default, once the panel header
+   is added on top. */
+.nx-home__slot:has(.nx-graph, .nx-graph__placeholder, .nx-graph__empty) .nx-panel {
+  max-height: none;
+}
+
 /* ---- Edit mode ---- */
 
 .nx-home__grid.is-editing .nx-panel {
