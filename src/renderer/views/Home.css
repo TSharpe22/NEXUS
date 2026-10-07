@@ -251,6 +251,9 @@ button.nx-home__entry:hover {
   align-items: flex-start;
   gap: var(--nx-space-2);
   cursor: default;
+  /* Nothing there yet, so nothing sunk into the panel: an outline waiting to
+     be filled, not a black well beside the days. */
+  background: transparent;
 }
 
 /* Stacked, and allowed to wrap: side by side with the button this truncated
@@ -573,14 +576,17 @@ button.nx-home__entry:hover {
 }
 
 /* Three states rather than two: a day with no entry is a different claim
-   from a day whose entry says it did not happen. */
+   from a day whose entry says it did not happen. Told apart by colour, never
+   by depth: the squares used to be sunken wells, near-black holes in the
+   panel that read as missing pixels rather than as days. An empty day is an
+   outline on the panel's own fill. */
 .nx-home__habit-day {
   width: 14px;
   height: 14px;
   padding: 0;
-  border: 1px solid var(--nx-row-line);
+  border: 1px solid var(--nx-border-2);
   border-radius: 2px;
-  background: var(--nx-surface-sunken);
+  background: transparent;
   cursor: pointer;
   transition: border-color var(--nx-motion);
 }
@@ -594,16 +600,16 @@ button.nx-home__entry:hover {
   border-color: var(--nx-accent);
 }
 
-/* This week's days still to come: the outline of a box, nothing to click. */
+/* This week's days still to come: the faintest outline, nothing to click. */
 .nx-home__habit-day--ahead {
-  background: transparent;
-  border-style: dashed;
-  border-color: var(--nx-row-line);
+  border-color: var(--nx-border);
 }
 
+/* An entry that says no. The one warm-red mark in the strip, at tint
+   strength: a verdict you can see, not an alarm. */
 .nx-home__habit-day--missed {
-  background: var(--nx-surface-sunken);
-  border-color: var(--nx-border-2);
+  background: var(--nx-critical-tint);
+  border-color: var(--nx-critical-line);
 }
 
 .nx-home__habit-day:not(:disabled):hover {
@@ -630,9 +636,9 @@ button.nx-home__entry:hover {
   min-width: 0;
   min-height: 58px;
   padding: 5px 6px;
-  border: 1px solid var(--nx-row-line);
+  border: 1px solid var(--nx-border);
   border-radius: var(--nx-radius-sm);
-  background: var(--nx-surface-sunken);
+  background: transparent;
   cursor: pointer;
   text-align: left;
   transition: border-color var(--nx-motion);
@@ -652,9 +658,11 @@ button.nx-home__entry:hover {
   box-shadow: inset 0 2px 0 var(--nx-accent);
 }
 
-/* Days still to come are quieter: nothing on them is a verdict yet. */
-.nx-home__week-day--ahead {
-  background: transparent;
+/* Days still to come are quieter: nothing on them is a verdict yet. Quieter
+   in the label, not in the fill — past days used to be filled near-black and
+   the week read as two slabs of different colour. */
+.nx-home__week-day--ahead .nx-home__week-label {
+  color: var(--nx-text-dim);
 }
 
 .nx-home__week-label {
@@ -740,7 +748,7 @@ button.nx-home__entry:hover {
   min-width: 0;
   min-height: 96px;
   padding: 5px;
-  border: 1px solid var(--nx-row-line);
+  border: 1px solid var(--nx-border);
   border-radius: var(--nx-radius-sm);
 }
 
@@ -749,8 +757,11 @@ button.nx-home__entry:hover {
   box-shadow: inset 0 2px 0 var(--nx-accent);
 }
 
-.nx-home__cal-day--past {
-  background: var(--nx-surface-sunken);
+/* Past days keep the panel's fill. They used to be sunken, which made the
+   week two slabs, near-black then panel, split at today. The day name dims
+   instead; the events dim themselves. */
+.nx-home__cal-day--past .nx-home__cal-head {
+  color: var(--nx-text-dim);
 }
 
 .nx-home__cal-head {
@@ -774,7 +785,7 @@ button.nx-home__entry:hover {
   min-width: 0;
   padding: 2px 4px;
   border: none;
-  border-left: 2px solid var(--nx-border-2);
+  border-left: 2px solid var(--nx-accent-line);
   border-radius: 2px;
   background: transparent;
   color: var(--nx-text);
@@ -801,9 +812,16 @@ button.nx-home__entry:hover {
   background: var(--nx-accent-tint-soft);
 }
 
-/* Over and done with: still there to read, no longer asking for attention. */
+/* Over and done with: still there to read, no longer asking for attention.
+   Dimmed by colour, not opacity — half-transparent text and edge over the
+   panel came out as an off-green grey that belonged to nothing. */
 .nx-home__cal-event--over {
-  opacity: 0.5;
+  border-left-color: var(--nx-border-2);
+  color: var(--nx-text-dim);
+}
+
+.nx-home__cal-event--over .nx-home__cal-time {
+  color: var(--nx-text-dim);
 }
 
 .nx-home__cal-time {

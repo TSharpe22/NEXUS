@@ -313,6 +313,23 @@ write API. So the shape is: the AI writes its own ICS feed, Proton
 subscribes to it, and Nexus reads both. Nothing here needs to change for
 that.
 
+## Wave 7e — one surface for the days (shipped)
+
+- **No more sunken days.** Calendar and Week cells for past days were
+  filled near-black, future ones weren't, so every week read as two slabs
+  split at today. All days now sit on the panel's own fill behind one
+  hairline. Past is told by a dimmer day name, not a darker box. The empty
+  "No plan for this week yet" card lost its black well too.
+- **Finished events dim by colour, not opacity.** At 50% the text and edge
+  came out an off-green grey. Upcoming timed events carry a soft accent
+  edge, finished ones a neutral one.
+- **Habit squares by colour, not depth.** Empty is an outline, done is
+  emerald, and a recorded "no" is a critical-red tint (Home strip and the
+  Tracker year grid alike; the legend says "not done"). Days still to come
+  are the faintest outline, no dashes.
+- `scripts/probes/home-look.mjs` seeds habits and a calendar feed and
+  screenshots Home and the year grid, for looking at rather than asserting.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

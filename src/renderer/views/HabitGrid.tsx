@@ -286,7 +286,7 @@ export function HabitGrid({ onOpen }: HabitGridProps) {
           done" ambiguous for anything counting them. */}
       <div className="nx-habits__legend nx-type-data">
         <span className="nx-habits__swatch" /> no entry
-        <span className="nx-habits__swatch nx-habits__swatch--missed" /> recorded
+        <span className="nx-habits__swatch nx-habits__swatch--missed" /> not done
         <span className="nx-habits__swatch nx-habits__swatch--done" /> done
       </div>
     </div>
