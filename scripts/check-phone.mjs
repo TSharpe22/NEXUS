@@ -105,6 +105,7 @@ check('words become an instant', new Date(set.fireAt).getTime() === want.getTime
 const sent = received[before]
 check('handed to ntfy at once', received.length === before + 1 && sent.body === 'armored mma starts in 15')
 check('with a Unix timestamp, never words', sent?.headers.at === String(Math.floor(want.getTime() / 1000)), sent?.headers.at)
+check('at top priority, titled Reminder, no emoji tag', sent?.headers.priority === '5' && sent?.headers.title === 'Reminder' && !sent?.headers.tags)
 const nonsense = await tryApi((t) => window.api.reminders.schedule(t), 'buy milk')
 check('text with no time is refused, with how to write one', !nonsense.ok && /Start with a time/.test(nonsense.error))
 const past = await tryApi((t) => window.api.reminders.schedule(t), `${localDay(plusDays(-1))} 0900 too late`)

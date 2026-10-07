@@ -51,6 +51,8 @@ export interface NtfyMessage {
   /** Deliver at this instant rather than now. */
   at?: Date
   markdown?: boolean
+  /** ntfy's 1–5; 5 pops over everything and is what a phone automation can key on. */
+  priority?: 1 | 2 | 3 | 4 | 5
 }
 
 /** Post one message. Returns ntfy's message id. Throws with a readable reason. */
@@ -65,6 +67,7 @@ export async function send(msg: NtfyMessage): Promise<string> {
   if (msg.title) headers['Title'] = encode(msg.title)
   if (msg.tags?.length) headers['Tags'] = msg.tags.join(',')
   if (msg.markdown) headers['Markdown'] = 'yes'
+  if (msg.priority) headers['Priority'] = String(msg.priority)
   // A Unix timestamp, never words: ntfy reads "4pm" in the server's zone.
   if (msg.at && msg.at.getTime() > Date.now() + 30_000) {
     headers['At'] = String(Math.floor(msg.at.getTime() / 1000))

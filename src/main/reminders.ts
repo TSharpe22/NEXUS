@@ -94,7 +94,9 @@ function localDay(d: Date): string {
 
 async function deliver(e: Entry): Promise<void> {
   try {
-    await ntfy.send({ title: 'Reminder', message: e.text, tags: ['alarm_clock'], at: new Date(e.fireAt) })
+    // Highest priority: a reminder is an alarm, and the phone's automation
+    // (docs/phone-alarm.md in Exec-Bot) rings for it when DND is off.
+    await ntfy.send({ title: 'Reminder', message: e.text, priority: 5, at: new Date(e.fireAt) })
     e.status = 'sent'
     e.error = null
   } catch (err) {
