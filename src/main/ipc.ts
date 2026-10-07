@@ -5,6 +5,9 @@ import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
 import * as calendar from './calendar'
+import * as ntfy from './ntfy'
+import * as reminders from './reminders'
+import * as briefing from './briefing'
 import { getDataDir, getBackupInfo, getDbPath, closeDatabase, initDatabase } from './database'
 import * as files from './files'
 import { restoreBackup } from './backup'
@@ -56,7 +59,7 @@ export function registerIpcHandlers(): void {
   })
   ipcMain.handle('journal:today', () => {
     try {
-      const page = repo.getOrCreateTodayEntry()
+      const page = briefing.ensureInEntry(repo.getOrCreateTodayEntry())
       mirror.scheduleSync(page.id)
       return page
     } catch (e) {
@@ -70,6 +73,47 @@ export function registerIpcHandlers(): void {
       rethrow('journal:peek', e)
     }
   })
+  // ---- Phone, reminders, briefing ----
+  ipcMain.handle('phone:config', () => ntfy.getConfig())
+  ipcMain.handle('phone:setTopic', (_, topic: string | null) => {
+    try {
+      return ntfy.setTopic(topic)
+    } catch (e) {
+      rethrow('phone:setTopic', e)
+    }
+  })
+  ipcMain.handle('phone:test', async () => {
+    try {
+      await ntfy.send({ title: 'Nexus', message: 'Test from Nexus. Phone reminders are working.', tags: ['white_check_mark'] })
+    } catch (e) {
+      rethrow('phone:test', e)
+    }
+  })
+  ipcMain.handle('reminders:schedule', async (_, text: string) => {
+    try {
+      const result = await reminders.schedule(text)
+      briefing.pageChanged()
+      return result
+    } catch (e) {
+      rethrow('reminders:schedule', e)
+    }
+  })
+  ipcMain.handle('reminders:upcoming', () => reminders.upcoming())
+  ipcMain.handle('briefing:today', () => briefing.today())
+  ipcMain.handle('briefing:status', () => briefing.status())
+  ipcMain.handle('briefing:setDir', (_, dir: string | null) => briefing.setDir(dir))
+  ipcMain.handle('briefing:setEnabled', (_, enabled: boolean) => briefing.setEnabled(enabled))
+  ipcMain.handle('briefing:syncNow', () => briefing.syncNow())
+  ipcMain.handle('briefing:addToEntry', () => {
+    try {
+      const page = briefing.addToEntry()
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('briefing:addToEntry', e)
+    }
+  })
+
   // ---- Calendars ----
   ipcMain.handle('calendar:feeds', () => {
     try {
@@ -262,6 +306,13 @@ export function registerIpcHandlers(): void {
     try {
       const result = repo.updatePage(id, data)
       mirror.scheduleSync(id)
+      // Neither may fail a save: a reminder or a snapshot is a side effect.
+      try {
+        reminders.projectPage(id)
+      } catch (e) {
+        console.error('[nexus] reminders', e)
+      }
+      briefing.pageChanged()
       return result
     } catch (e) {
       rethrow('pages:update', e)
@@ -271,6 +322,11 @@ export function registerIpcHandlers(): void {
     try {
       const result = repo.softDeletePage(id)
       mirror.scheduleSync(id)
+      try {
+        reminders.projectPage(id)
+      } catch (e) {
+        console.error('[nexus] reminders', e)
+      }
       return result
     } catch (e) {
       rethrow('pages:softDelete', e)

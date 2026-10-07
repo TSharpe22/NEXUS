@@ -17,6 +17,23 @@ const api: NexusAPI = {
     peek: (date) => ipcRenderer.invoke('week:peek', date),
     open: (date) => ipcRenderer.invoke('week:open', date)
   },
+  phone: {
+    config: () => ipcRenderer.invoke('phone:config'),
+    setTopic: (topic) => ipcRenderer.invoke('phone:setTopic', topic),
+    test: () => ipcRenderer.invoke('phone:test')
+  },
+  reminders: {
+    schedule: (text) => ipcRenderer.invoke('reminders:schedule', text),
+    upcoming: () => ipcRenderer.invoke('reminders:upcoming')
+  },
+  briefing: {
+    today: () => ipcRenderer.invoke('briefing:today'),
+    status: () => ipcRenderer.invoke('briefing:status'),
+    setDir: (dir) => ipcRenderer.invoke('briefing:setDir', dir),
+    setEnabled: (enabled) => ipcRenderer.invoke('briefing:setEnabled', enabled),
+    syncNow: () => ipcRenderer.invoke('briefing:syncNow'),
+    addToEntry: () => ipcRenderer.invoke('briefing:addToEntry')
+  },
   quarter: {
     peek: (date) => ipcRenderer.invoke('quarter:peek', date),
     open: (date) => ipcRenderer.invoke('quarter:open', date)

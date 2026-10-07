@@ -106,6 +106,45 @@ export interface TrackerTask {
 }
 
 /** A page placed on the calendar by a `date` property of its own. */
+/** A phone reminder, from the capture bar or a `!1600` line. */
+export interface ReminderInfo {
+  id: string
+  text: string
+  /** ISO instant. */
+  fireAt: string
+  /** pending: waiting to settle or to come inside ntfy's window. */
+  status: 'pending' | 'sent' | 'passed' | 'failed'
+  source: 'capture' | 'page'
+  pageId: string | null
+  pageTitle: string | null
+  error: string | null
+}
+
+/** The morning briefing the Exec-Bot routine wrote for a day. */
+export interface BriefingInfo {
+  date: string
+  title: string
+  /** The message body: short Markdown, `**Section:**` labels and `- ` bullets. */
+  body: string
+}
+
+/** Where the Exec-Bot sync stands, for Settings. */
+export interface BriefingSyncStatus {
+  enabled: boolean
+  dir: string | null
+  /** Whether `dir` is a git checkout Nexus can push from. */
+  ready: boolean
+  lastPushAt: string | null
+  lastPullAt: string | null
+  lastSnapshotFor: string | null
+  error: string | null
+}
+
+export interface PhoneConfig {
+  configured: boolean
+  server: string
+}
+
 export interface DatedPage {
   pageId: string
   pageTitle: string
@@ -234,7 +273,7 @@ export type PageListItem = Omit<Page, 'content'> & {
  * is worth a page, and a page can be typed, tagged and linked afterwards,
  * which a line inside a journal entry cannot.
  */
-export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox'
+export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox' | 'remind'
 
 /** The handful of things that are settings rather than data. */
 /** Whether Nexus needs a password to open, and whether it is shut right now. */
@@ -429,6 +468,29 @@ export interface NexusAPI {
     peek(date: string): Promise<Page | null>
     /** The page for the week holding `date`, made from the Week template if absent. */
     open(date: string): Promise<Page>
+  }
+  phone: {
+    config(): Promise<PhoneConfig>
+    /** Store the ntfy topic (main process only; never read back). Null clears it. */
+    setTopic(topic: string | null): Promise<PhoneConfig>
+    /** Send one test notification now. */
+    test(): Promise<void>
+  }
+  reminders: {
+    /** Set a reminder from words, e.g. "1600 tomorrow armored mma". */
+    schedule(text: string): Promise<ReminderInfo & { held: boolean }>
+    upcoming(): Promise<ReminderInfo[]>
+  }
+  briefing: {
+    /** Today's briefing, if the routine has written one and it has been pulled. */
+    today(): Promise<BriefingInfo | null>
+    status(): Promise<BriefingSyncStatus>
+    setDir(dir: string | null): Promise<BriefingSyncStatus>
+    setEnabled(enabled: boolean): Promise<BriefingSyncStatus>
+    /** Write and push the snapshot, then pull. */
+    syncNow(): Promise<BriefingSyncStatus>
+    /** Put today's briefing at the top of today's entry. Returns the entry. */
+    addToEntry(): Promise<Page>
   }
   quarter: {
     /** The page for the quarter holding `date`, or null — creates nothing. */

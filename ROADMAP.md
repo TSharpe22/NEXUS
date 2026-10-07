@@ -353,6 +353,34 @@ Q4 item 5, second half.
 - "Plan this quarter" and "Plan next quarter", never further ahead.
 - **Trend lines** still wait until a log carries a number.
 
+## Wave 8 — the phone: reminders and the morning briefing (shipped)
+
+Nexus's half of the Exec-Bot (`~/Desktop/exec-bot`, plan in its
+`PLAN_BRIEFING.md`).
+
+- **Settings → Phone.** An ntfy topic, kept in the main process like a
+  calendar link and never shown again, with a test button.
+- **Remind** in the capture bar: "1600 armored mma", "tomorrow 4pm …",
+  "fri 0800 …", "30m …". Sent to ntfy at once as a Unix timestamp (ntfy.sh
+  reads words in UTC). Further out than ntfy's 3-day window, it's held in
+  Nexus and handed over once inside it.
+- **`!1600` lines** in any page. Sent once the line has stopped changing for
+  45 s, or on quit; dated by the page's `date`, a day on under "Plans for
+  tomorrow". Fire-and-forget: deleting the line after it's sent doesn't stop
+  it; deleting it before does. The log lives in `settings` (no schema change).
+- **The hand-off** (off until switched on): after edits settle, Nexus writes
+  `snapshot/<day>.json` for the next 8:30 briefing (the evening's plans,
+  tasks due, overdue, week plan and logs, milestones, recent training,
+  reminders, calendar) and pushes it to the Exec-Bot repo with the machine's
+  git login. It pulls `briefings/` every 30 min.
+- **A Briefing widget on Home**: the routine's message, plus upcoming pings.
+  The briefing goes into today's entry once, the first time it's opened
+  after the briefing arrives, and on demand.
+- `scripts/check-phone.mjs` runs it all against a fake ntfy and a bare repo.
+
+**Not forgotten:** adding events to the Proton calendar by command. Waits for
+the calendar feed (Exec-Bot event finder).
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

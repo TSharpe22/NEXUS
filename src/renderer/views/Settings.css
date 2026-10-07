@@ -155,3 +155,11 @@
   gap: var(--nx-space-2);
   align-items: center;
 }
+
+/* Phone: a topic or a folder, then its buttons, on one line. */
+.nx-phone-edit {
+  display: grid;
+  grid-template-columns: minmax(200px, 1fr) auto auto;
+  gap: var(--nx-space-2);
+  align-items: center;
+}

@@ -892,3 +892,106 @@ button.nx-home__entry:hover {
   gap: var(--nx-space-2);
   align-items: flex-start;
 }
+
+/* ---- Briefing ----
+
+   The routine's message, laid out like the phone shows it: a dim label per
+   section, its lines under it. On the panel's own fill, no wells. */
+
+.nx-brief {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-3);
+}
+
+.nx-brief__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nx-brief__section {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--nx-space-2);
+  margin-top: var(--nx-space-2);
+}
+
+.nx-brief__section:first-child {
+  margin-top: 0;
+}
+
+.nx-brief__label {
+  color: var(--nx-text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 10.5px;
+}
+
+.nx-brief__rest,
+.nx-brief__text {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.nx-brief__bullet {
+  position: relative;
+  padding-left: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.nx-brief__bullet::before {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: var(--nx-text-dim);
+}
+
+.nx-brief__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.nx-brief__pings {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-top: var(--nx-space-3);
+  border-top: 1px solid var(--nx-row-line);
+}
+
+.nx-brief__ping {
+  display: flex;
+  align-items: baseline;
+  gap: var(--nx-space-2);
+  min-width: 0;
+}
+
+.nx-brief__ping-time {
+  color: var(--nx-accent);
+  flex-shrink: 0;
+}
+
+.nx-brief__ping-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+/* Not handed to ntfy yet: still settling, or more than three days out. */
+.nx-brief__ping--waiting .nx-brief__ping-time {
+  color: var(--nx-text-dim);
+}
+
+.nx-brief__ping--failed .nx-brief__ping-time {
+  color: var(--nx-critical);
+}

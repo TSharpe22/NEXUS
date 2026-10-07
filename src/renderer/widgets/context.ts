@@ -2,6 +2,9 @@ import type { ViewAggregate, ViewDef } from '@shared/views'
 import type { CanvasListItem } from '@shared/canvas'
 import type { CalendarFeedInfo, CalendarResult } from '@shared/calendar'
 import type {
+  BriefingInfo,
+  BriefingSyncStatus,
+  ReminderInfo,
   CaptureTarget,
   DatedPage,
   GraphData,
@@ -82,6 +85,11 @@ export interface WidgetContext {
     /** Pages whose `date` property falls in [from, to], with their done box. */
     datedPages(from: string, to: string): Promise<DatedPage[]>
     graph(): Promise<GraphData>
+    /** Today's morning briefing, once the routine has written it and it has been pulled. */
+    briefingToday(): Promise<BriefingInfo | null>
+    briefingStatus(): Promise<BriefingSyncStatus>
+    /** Phone reminders still to come, soonest first. */
+    remindersUpcoming(): Promise<ReminderInfo[]>
     habitCandidates(): Promise<HabitCandidate[]>
     habitDays(
       typeId: string,
@@ -104,6 +112,8 @@ export interface WidgetContext {
       done: boolean
     ): Promise<HabitDay>
     capture(text: string, target: CaptureTarget): Promise<Page>
+    /** Put today's briefing at the top of today's entry. */
+    addBriefingToEntry(): Promise<void>
   }
 }
 

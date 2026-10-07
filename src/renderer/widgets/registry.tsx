@@ -15,6 +15,7 @@ import {
   ViewWidget,
   viewWidgetTitle
 } from './builtins'
+import { BriefingWidget } from './briefing'
 
 /**
  * Every widget Home knows how to draw.
@@ -119,6 +120,18 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     frame: 'panel',
     actions: () => <span className="nx-type-data">untouched 30d+</span>,
     Component: StaleWidget
+  },
+  {
+    kind: 'briefing',
+    label: 'Briefing',
+    hint: "This morning's briefing from the Exec-Bot, and the reminders still to come",
+    defaultSpan: 5,
+    frame: 'panel',
+    title: () => 'Briefing',
+    actions: (ctx) => (
+      <span className="nx-type-data">{fromISO(ctx.today).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+    ),
+    Component: BriefingWidget
   },
   {
     kind: 'calendar',

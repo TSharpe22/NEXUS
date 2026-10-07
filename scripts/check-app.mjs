@@ -2064,7 +2064,7 @@ check('with every target Home offers',
   (await page.evaluate(() =>
     [...document.querySelectorAll('.nx-capture-overlay .nx-home__capture-row')[1].querySelectorAll('button')]
       .map((b) => b.textContent.trim())
-  )).join('|') === "New page|Today's entry|Task|Inbox")
+  )).join('|') === "New page|Today's entry|Task|Inbox|Remind")
 
 await page.evaluate(() => {
   const input = document.querySelector('.nx-capture-overlay .nx-home__capture-input')

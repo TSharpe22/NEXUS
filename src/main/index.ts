@@ -14,6 +14,8 @@ import {
   setSetting
 } from './repo'
 import { flushPending as flushMirror } from './mirror'
+import * as reminders from './reminders'
+import * as briefing from './briefing'
 import { guardIpc, initAppLock } from './app-lock'
 import { flushRenderer } from './flush'
 import { attachmentPath, mimeFor } from './files'
@@ -252,6 +254,8 @@ if (!app.requestSingleInstanceLock()) {
     guardIpc()
     initAppLock()
     registerIpcHandlers()
+    reminders.start()
+    briefing.start()
     setCaptureTarget(() => mainWindow)
     createWindow()
     // After the window exists, because the handler reaches for it.
@@ -276,7 +280,20 @@ app.on('window-all-closed', () => {
 // sends on its way out arrived at a closed handle and was rejected, silently,
 // into a renderer that was already being torn down. `will-quit` runs after
 // every window has gone, which is after every flush has been waited for.
-app.on('will-quit', () => {
+// Reminders still settling and a snapshot still on its debounce go out before
+// the database closes. Held for at most a few seconds: a quit that hangs on the
+// network is worse than a reminder sent from the next launch.
+let sentOnQuit = false
+app.on('will-quit', (event) => {
+  if (!sentOnQuit) {
+    event.preventDefault()
+    sentOnQuit = true
+    reminders.stop()
+    briefing.stop()
+    const timeout = new Promise((resolve) => setTimeout(resolve, 8000))
+    void Promise.race([Promise.allSettled([reminders.tick(true), briefing.flush()]), timeout]).finally(() => app.quit())
+    return
+  }
   // Electron leaves a registered accelerator held by the process; releasing it
   // on the way out is what lets the next launch — or another application — take
   // the key back.

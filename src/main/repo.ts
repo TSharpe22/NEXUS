@@ -815,6 +815,8 @@ export function getInbox(): Page | null {
 export function capture(rawText: string, target: CaptureTarget = 'page'): Page {
   const text = rawText.trim()
   if (!text) throw new Error('Nothing to capture')
+  // A reminder makes no page; the capture bar sends it through `reminders`.
+  if (target === 'remind') throw new Error('Reminders are set through reminders.schedule')
 
   if (target === 'page') {
     const { title, overflow } = captureTitle(text)
@@ -916,7 +918,7 @@ const SETTING_CAPTURE_TARGET = 'capture.target'
  */
 export const DEFAULT_CAPTURE_TARGET: CaptureTarget = 'task'
 
-const CAPTURE_TARGETS: readonly CaptureTarget[] = ['page', 'journal', 'task', 'inbox']
+const CAPTURE_TARGETS: readonly CaptureTarget[] = ['page', 'journal', 'task', 'inbox', 'remind']
 
 export function getCaptureTarget(): CaptureTarget {
   const stored = getSetting(SETTING_CAPTURE_TARGET)
@@ -1089,6 +1091,14 @@ export function getTodayEntry(): Page | null {
     | undefined
   if (!type) return null
   return findEntryFor(type.id, logicalDateISO(getDayStartHour()))
+}
+
+/** The journal entry for a day (`YYYY-MM-DD`), if one was written. Creates nothing. */
+export function getJournalEntryFor(date: string): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(JOURNAL_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  return type ? findEntryFor(type.id, date) : null
 }
 
 export function getOrCreateTodayEntry(): Page {

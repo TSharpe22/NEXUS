@@ -265,6 +265,9 @@ export function Home() {
         weekPeek: (date) => window.api.week.peek(date),
         datedPages: (from, to) => window.api.tasks.datedPages(from, to),
         graph: () => window.api.stats.getGraph(),
+        briefingToday: () => window.api.briefing.today(),
+        briefingStatus: () => window.api.briefing.status(),
+        remindersUpcoming: () => window.api.reminders.upcoming(),
         habitCandidates: () => window.api.habits.candidates(),
         habitDays: (typeId, dateKey, booleanKey, from, to) =>
           window.api.habits.days(typeId, dateKey, booleanKey, from, to)
@@ -284,7 +287,15 @@ export function Home() {
         setPinned: (pageId, pinned) => setPagePinned(pageId, pinned),
         checkInHabit: (typeId, dateKey, booleanKey, date, done) =>
           window.api.habits.checkIn(typeId, dateKey, booleanKey, date, done),
-        capture
+        capture,
+        // Same contract as a task write: the entry's body changed under the
+        // store, so the store takes the new copy before the editor can hand
+        // the old one back.
+        addBriefingToEntry: async () => {
+          const page = await window.api.briefing.addToEntry()
+          await useAppStore.getState().refresh()
+          patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+        }
       }
     }),
     [

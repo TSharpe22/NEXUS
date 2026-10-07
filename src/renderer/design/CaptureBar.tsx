@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { CaptureTarget, Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
+import { describeFireAt } from '@shared/reminder-time'
 import { Panel } from './Panel'
 import { Button } from './Button'
 import { Icon } from './Icon'
@@ -23,14 +24,20 @@ export const CAPTURE_TARGETS: { value: CaptureTarget; label: string; hint: strin
     label: 'Task',
     hint: "A checkbox under today's entry's task heading — @2026-08-22 sets a due date"
   },
-  { value: 'inbox', label: 'Inbox', hint: 'A checkbox on the Inbox page — no date, no home yet' }
+  { value: 'inbox', label: 'Inbox', hint: 'A checkbox on the Inbox page — no date, no home yet' },
+  {
+    value: 'remind',
+    label: 'Remind',
+    hint: 'A phone notification at a time: "1600 armored mma", "tomorrow 4pm call the bank", "30m tea"'
+  }
 ]
 
 export const CAPTURED_MESSAGE: Record<CaptureTarget, string> = {
   page: 'Captured as a new page',
   journal: "Added to today's entry",
   task: "Added to today's entry",
-  inbox: 'Added to the Inbox'
+  inbox: 'Added to the Inbox',
+  remind: 'Reminder set'
 }
 
 export function CaptureBar({
@@ -72,6 +79,24 @@ export function CaptureBar({
     const trimmed = text.trim()
     if (!trimmed || busy) return
     setBusy(true)
+    // A reminder makes no page: it goes to the phone, and the box stays where
+    // it is, ready for the next one.
+    if (target === 'remind') {
+      try {
+        const set = await window.api.reminders.schedule(trimmed)
+        setText('')
+        toast.success(
+          `${set.held ? 'Held until it is within 3 days' : 'Reminder set'}: ${describeFireAt(new Date(set.fireAt))} · ${set.text}`
+        )
+        window.dispatchEvent(new Event('nexus:reminders-changed'))
+        onDone?.(false)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message.replace(/^\[[^\]]+\]\s*/, '') : String(e))
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     try {
       const page = await onCapture(trimmed, target)
       // Cleared before navigating, so a capture-and-open does not leave the
@@ -112,7 +137,7 @@ export function CaptureBar({
         <input
           ref={inputRef}
           className="nx-input nx-home__capture-input"
-          placeholder="Capture a thought…"
+          placeholder={target === 'remind' ? 'When, then what: 1600 armored mma…' : 'Capture a thought…'}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
