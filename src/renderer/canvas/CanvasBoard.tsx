@@ -26,6 +26,7 @@ import { CanvasContext, type CanvasActions } from './context'
 import { CARD_TYPES, LINK_TYPES } from './cards'
 import { docToFlow, flowToDoc, type CardData, type CardNode, type LinkData, type LinkEdge } from './flow'
 import { PagePicker } from './PagePicker'
+import { CANVAS_MIME, copySelection, placeFragment, readFragment } from './clipboard'
 
 /** How many steps back undo reaches. Each is one serialised document. */
 const HISTORY_LIMIT = 200
@@ -469,15 +470,81 @@ function Board({ canvas }: { canvas: Canvas }) {
   }, [editingId, travel, flow, setNodes, setEdges])
 
   /**
-   * Paste onto the canvas: a picture becomes an image card, plain text a text
-   * card. Only when nothing that takes text has focus — a paste into a card,
-   * the title or the block editor is theirs.
+   * Where the pointer last was over the board, in screen coordinates. A paste
+   * lands there, as it does in Obsidian; with the pointer elsewhere it lands in
+   * the middle of the view. A ref, because a re-render per mouse move would be
+   * the board's most expensive habit.
+   */
+  const pointer = useRef<{ x: number; y: number } | null>(null)
+  const pasteSpot = useCallback(() => {
+    const rect = wrapperRef.current?.getBoundingClientRect()
+    const p = pointer.current
+    if (rect && p && p.x >= rect.left && p.x <= rect.right && p.y >= rect.top && p.y <= rect.bottom) {
+      return flow.screenToFlowPosition(p)
+    }
+    return viewCentre()
+  }, [flow, viewCentre])
+
+  /** Pasting the same copy twice in one spot steps the second one down and right. */
+  const lastPaste = useRef<{ x: number; y: number; n: number } | null>(null)
+
+  /**
+   * Copy and cut the selected cards — with the arrows between them, and with
+   * whatever sits inside a selected group. Only when nothing that takes text
+   * has focus and no text is selected: copying words out of a card is the
+   * browser's job, not this one.
+   */
+  useEffect(() => {
+    const onCopyOrCut = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target && (target.nodeName === 'INPUT' || target.nodeName === 'TEXTAREA' || target.isContentEditable || target.closest('.nokey'))) return
+      if (!wrapperRef.current?.isConnected) return
+      if (window.getSelection()?.toString()) return
+      const copied = copySelection(flow.getNodes(), flow.getEdges(), (id) =>
+        useAppStore.getState().pages.find((p) => p.id === id)?.title
+      )
+      if (!copied || !e.clipboardData) return
+      e.preventDefault()
+      e.clipboardData.setData('text/plain', copied.plain)
+      e.clipboardData.setData(CANVAS_MIME, copied.fragment)
+      lastPaste.current = null
+      if (e.type === 'cut') actions.remove(copied.ids)
+    }
+    window.addEventListener('copy', onCopyOrCut)
+    window.addEventListener('cut', onCopyOrCut)
+    return () => {
+      window.removeEventListener('copy', onCopyOrCut)
+      window.removeEventListener('cut', onCopyOrCut)
+    }
+  }, [flow, actions])
+
+  /**
+   * Paste onto the canvas: copied cards come back as cards, a picture becomes
+   * an image card, plain text a text card. Only when nothing that takes text
+   * has focus — a paste into a card, the title or the block editor is theirs.
    */
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       const target = e.target as HTMLElement | null
       if (target && (target.nodeName === 'INPUT' || target.nodeName === 'TEXTAREA' || target.isContentEditable || target.closest('.nokey'))) return
       if (!wrapperRef.current?.isConnected) return
+
+      const fragment = readFragment(e.clipboardData)
+      if (fragment) {
+        e.preventDefault()
+        const spot = pasteSpot()
+        const prev = lastPaste.current
+        const n = prev && Math.abs(prev.x - spot.x) < 8 && Math.abs(prev.y - spot.y) < 8 ? prev.n + 1 : 0
+        lastPaste.current = { ...spot, n }
+        const placed = placeFragment(fragment, { x: spot.x + n * 32, y: spot.y + n * 32 })
+        const groups = placed.nodes.filter((p) => p.type === 'group')
+        const cards = placed.nodes.filter((p) => p.type !== 'group')
+        setEditingId(null)
+        setNodes((current) => [...groups, ...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...cards])
+        setEdges((current) => [...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...placed.edges])
+        return
+      }
+
       const files = Array.from(e.clipboardData?.files ?? [])
       if (files.some((f) => f.type.startsWith('image/'))) {
         e.preventDefault()
@@ -494,7 +561,7 @@ function Board({ canvas }: { canvas: Canvas }) {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [addImages, addCard, viewCentre])
+  }, [addImages, addCard, viewCentre, pasteSpot, setNodes, setEdges])
 
   // Arrowheads take the arrow's colour, which React Flow wants on the edge
   // object rather than from CSS.
@@ -522,6 +589,9 @@ function Board({ canvas }: { canvas: Canvas }) {
       <div
         ref={wrapperRef}
         className="nx-canvas-board"
+        onPointerMove={(e) => {
+          pointer.current = { x: e.clientX, y: e.clientY }
+        }}
         onDoubleClick={(e) => {
           if ((e.target as Element).classList.contains('react-flow__pane')) {
             addCard('text', flow.screenToFlowPosition({ x: e.clientX, y: e.clientY }))
@@ -558,6 +628,12 @@ function Board({ canvas }: { canvas: Canvas }) {
           }}
           onEdgeDoubleClick={(_, edge) => setEditingId(`edge:${edge.id}`)}
           onMoveEnd={(_, viewport) => writeViewport(canvas.id, viewport)}
+          // A hand pressing a mouse button moves it a pixel or two. React Flow
+          // took that as a drag (threshold 1) and nudged the card instead of
+          // selecting it, which is most of why clicking felt unreliable.
+          nodeDragThreshold={4}
+          nodeClickDistance={4}
+          paneClickDistance={4}
           connectionMode={ConnectionMode.Loose}
           defaultViewport={savedViewport}
           fitView={!savedViewport}

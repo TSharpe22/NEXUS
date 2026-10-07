@@ -209,8 +209,11 @@ made before building, by the user:
 Followed by pictures on canvases (paste, drop, or pick; stored as
 attachments and counted by reclaim) and canvases as hubs on the Home graph.
 
-**Left, deliberately:** web-link cards, copying cards between canvases, and
-folders or tags for canvases. Each is additive to the stored format.
+Then the feel pass: edges that resize, corners on hover, a 4px click
+tolerance, and copy, cut and paste of cards within and between canvases.
+
+**Left, deliberately:** web-link cards, and folders or tags for canvases.
+Each is additive to the stored format.
 
 ## Wave 5 — App lock
 

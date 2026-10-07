@@ -646,16 +646,66 @@
   background: var(--nx-accent);
 }
 
+/*
+   React Flow draws a resize edge 1px wide, which is a line you cannot hit.
+   Each edge is widened into a 10px zone straddling the border, and the
+   corners into 11px squares. The arrow handles at the middle of each side
+   are drawn after these, so the centre of an edge still starts an arrow and
+   the rest of it resizes.
+*/
 .nx-canvas-board .nx-canvas-resize-line {
   border-color: transparent;
 }
 
+/* The resizer is rendered before the card's body, so without a stacking order
+   the body covers the inner half of every grab zone — which is why the edges
+   never resized, selected or not. Arrow handles stay on top of both. */
+.nx-canvas-board .react-flow__resize-control {
+  z-index: 2;
+}
+
+.nx-canvas-board .react-flow__node .react-flow__handle {
+  z-index: 3;
+}
+
+.nx-canvas-board .nx-canvas-resize-line.left,
+.nx-canvas-board .nx-canvas-resize-line.right {
+  width: 10px;
+}
+
+.nx-canvas-board .nx-canvas-resize-line.top,
+.nx-canvas-board .nx-canvas-resize-line.bottom {
+  height: 10px;
+}
+
 .nx-canvas-board .nx-canvas-resize-handle {
-  width: 7px;
-  height: 7px;
+  width: 11px;
+  height: 11px;
   border: 1px solid var(--nx-accent);
   border-radius: 1px;
   background: var(--nx-bg);
+  opacity: 0;
+  transition: opacity var(--nx-motion);
+}
+
+.nx-canvas-board .react-flow__node:hover .nx-canvas-resize-handle,
+.nx-canvas-board .react-flow__node.selected .nx-canvas-resize-handle {
+  opacity: 1;
+}
+
+/*
+   The edge under the pointer shows where it will resize from: a 1px line
+   down the middle of the zone, which is the card's own border. (The zone's
+   border would sit 5px outside the card.)
+*/
+.nx-canvas-board .nx-canvas-resize-line.left:hover,
+.nx-canvas-board .nx-canvas-resize-line.right:hover {
+  background: linear-gradient(var(--nx-accent), var(--nx-accent)) center / 1px 100% no-repeat;
+}
+
+.nx-canvas-board .nx-canvas-resize-line.top:hover,
+.nx-canvas-board .nx-canvas-resize-line.bottom:hover {
+  background: linear-gradient(var(--nx-accent), var(--nx-accent)) center / 100% 1px no-repeat;
 }
 
 /* ---- Arrows -------------------------------------------------------- */

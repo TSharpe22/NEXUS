@@ -880,6 +880,22 @@ Six sections, each a thin view over the same page/property model:
   "reclaim space" would empty every canvas of its pictures. The mirror copies
   them to `_files/` and writes image cards as `file` nodes pointing there.
 
+  **Cards copy as a canvas document.** Ctrl+C / Ctrl+X on selected cards put
+  a canvas fragment — the stored shape, under `application/x-nexus-canvas` —
+  on the clipboard beside a plain-text reading (`[[Title]]` for a page card),
+  so a copy pastes into another canvas whole and into anything else as text.
+  Arrows come along when both ends do, and a selected group brings what lies
+  inside it, as dragging one does. A paste goes back through `parseCanvas`,
+  gets fresh ids, and lands centred on the pointer. `canvas/clipboard.ts`.
+
+  **Every card can be resized without selecting it first.** React Flow draws
+  a 1px resize edge, and rendered it under the card's own body, so edges
+  never resized at all and corners only after a click. The edges are 10px
+  zones stacked over the body, the corners show on hover, and the arrow
+  handle at the middle of each side stays on top of both. A click may wander
+  4px before it counts as a drag (React Flow's default was 1px, which nudged
+  cards that were only being selected).
+
   **`flowToDoc` and `docToFlow` are the only seam.** React Flow's live state —
   selection, drag, measured size — never reaches the document. Undo is a
   cursor over serialised documents, which works only because the round trip

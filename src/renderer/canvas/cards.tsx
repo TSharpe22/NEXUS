@@ -97,8 +97,14 @@ function CardFrame({
   const alone = useStore(selectedCount) === 1
   return (
     <>
+      {/*
+        Mounted on every card, not only the selected one: having to click a
+        card before its edge would resize was the "lacks sizing" half of the
+        canvas complaint. Canvas.css keeps the handles invisible until the card
+        is hovered or selected, and widens the edges into real grab zones.
+      */}
       <NodeResizer
-        isVisible={selected && !editing}
+        isVisible={!editing}
         keepAspectRatio={keepAspectRatio}
         minWidth={MIN_CARD.width}
         minHeight={MIN_CARD.height}
