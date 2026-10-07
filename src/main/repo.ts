@@ -1219,6 +1219,51 @@ export function getOrCreateWeekPage(date: string): Page {
 }
 
 // ============================================================
+// Briefings — the Exec-Bot morning briefing, one page per day
+// ============================================================
+
+const BRIEFING_TYPE_NAME = 'Briefing'
+const BRIEFINGS_FOLDER_NAME = 'Briefings'
+
+/**
+ * The Briefing type and its `date`, made the first time a briefing arrives.
+ * No template: the routine writes the body. Files into Plans / Briefings,
+ * beside Weeks, through `types.folder_id` like every other type.
+ */
+function ensureBriefingSetup(): { typeId: string } {
+  const db = getDb()
+  let type = db.prepare('SELECT * FROM types WHERE name = ?').get(BRIEFING_TYPE_NAME) as TypeDef | undefined
+  if (!type) {
+    type = createType(BRIEFING_TYPE_NAME)
+    const plans = folderUnder(PLANS_FOLDER_NAME, null)
+    setTypeFolder(type.id, folderUnder(BRIEFINGS_FOLDER_NAME, plans.id).id)
+  }
+  if (!getPropertyDefinitions(type.id).some((d) => d.key === JOURNAL_DATE_KEY)) {
+    defineProperty(type.id, 'Date', 'date')
+  }
+  return { typeId: type.id }
+}
+
+/** The briefing page for a day, if one was made. Creates nothing. */
+export function getBriefingPage(date: string): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(BRIEFING_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  return type ? findEntryFor(type.id, date) : null
+}
+
+/** The briefing page for a day, made with `title` and `content` if absent. */
+export function getOrCreateBriefingPage(date: string, title: string, content: string): Page {
+  const { typeId } = ensureBriefingSetup()
+  const existing = findEntryFor(typeId, date)
+  if (existing) return existing
+  const page = createPage(typeId)
+  updatePage(page.id, { title, content })
+  setProperty(page.id, JOURNAL_DATE_KEY, 'date', date)
+  return getPageById(page.id)!
+}
+
+// ============================================================
 // Quarters — directions for thirteen weeks, one page per quarter
 // ============================================================
 

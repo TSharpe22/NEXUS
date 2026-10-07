@@ -295,6 +295,11 @@ export function Home() {
           const page = await window.api.briefing.addToEntry()
           await useAppStore.getState().refresh()
           patchPage(page.id, { content: page.content, updated_at: page.updated_at })
+        },
+        openBriefingPage: async () => {
+          const page = await window.api.briefing.openPage()
+          await useAppStore.getState().refresh()
+          openPage(page.id)
         }
       }
     }),

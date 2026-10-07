@@ -489,8 +489,10 @@ export interface NexusAPI {
     setEnabled(enabled: boolean): Promise<BriefingSyncStatus>
     /** Write and push the snapshot, then pull. */
     syncNow(): Promise<BriefingSyncStatus>
-    /** Put today's briefing at the top of today's entry. Returns the entry. */
+    /** Put a link to today's Briefing page at the top of today's entry. Returns the entry. */
     addToEntry(): Promise<Page>
+    /** Today's Briefing page (its own type, one per day), made if the briefing has arrived. */
+    openPage(): Promise<Page>
     /**
      * Add an event to the Exec-Bot calendar feed (which Proton subscribes to)
      * from words, e.g. "nov 14 2000 armored mma". `pushed` is false when it

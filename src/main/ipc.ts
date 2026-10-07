@@ -111,6 +111,13 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('briefing:setDir', (_, dir: string | null) => briefing.setDir(dir))
   ipcMain.handle('briefing:setEnabled', (_, enabled: boolean) => briefing.setEnabled(enabled))
   ipcMain.handle('briefing:syncNow', () => briefing.syncNow())
+  ipcMain.handle('briefing:openPage', () => {
+    try {
+      return briefing.todayPage()
+    } catch (e) {
+      rethrow('briefing:openPage', e)
+    }
+  })
   ipcMain.handle('briefing:addToEntry', () => {
     try {
       const page = briefing.addToEntry()

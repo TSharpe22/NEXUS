@@ -112,8 +112,10 @@ export interface WidgetContext {
       done: boolean
     ): Promise<HabitDay>
     capture(text: string, target: CaptureTarget): Promise<Page>
-    /** Put today's briefing at the top of today's entry. */
+    /** Put a link to today's Briefing page at the top of today's entry. */
     addBriefingToEntry(): Promise<void>
+    /** Open today's Briefing page, making it if the briefing has arrived. */
+    openBriefingPage(): Promise<void>
   }
 }
 

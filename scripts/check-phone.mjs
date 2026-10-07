@@ -197,12 +197,19 @@ git(cloud, 'push', '-q')
 await api(() => window.api.briefing.syncNow())
 const brief = await api(() => window.api.briefing.today())
 check('the routine’s briefing is pulled back', brief?.title === 'Wed 7 Oct · briefing' && brief.body.includes('09:00 dentist'), JSON.stringify(brief))
+const bpage = await api(() => window.api.briefing.openPage())
+const bblocks = JSON.parse(bpage.content)
+check('the briefing is a page of its own type', bpage.title === 'Wed 7 Oct · briefing' && bblocks.some((b) => b.type === 'bulletListItem'), bpage.title)
+const types = await api(() => window.api.types.list())
+check('of type Briefing', types.some((t) => t.name === 'Briefing' && t.id === bpage.type_id), JSON.stringify(types.map((t) => t.name)))
+check('opening it again gives the same page', (await api(() => window.api.briefing.openPage())).id === bpage.id)
 const withBrief = await api(() => window.api.briefing.addToEntry())
 const blocks = JSON.parse(withBrief.content)
-check('it goes to the top of today’s entry under "Briefing"',
-  blocks[0].type === 'heading' && blocks[0].content[0].text === 'Briefing' && blocks.some((b) => b.type === 'bulletListItem'))
+check('today’s entry links to it under "Briefing"',
+  blocks[0].type === 'heading' && blocks[0].content[0].text === 'Briefing' &&
+  blocks[1].content.some((c) => c.type === 'pageMention' && c.props.pageId === bpage.id), JSON.stringify(blocks.slice(0, 2)).slice(0, 200))
 const again = JSON.parse((await api(() => window.api.briefing.addToEntry())).content)
-check('adding it again replaces the section rather than doubling it',
+check('linking it again replaces the section rather than doubling it',
   again.filter((b) => b.type === 'heading' && b.content[0]?.text === 'Briefing').length === 1)
 
 // ---------------------------------------------------------------- calendar

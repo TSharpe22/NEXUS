@@ -78,11 +78,19 @@ export function BriefingWidget({ ctx }: WidgetProps) {
 
   if (briefing === undefined || !status) return null
 
+  const openBriefingPage = async () => {
+    try {
+      await ctx.write.openBriefingPage()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message.replace(/^\[[^\]]+\]\s*/, '') : String(e))
+    }
+  }
+
   const addToEntry = async () => {
     setBusy(true)
     try {
       await ctx.write.addBriefingToEntry()
-      toast.success("Added to today's entry")
+      toast.success("Linked from today's entry")
     } catch (e) {
       toast.error(e instanceof Error ? e.message.replace(/^\[[^\]]+\]\s*/, '') : String(e))
     } finally {
@@ -117,8 +125,11 @@ export function BriefingWidget({ ctx }: WidgetProps) {
             )}
           </div>
           <div className="nx-brief__foot">
+            <button className="nx-home__link nx-type-data" onClick={() => void openBriefingPage()}>
+              open page
+            </button>
             <button className="nx-home__link nx-type-data" disabled={busy} onClick={() => void addToEntry()}>
-              add to today&apos;s entry
+              link in today&apos;s entry
             </button>
           </div>
         </>

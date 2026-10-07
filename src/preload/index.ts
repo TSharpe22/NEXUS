@@ -33,6 +33,7 @@ const api: NexusAPI = {
     setEnabled: (enabled) => ipcRenderer.invoke('briefing:setEnabled', enabled),
     syncNow: () => ipcRenderer.invoke('briefing:syncNow'),
     addToEntry: () => ipcRenderer.invoke('briefing:addToEntry'),
+    openPage: () => ipcRenderer.invoke('briefing:openPage'),
     addEvent: (text) => ipcRenderer.invoke('briefing:addEvent', text)
   },
   quarter: {

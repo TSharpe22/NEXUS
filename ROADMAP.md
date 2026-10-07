@@ -374,8 +374,10 @@ Nexus's half of the Exec-Bot (`~/Desktop/exec-bot`, plan in its
   reminders, calendar) and pushes it to the Exec-Bot repo with the machine's
   git login. It pulls `briefings/` every 30 min.
 - **A Briefing widget on Home**: the routine's message, plus upcoming pings.
-  The briefing goes into today's entry once, the first time it's opened
-  after the briefing arrives, and on demand.
+- **Briefing pages**: each day's briefing is a page of its own type,
+  *Briefing*, in Plans / Briefings, made when it's pulled and then left alone
+  (notes on it stay). Today's entry gets a link to it under "Briefing" once,
+  the first time it's opened after the briefing arrives, and on demand.
 - `scripts/check-phone.mjs` runs it all against a fake ntfy and a bare repo.
 
 - **Event** in the capture bar: "nov 14 2000 armored mma", "sat 1900-2100

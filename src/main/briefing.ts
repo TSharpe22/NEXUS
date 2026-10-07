@@ -5,6 +5,7 @@ import { join } from 'path'
 import { v4 as uuidv4 } from 'uuid'
 import * as repo from './repo'
 import * as reminders from './reminders'
+import * as mirror from './mirror'
 import { getEvents } from './calendar'
 import { parseDocument, sectionLines } from '@shared/document'
 import type { BriefingInfo, BriefingSyncStatus, Page } from '@shared/types'
@@ -258,6 +259,8 @@ export async function pull(): Promise<void> {
     await git(dir, ['pull', '-q', '--rebase', '--autostash'])
     state.lastPullAt = new Date().toISOString()
     state.error = null
+    const b = today()
+    if (b) ensurePage(b)
   } catch (e) {
     state.error = `Pull: ${e instanceof Error ? e.message : String(e)}`
   }
@@ -354,9 +357,9 @@ function block(type: string, content: Styled[], props: Record<string, unknown> =
   }
 }
 
-/** The briefing as editor blocks, under a "Briefing" heading. */
+/** The briefing's body as editor blocks: labels in bold, bullets as bullets. */
 function briefingBlocks(b: BriefingInfo) {
-  const out = [block('heading', [{ type: 'text', text: 'Briefing', styles: {} }], { level: 2 })]
+  const out = []
   for (const line of b.body.split('\n')) {
     const t = line.trim()
     if (!t) continue
@@ -367,12 +370,31 @@ function briefingBlocks(b: BriefingInfo) {
 }
 
 /**
- * Put today's briefing at the top of today's entry, replacing an earlier copy
- * of the section. Returns the entry.
+ * The day's Briefing page, made from the routine's file the first time it is
+ * seen. Made once and then left alone, so notes written on it stay put.
  */
-export function addToEntry(): Page {
+export function ensurePage(b: BriefingInfo): Page {
+  const existed = repo.getBriefingPage(b.date)
+  const page = existed ?? repo.getOrCreateBriefingPage(b.date, b.title, JSON.stringify(briefingBlocks(b)))
+  if (!existed) mirror.scheduleSync(page.id)
+  return page
+}
+
+/** Today's Briefing page, made if the briefing has arrived. */
+export function todayPage(): Page {
   const b = today()
   if (!b) throw new Error("Today's briefing hasn't arrived yet.")
+  return ensurePage(b)
+}
+
+/**
+ * Put a link to today's Briefing page at the top of today's entry, under a
+ * "Briefing" heading, replacing an earlier copy of the section (including the
+ * full-text copy older versions put there). Returns the entry.
+ */
+export function addToEntry(): Page {
+  const page = todayPage()
+  const b = today()!
   const entry = repo.getOrCreateTodayEntry()
   const blocks = parseDocument(entry.content) as { type?: string; props?: { level?: number }; content?: unknown }[]
   const textOf = (c: unknown): string =>
@@ -386,7 +408,11 @@ export function addToEntry(): Page {
   } else {
     at = 0
   }
-  blocks.splice(at, 0, ...(briefingBlocks(b) as unknown as typeof blocks))
+  const section = [
+    block('heading', [{ type: 'text', text: 'Briefing', styles: {} }], { level: 2 }),
+    block('paragraph', [{ type: 'pageMention', props: { pageId: page.id, pageTitle: page.title } } as unknown as Styled])
+  ]
+  blocks.splice(at, 0, ...(section as unknown as typeof blocks))
   repo.updatePage(entry.id, { content: JSON.stringify(blocks) })
   repo.setSetting(INSERTED_KEY, b.date)
   return repo.getPageById(entry.id)!
@@ -394,7 +420,7 @@ export function addToEntry(): Page {
 
 /**
  * Once a day, the first time today's entry is opened after the briefing has
- * arrived, the briefing goes into it. Deleting the section afterwards sticks.
+ * arrived, a link to it goes into the entry. Deleting the section sticks.
  */
 export function ensureInEntry(entry: Page): Page {
   const b = today()
