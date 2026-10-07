@@ -1683,6 +1683,41 @@ check('but no further', await page.evaluate(() => {
 await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].click())
 await sleep(400)
 
+// The same week on Home. A saved layout still naming the retired Vault panel
+// loses it quietly rather than drawing a "not installed" placeholder.
+const savedLayout = await page.evaluate(() => window.api.dashboard.get())
+await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
+  version: 1,
+  widgets: [
+    { id: 'w-week', kind: 'week', config: {}, span: 7 },
+    { id: 'w-stats', kind: 'stats', config: {}, span: 3 }
+  ]
+})))
+await nav('Notes')
+await sleep(300)
+await nav('Home')
+await sleep(1200)
+const homeWeek = await page.evaluate(() => {
+  const strip = document.querySelector('.nx-home__week-strip')
+  const panel = strip?.closest('.nx-panel')
+  return {
+    days: strip ? strip.querySelectorAll('.nx-home__week-day').length : 0,
+    today: !!document.querySelector('.nx-home__week-day--today'),
+    text: panel?.innerText ?? '',
+    slots: document.querySelectorAll('.nx-home__slot').length,
+    home: document.querySelector('.nx-home')?.innerText ?? ''
+  }
+})
+check('Home shows the week as seven days', homeWeek.days === 7 && homeWeek.today, JSON.stringify(homeWeek.days))
+check('with the plan written for it', homeWeek.text.includes('Three lifting sessions') && homeWeek.text.includes('book the dentist'),
+  homeWeek.text)
+check('and what was logged', /Lift2 1\/1/.test(homeWeek.text))
+check('headed with the week it is', homeWeek.text.includes('WEEK') || /Week ·/i.test(homeWeek.text))
+check('a retired Vault panel is dropped, not drawn as missing',
+  !/not installed|unknown widget/i.test(homeWeek.home) && !/size on disk|on disk/i.test(homeWeek.home))
+await page.screenshot({ path: SHOT + '/11c-home-week.png' })
+await page.evaluate((raw) => window.api.dashboard.set(raw), savedLayout)
+
 await page.evaluate(async ([fx, log]) => {
   const api = window.api
   for (const id of [fx.id, fx.templateId, log.pageId]) await api.pages.hardDelete(id)
@@ -2835,7 +2870,12 @@ check('a page touched today is not called stale',
 check('an empty stale list says so rather than showing nothing',
   /Nothing has gone quiet/.test(await panelText('Stale')))
 
-check('the vault panel counts the open tasks', /tasks open/.test(await panelText('Vault')))
+// The Vault panel was retired for the week; a fresh Home shows the week instead.
+const weekPanel = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-home .nx-panel')].find((el) =>
+    el.querySelector('.nx-panel__title')?.textContent.trim().startsWith('Week ·'))?.innerText ?? '')
+check('a fresh Home has the week where the vault panel was',
+  /Plan this week|Nothing written under Plan/.test(weekPanel), weekPanel)
 /**
  * Home used to assert "fits its window without scrolling", which held only
  * because the screen was six panels nailed into two fixed bands. Home is now

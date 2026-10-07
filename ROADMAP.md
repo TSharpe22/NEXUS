@@ -275,6 +275,18 @@ Q4 item 5, first half.
 - **Done marks.** Logs with a `done` box show it on their day: filled when
   done, quieter when not.
 
+## Wave 7c — the week on Home (shipped)
+
+- **A Week widget.** A Mon–Sun strip, where each day shows its logs as
+  diamonds (filled when done) and its task count. Below it are the plan's
+  lines and its tickable tasks, then the Logged line. It offers "Plan this
+  week" when the week has no page. The rules for what belongs to the week
+  live in `views/week.ts`, which the Tracker shares, so the two can't
+  disagree.
+- **The Vault panel is retired.** Saved layouts drop the `stats` kind on load
+  rather than drawing it as "not installed". The default Home is now Today
+  next to Week.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

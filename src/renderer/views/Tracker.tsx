@@ -9,6 +9,7 @@ import { Icon } from '../design/Icon'
 import { DueDate } from '../design/DueDate'
 import { Button } from '../design/Button'
 import { HabitGrid } from './HabitGrid'
+import { isWeekItem as belongsToWeek, loggedByType } from './week'
 import './Tracker.css'
 
 /**
@@ -119,25 +120,6 @@ function PageRow({ page, onOpen }: { page: DatedPage; onOpen: (pageId: string) =
   )
 }
 
-/**
- * What a week's logs add up to, by type: "Training 2/3" when the type has a
- * done box (done of logged), a bare count when it does not.
- */
-function loggedByType(pages: DatedPage[]): { name: string; text: string }[] {
-  const byType = new Map<string, { total: number; done: number; checkable: boolean }>()
-  for (const page of pages) {
-    const name = page.typeName ?? 'Note'
-    const entry = byType.get(name) ?? { total: 0, done: 0, checkable: false }
-    entry.total++
-    if (page.done !== null) entry.checkable = true
-    if (page.done) entry.done++
-    byType.set(name, entry)
-  }
-  return [...byType.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, e]) => ({ name, text: e.checkable ? `${e.done}/${e.total}` : String(e.total) }))
-}
-
 export function Tracker() {
   const openPage = useAppStore((s) => s.openPage)
   const patchPage = useAppStore((s) => s.patchPage)
@@ -239,19 +221,9 @@ export function Tracker() {
     }
   }
 
-  /**
-   * The week page is dated by its Monday, and a task with no date of its own
-   * counts against its page's — so without this, every line of a week's plan
-   * would pile up on Monday and turn into "left open" on Tuesday. A plan item
-   * belongs to the whole week: it is drawn in the plan, not on a day, and is
-   * only left open once the week is over. A plan item given its own `@date`
-   * is an ordinary task on that day.
-   */
+  // Plan items are drawn in the plan, not on Monday — see `week.ts`.
   const weekId = weekPage?.id ?? null
-  const isWeekItem = useCallback(
-    (t: TrackerTask) => t.pageId === weekId && t.dueDateSource !== 'block',
-    [weekId]
-  )
+  const isWeekItem = useCallback((t: TrackerTask) => belongsToWeek(t, weekId), [weekId])
   const planTasks = useMemo(() => tasks.filter(isWeekItem), [tasks, isWeekItem])
   const dayTasks = useMemo(() => tasks.filter((t) => !isWeekItem(t)), [tasks, isWeekItem])
   const dayPages = useMemo(() => pages.filter((p) => p.pageId !== weekId), [pages, weekId])

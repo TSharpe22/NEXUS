@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import type { WidgetSpan } from '@shared/widgets'
+import { fromISO, rangeFor } from '@shared/date-range'
 import type { WidgetContext, WidgetProps } from './context'
 import {
   CaptureWidget,
@@ -7,7 +8,7 @@ import {
   HabitsWidget,
   PinnedWidget,
   StaleWidget,
-  StatsWidget,
+  WeekWidget,
   STRIP_DAYS,
   TodayWidget,
   ViewWidget,
@@ -119,12 +120,18 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     Component: StaleWidget
   },
   {
-    kind: 'stats',
-    label: 'Vault',
-    hint: 'Pages, links, open tasks, size on disk',
-    defaultSpan: 3,
+    kind: 'week',
+    label: 'Week',
+    hint: 'The seven days, what was logged on each, and the plan',
+    defaultSpan: 7,
     frame: 'panel',
-    Component: StatsWidget
+    title: (_config, ctx) => `Week · ${rangeFor('week', 0, fromISO(ctx.today)).label}`,
+    actions: (ctx) => (
+      <button className="nx-home__link nx-type-data" onClick={() => ctx.goToTracker('week')}>
+        tracker →
+      </button>
+    ),
+    Component: WeekWidget
   }
 ]
 

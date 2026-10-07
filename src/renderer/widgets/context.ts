@@ -2,12 +2,12 @@ import type { ViewAggregate, ViewDef } from '@shared/views'
 import type { CanvasListItem } from '@shared/canvas'
 import type {
   CaptureTarget,
+  DatedPage,
   GraphData,
   HabitCandidate,
   HabitDay,
   Page,
   PageListItem,
-  StorageStats,
   TrackerTask,
   TypeDef,
   ViewAggregateResult,
@@ -52,6 +52,8 @@ export interface WidgetContext {
   openTag(tagId: string): void
   /** Start today's journal entry, creating it if it does not exist. */
   openTodayEntry(): Promise<Page>
+  /** Open the page for the week holding `date`, making it from the Week template if needed. */
+  openWeek(date: string): Promise<Page>
 
   /**
    * Tell the dashboard that something a widget wrote may have changed what
@@ -69,7 +71,10 @@ export interface WidgetContext {
     runView(id: string, limit?: number): Promise<ViewRow[]>
     /** Totals for a saved view, over everything it matches. */
     aggregateView(id: string, aggregates: ViewAggregate[]): Promise<ViewAggregateResult[]>
-    storage(): Promise<StorageStats>
+    /** The week's page if it has been written. Never creates it. */
+    weekPeek(date: string): Promise<Page | null>
+    /** Pages whose `date` property falls in [from, to], with their done box. */
+    datedPages(from: string, to: string): Promise<DatedPage[]>
     graph(): Promise<GraphData>
     habitCandidates(): Promise<HabitCandidate[]>
     habitDays(

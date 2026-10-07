@@ -118,15 +118,14 @@ export const DEFAULT_DASHBOARD: Dashboard = {
   version: 1,
   widgets: [
     { id: 'w-capture', kind: 'capture', config: {}, span: 12 },
-    // 5 / 4 / 3 rather than 6 / 3 / 3: the habit strip needs a third of the
-    // row to show three weeks without clipping, which is what it had before
-    // Home became a grid.
+    // Today and the week side by side, then three thirds: the habit strip
+    // needs a third of the row to show three weeks without clipping.
     { id: 'w-today', kind: 'today', config: {}, span: 5 },
+    { id: 'w-week', kind: 'week', config: {}, span: 7 },
     { id: 'w-habits', kind: 'habits', config: {}, span: 4 },
-    { id: 'w-pinned', kind: 'pinned', config: {}, span: 3 },
-    { id: 'w-graph', kind: 'graph', config: {}, span: 6 },
-    { id: 'w-stale', kind: 'stale', config: {}, span: 3 },
-    { id: 'w-stats', kind: 'stats', config: {}, span: 3 }
+    { id: 'w-pinned', kind: 'pinned', config: {}, span: 4 },
+    { id: 'w-stale', kind: 'stale', config: {}, span: 4 },
+    { id: 'w-graph', kind: 'graph', config: {}, span: 12 }
   ]
 }
 
@@ -139,6 +138,16 @@ export const DEFAULT_DASHBOARD: Dashboard = {
  * widget for having an unfamiliar `kind`, because that is exactly the case
  * this whole design exists to survive.
  */
+/**
+ * Kinds Nexus shipped and then took out. A saved layout still naming one has
+ * it dropped on load rather than drawn as "not installed": that placeholder
+ * is for a widget something else might provide, and nothing will provide
+ * these again.
+ *
+ * `stats` — the Vault panel (pages, links, open tasks, size on disk).
+ */
+const RETIRED_KINDS = new Set(['stats'])
+
 export function normaliseDashboard(raw: unknown): Dashboard {
   if (!raw || typeof raw !== 'object') return DEFAULT_DASHBOARD
 
@@ -152,6 +161,7 @@ export function normaliseDashboard(raw: unknown): Dashboard {
     if (!entry || typeof entry !== 'object') continue
     const item = entry as Partial<WidgetInstance>
     if (typeof item.kind !== 'string' || item.kind === '') continue
+    if (RETIRED_KINDS.has(item.kind)) continue
 
     // A duplicated id is a broken React key and a config edit that hits two
     // widgets, so the second one is renamed rather than dropped.

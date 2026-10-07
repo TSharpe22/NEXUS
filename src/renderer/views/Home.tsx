@@ -171,6 +171,7 @@ export function Home() {
   const openPage = useAppStore((s) => s.openPage)
   const createPage = useAppStore((s) => s.createPage)
   const openTodayEntry = useAppStore((s) => s.openTodayEntry)
+  const openWeek = useAppStore((s) => s.openWeek)
   const setActiveView = useAppStore((s) => s.setActiveView)
   const setTrackerMode = useAppStore((s) => s.setTrackerMode)
   const toggleTagFilter = useAppStore((s) => s.toggleTagFilter)
@@ -249,6 +250,7 @@ export function Home() {
         setActiveView('notes')
       },
       openTodayEntry,
+      openWeek,
       reload,
       read: {
         journalPeek: () => window.api.journal.peek(),
@@ -257,7 +259,8 @@ export function Home() {
         tasksLooseEnds: (before, limit) => window.api.tasks.looseEnds(before, limit),
         runView: (id, limit) => window.api.views.run(id, limit),
         aggregateView: (id, aggregates) => window.api.views.aggregate(id, aggregates),
-        storage: () => window.api.stats.getStorage(),
+        weekPeek: (date) => window.api.week.peek(date),
+        datedPages: (from, to) => window.api.tasks.datedPages(from, to),
         graph: () => window.api.stats.getGraph(),
         habitCandidates: () => window.api.habits.candidates(),
         habitDays: (typeId, dateKey, booleanKey, from, to) =>
@@ -289,6 +292,7 @@ export function Home() {
       canvases,
       openPage,
       openTodayEntry,
+      openWeek,
       reload,
       setActiveView,
       setTrackerMode,

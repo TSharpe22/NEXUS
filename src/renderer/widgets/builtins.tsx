@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
-import type { GraphData, PageListItem, StorageStats, TrackerTask, ViewRow } from '@shared/types'
+import type { DatedPage, GraphData, Page, PageListItem, TrackerTask, ViewRow } from '@shared/types'
 import type { ViewDef } from '@shared/views'
-import { STALE_DAYS, isOlderThan } from '@shared/date-range'
-import { documentPreview } from '@shared/document'
-import { formatBytes } from '@shared/format'
+import { STALE_DAYS, eachDay, fromISO, isOlderThan, rangeFor } from '@shared/date-range'
+import { documentPreview, sectionLines } from '@shared/document'
 import { Button } from '../design/Button'
 import { CaptureBar } from '../design/CaptureBar'
 import { Icon } from '../design/Icon'
@@ -13,6 +12,7 @@ import { DueDate } from '../design/DueDate'
 import { GraphView, type GraphColour, type GraphPins } from '../views/GraphView'
 import { HabitStrips, STRIP_DAYS } from '../views/HabitStrips'
 import { relativeTime } from '../hooks/use-relative-time'
+import { isWeekItem, loggedByType } from '../views/week'
 import type { WidgetProps } from './context'
 
 /**
@@ -40,11 +40,13 @@ const EMPTY_PINS: GraphPins = {}
 // Shared pieces
 // ------------------------------------------------------------------
 
-function TaskRow({ task, onToggle, onReschedule, onOpen }: {
+function TaskRow({ task, onToggle, onReschedule, onOpen, inPlan = false }: {
   task: TrackerTask
   onToggle: (task: TrackerTask) => void
   onReschedule: (task: TrackerTask, due: string | null) => Promise<void>
   onOpen: (pageId: string) => void
+  /** A week plan item: no inherited Monday, no source page. See Tracker's TaskRow. */
+  inPlan?: boolean
 }) {
   return (
     <div className={`nx-home__task ${task.isDone ? 'nx-home__task--done' : ''}`}>
@@ -62,10 +64,15 @@ function TaskRow({ task, onToggle, onReschedule, onOpen }: {
         />
       </button>
       <span className="nx-home__task-text">{task.text || 'Untitled task'}</span>
-      <DueDate task={task} onChange={(due) => onReschedule(task, due)} />
-      <button className="nx-home__task-src nx-type-data" onClick={() => onOpen(task.pageId)}>
-        {task.pageTitle || 'Untitled'}
-      </button>
+      <DueDate
+        task={inPlan ? { ...task, dueDate: null, dueDateSource: null } : task}
+        onChange={(due) => onReschedule(task, due)}
+      />
+      {!inPlan && (
+        <button className="nx-home__task-src nx-type-data" onClick={() => onOpen(task.pageId)}>
+          {task.pageTitle || 'Untitled'}
+        </button>
+      )}
     </div>
   )
 }
@@ -90,15 +97,6 @@ function PageRow({ page, meta, shape, onOpen, onRemove, removeTitle }: {
           ×
         </button>
       )}
-    </div>
-  )
-}
-
-function Stat({ value, label }: { value: string; label: string }) {
-  return (
-    <div className="nx-home__stat">
-      <span className="nx-home__stat-value">{value}</span>
-      <span className="nx-type-data">{label}</span>
     </div>
   )
 }
@@ -568,33 +566,149 @@ export function StaleWidget({ ctx }: WidgetProps) {
   )
 }
 
-export function StatsWidget({ ctx }: WidgetProps) {
-  const [storage, setStorage] = useState<StorageStats | null>(null)
-  const [graph, setGraph] = useState<GraphData>(EMPTY_GRAPH)
+const WEEKDAY_LETTERS = ['M', 'T', 'W', 'T', 'F', 'S', 'S']
 
-  const pageCount = ctx.pages.length
+/**
+ * This week at a glance: a strip of the seven days with what was logged on
+ * each, then the plan written for it. Tracker → Week is the full version;
+ * this is what Home needs to say whether the week is going to plan.
+ */
+export function WeekWidget({ ctx }: WidgetProps) {
+  const range = useMemo(() => rangeFor('week', 0, fromISO(ctx.today)), [ctx.today])
+  const [weekPage, setWeekPage] = useState<Page | null>(null)
+  const [tasks, setTasks] = useState<TrackerTask[]>([])
+  const [logs, setLogs] = useState<DatedPage[]>([])
+  const [loaded, setLoaded] = useState(false)
+
   useEffect(() => {
     let cancelled = false
-    void Promise.all([ctx.read.storage(), ctx.read.graph()]).then(([s, g]) => {
+    void Promise.all([
+      ctx.read.weekPeek(range.from),
+      ctx.read.tasksInRange(range.from, range.to),
+      ctx.read.datedPages(range.from, range.to)
+    ]).then(([week, inRange, dated]) => {
       if (cancelled) return
-      setStorage(s)
-      setGraph(g)
+      setWeekPage(week)
+      setTasks(inRange)
+      setLogs(dated.filter((p) => p.pageId !== week?.id))
+      setLoaded(true)
     })
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pageCount])
+  }, [ctx, range.from, range.to])
 
-  if (!storage) return null
+  const weekId = weekPage?.id ?? null
+  const planTasks = tasks.filter((t) => isWeekItem(t, weekId))
+  const dayTasks = tasks.filter((t) => !isWeekItem(t, weekId))
+  const planLines = useMemo(() => sectionLines(weekPage?.content ?? null, 'Plan'), [weekPage])
+  const logged = useMemo(() => loggedByType(logs), [logs])
+  const days = useMemo(() => eachDay(range.from, range.to), [range.from, range.to])
+
+  const toggleTask = async (task: TrackerTask) => {
+    try {
+      await ctx.write.setTaskDone(task.pageId, task.blockId, !task.isDone)
+      ctx.reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  const reschedule = async (task: TrackerTask, due: string | null) => {
+    try {
+      await ctx.write.setTaskDue(task.pageId, task.blockId, due)
+      ctx.reload()
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e))
+    }
+  }
+
+  if (!loaded) return null
 
   return (
-    <div className="nx-home__stats">
-      <Stat value={String(storage.pageCount)} label="pages" />
-      <Stat value={String(graph.edges.length)} label="links" />
-      <Stat value={String(storage.openTaskCount)} label="tasks open" />
-      <Stat value={formatBytes(storage.dbSizeBytes)} label="on disk" />
-    </div>
+    <>
+      <div className="nx-home__week-strip">
+        {days.map((date, i) => {
+          const dayLogs = logs.filter((p) => p.date === date)
+          const due = dayTasks.filter((t) => t.dueDate === date)
+          const done = due.filter((t) => t.isDone).length
+          return (
+            <button
+              key={date}
+              className={`nx-home__week-day ${date === ctx.today ? 'nx-home__week-day--today' : ''} ${
+                date > ctx.today ? 'nx-home__week-day--ahead' : ''
+              }`}
+              onClick={() => ctx.goToTracker('week')}
+              title={[
+                ...dayLogs.map((p) => `${p.pageTitle || 'Untitled'}${p.done === null ? '' : p.done ? ' ✓' : ' ·'}`),
+                due.length ? `${done} of ${due.length} tasks done` : ''
+              ]
+                .filter(Boolean)
+                .join('\n')}
+            >
+              <span className="nx-home__week-label nx-type-data">
+                {WEEKDAY_LETTERS[i]} {Number(date.slice(8))}
+              </span>
+              <span className="nx-home__week-marks">
+                {dayLogs.map((p) => (
+                  <Icon
+                    key={`${p.pageId}:${p.propertyKey}`}
+                    shape="diamond"
+                    size={9}
+                    filled={p.done === true}
+                    color={p.done === true ? 'var(--nx-accent)' : 'var(--nx-text-dim)'}
+                  />
+                ))}
+              </span>
+              <span className="nx-home__week-tasks nx-type-data">{due.length ? `${done}/${due.length}` : ''}</span>
+            </button>
+          )
+        })}
+      </div>
+
+      {weekPage ? (
+        <div className="nx-home__list">
+          {planLines.length + planTasks.length === 0 ? (
+            <button className="nx-home__hint nx-type-data nx-home__week-open" onClick={() => ctx.openPage(weekPage.id)}>
+              Nothing written under Plan yet. Open the week →
+            </button>
+          ) : (
+            <>
+              {planLines.slice(0, SIDE_ROWS).map((line, i) => (
+                <div key={i} className="nx-home__week-line">
+                  {line}
+                </div>
+              ))}
+              {planTasks.map((task) => (
+                <TaskRow
+                  key={`${task.pageId}:${task.blockId}`}
+                  task={task}
+                  onToggle={toggleTask}
+                  onReschedule={reschedule}
+                  onOpen={ctx.openPage}
+                  inPlan
+                />
+              ))}
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="nx-home__entry nx-home__entry--absent">
+          <span className="nx-home__entry-absent-text">No plan for this week yet</span>
+          <Button onClick={() => void ctx.openWeek(range.from)}>Plan this week</Button>
+        </div>
+      )}
+
+      {logged.length > 0 && (
+        <div className="nx-home__week-logged nx-type-data">
+          {logged.map((l) => (
+            <span key={l.name}>
+              {l.name} {l.text}
+            </span>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 
