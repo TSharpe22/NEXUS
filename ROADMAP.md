@@ -221,6 +221,61 @@ A password to open Nexus, idle lock, lock on sleep, lock now. Deliberately a
 lock on the app and not on the files; `NEXUS.md` on Settings has the four
 decisions behind it, and `scripts/probes/app-lock.mjs` checks each one.
 
+## Wave 6 — feel, the editor upgrade, right-click (shipped)
+
+Asked for from daily use as "clicks should feel crisp, like grabbing
+something". Measured first: typing was already fast, so the softness was
+feedback, not speed.
+
+- **Press states everywhere** — a press is never eased and is stronger than
+  hover (DESIGN.md states the rule). Graph hover without fades, drift that
+  holds still under the pointer; canvas edges that resize, a 4px click
+  tolerance, copy/cut/paste of cards between canvases.
+- **BlockNote 0.24 → 0.55** on tiptap 3, tested against a copy of the real
+  vault (structure only): no text changes on save, and 0.24 reads 0.55's
+  documents, so a rollback is safe. NEXUS.md has what changed and why.
+- **The editor's feel** — a handle you take hold of, the carried block
+  marked in place, a landing line that jumps instead of gliding, 0.24's
+  spacing restored.
+- **Right-click** in the editor, every text field, the canvas and the graph,
+  through one menu host.
+
+## Next — queued, in no fixed order
+
+**Lasso and tools on the canvas.** A left-button drag on empty canvas draws
+a freehand lasso; every card whose centre lies inside is selected, and
+Ctrl/Shift adds to the selection rather than replacing it. Panning stays
+available as a second tool: **double-clicking empty canvas switches between
+the lasso and the hand** — it used to make a text card, which the
+right-click menu ("New text card here") now covers. The current tool shows
+in the canvas bar and in the cursor (crosshair / open hand). Drawn as an
+accent hairline over a faint tint, gone on release, no fade.
+
+**Lasso in the editor.** Wanted, but a ProseMirror selection is one
+contiguous range, so a lasso there can only select from the first block it
+crosses to the last. And a left drag inside text is already text selection;
+the lasso has to start somewhere text is not — the left gutter beside the
+blocks is the obvious place. Design that before building it.
+
+**Columns in the editor.** `@blocknote/xl-multi-column`, the library's own
+column blocks — check its licence first (BlockNote's XL packages have been
+GPL-3 or commercial). The first build died fighting a hand-rolled column
+overlay, so the rule is the multi-block-selection rule: the library's
+blocks or nothing. `schema.ts` still unwraps legacy `column` / `columnList`
+in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
+
+**Organisation of Pages, and a note-taking framework.** Dated logs
+("Training — <date>", "Trading — <date>") sit at the root beside the hub
+pages they belong to. Hubs on top, logs filed by type and read through
+views, an inbox — and a framework for notes that a learning topic (Spanish
+first) can be built in: concepts as linked pages, the graph and canvas as
+the map. Design, then build.
+
+**Week and quarter views.** A week planned as it goes (at the weekly
+review) beside what was logged; a quarter as directions and a few loose
+milestones with trend lines, not a schedule. The views system was built so
+a calendar layout is a function and a line; these sit on it.
+
 ## Future — an encrypted vault
 
 The app lock's stated limit is that the files are readable. The feature that
