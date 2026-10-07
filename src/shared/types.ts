@@ -563,6 +563,12 @@ export interface NexusAPI {
     /** Rewrites `sort_order` to match the given order of definition ids. */
     reorderProperties(typeId: string, orderedIds: string[]): Promise<void>
   }
+  edit: {
+    /** Run an edit command on this window, as its keyboard shortcut would. */
+    run(command: 'cut' | 'copy' | 'paste' | 'pasteAndMatchStyle' | 'selectAll'): Promise<void>
+    /** The system clipboard's plain text. */
+    readText(): Promise<string>
+  }
   links: {
     getBacklinks(pageId: string): Promise<BacklinkResult[]>
     /**

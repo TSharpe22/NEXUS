@@ -1,4 +1,4 @@
-import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
+import { ipcMain, dialog, shell, BrowserWindow, clipboard } from 'electron'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
@@ -667,6 +667,18 @@ export function registerIpcHandlers(): void {
       rethrow('links:searchPages', e)
     }
   })
+
+  // The right-click menu's Cut, Copy and Paste. The renderer cannot paste from
+  // the system clipboard on its own (Chromium gates it behind a permission),
+  // and a menu click is not a keystroke, so the edit is run on the window
+  // that asked for it, exactly as its keyboard shortcut would run.
+  const EDIT_COMMANDS = ['cut', 'copy', 'paste', 'pasteAndMatchStyle', 'selectAll'] as const
+  ipcMain.handle('edit:run', (event, command: (typeof EDIT_COMMANDS)[number]) => {
+    if (!EDIT_COMMANDS.includes(command)) throw new Error(`edit:run: unknown command "${command}"`)
+    event.sender[command]()
+  })
+  // What a canvas "Paste here" puts down when the clipboard holds no cards.
+  ipcMain.handle('edit:readText', () => clipboard.readText())
 
   ipcMain.handle('habits:candidates', () => {
     try {

@@ -918,6 +918,17 @@ Six sections, each a thin view over the same page/property model:
   rewrites the mirror's file. A page's backlinks list the canvases it is on,
   and the palette finds canvases by title. `scripts/probes/canvas.mjs` drives
   all of it through the UI and checks what was stored.
+- **Right-click** — Electron draws no context menu, so right-clicking did
+  nothing anywhere but the page tree; not even Copy over selected text.
+  `design/menu-host.tsx` mounts one menu for the window. The editor (edit
+  commands, link to a page, duplicate and delete block), the canvas (new
+  card here on the pane; edit, copy, cut, duplicate, delete on a card or a
+  selection; label, line, delete on an arrow) and the graph (open, pin) open
+  their own; any text field or selected text not claimed by one gets Cut,
+  Copy, Paste and Select all. Those four run in main (`edit:run`) because a
+  page cannot read the clipboard for Paste, and the menu takes no focus on
+  press so they act on the field it was opened over. Pinning a graph node
+  moved from the bare right-click into its menu. `scripts/probes/menus.mjs`.
 - **Settings** — types, data folder location, snapshots and restore,
   attachments (what is stored, what nothing points at, and the one button
   that deletes it), the day-start hour, the vault mirror, the app lock,

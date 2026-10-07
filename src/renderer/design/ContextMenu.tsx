@@ -104,7 +104,12 @@ export function ContextMenu({ state, onClose }: { state: MenuState | null; onClo
         // is the menu in the wrong place, which reads as a jump.
         visibility: placed ? 'visible' : 'hidden'
       }}
-      onMouseDown={(e) => e.stopPropagation()}
+      // preventDefault too: pressing a menu item must not take focus from the
+      // field or editor it was opened over, or Cut and Copy act on nothing.
+      onMouseDown={(e) => {
+        e.stopPropagation()
+        e.preventDefault()
+      }}
       onContextMenu={(e) => e.preventDefault()}
     >
       {entries.map((entry, i) =>

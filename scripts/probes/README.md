@@ -20,6 +20,10 @@ Build first (`npm run build`), then:
 | `restore.mjs` | Does restoring a snapshot put the vault back, and leave the window alive to see it? |
 | `typing.mjs` | What does a keystroke cost in a vault that is actually in use? Long tasks and dropped frames through a typing burst. |
 | `blocks.mjs` | Does the block menu open where you are typing? Every block type, empty and with a word in it. This is the reproduction for "blocks respond poorly". |
+| `canvas-copy.mjs` | Do canvas edges resize without selecting first, does a wobbly click stay a click, do cards copy, cut and paste within and between canvases (arrows and group contents included), and does the graph highlight instantly and hold still under the pointer? |
+| `press.mjs` | Does every kind of clickable answer the mouse-down itself, on the first frame, visibly harder than its hover? |
+| `editor-feel.mjs` | Does the editor keep 0.24's spacing, does a block carried by its handle look carried, and does the landing line jump rather than glide? Drags a real block. |
+| `menus.mjs` | Right-click in the editor, a text field, the canvas (pane, card, arrow, selection) and the graph: is the menu there, and does each item do what it says? |
 
 `SEED_PAGES` sets the vault size (default 400 for `graph` and `typing`).
 `KEYSTROKES` is `typing.mjs`'s burst length. `SCREENSHOT_DIR` sets where shots

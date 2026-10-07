@@ -18,7 +18,7 @@ import {
 import '@xyflow/react/dist/base.css'
 import toast from 'react-hot-toast'
 import { CARD_SIZE, MAX_IMAGE_CARD, parseCanvas, serializeCanvas, type CanvasColor, type Canvas } from '@shared/canvas'
-import { attachmentName } from '@shared/attachments'
+import { attachmentName, attachmentUrl } from '@shared/attachments'
 import { useAppStore } from '../store/app-store'
 import { useDebounce } from '../hooks/use-debounce'
 import { registerPendingWrite } from '../pending-writes'
@@ -26,7 +26,10 @@ import { CanvasContext, type CanvasActions } from './context'
 import { CARD_TYPES, LINK_TYPES } from './cards'
 import { docToFlow, flowToDoc, type CardData, type CardNode, type LinkData, type LinkEdge } from './flow'
 import { PagePicker } from './PagePicker'
-import { CANVAS_MIME, copySelection, placeFragment, readFragment } from './clipboard'
+import { CANVAS_MIME, copiedFragment, copySelection, copySelectionFromMenu, placeFragment, readFragment } from './clipboard'
+import { MENU_SEPARATOR, type MenuEntry } from '../design/ContextMenu'
+import { openMenu } from '../design/menu-host'
+import type { CanvasDoc } from '@shared/canvas'
 
 /** How many steps back undo reaches. Each is one serialised document. */
 const HISTORY_LIMIT = 200
@@ -411,6 +414,34 @@ function Board({ canvas }: { canvas: Canvas }) {
     [editingId, setNodes, setEdges, flow, addCard, save, storeOpenPage, refreshPages, patchPage]
   )
 
+  /** Duplicate the selection beside itself, arrows between duplicated cards included. */
+  const duplicateSelection = useCallback(() => {
+    const selected = flow.getNodes().filter((n) => n.selected)
+    if (selected.length === 0) return
+    const idMap = new Map(selected.map((n) => [n.id, uid()]))
+    const copies: CardNode[] = selected.map((n) => ({
+      ...n,
+      id: idMap.get(n.id)!,
+      position: { x: n.position.x + 40, y: n.position.y + 40 },
+      selected: true,
+      dragging: false,
+      data: { ...n.data, raw: { ...n.data.raw, id: idMap.get(n.id)! } }
+    }))
+    const linkCopies: LinkEdge[] = flow
+      .getEdges()
+      .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
+      .map((edge) => ({
+        ...edge,
+        id: uid(),
+        source: idMap.get(edge.source)!,
+        target: idMap.get(edge.target)!,
+        selected: false,
+        data: { ...edge.data, raw: {} }
+      }))
+    setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), ...copies])
+    setEdges((current) => [...current, ...linkCopies])
+  }, [flow, setNodes, setEdges])
+
   // ----------------------------------------------------------------
   // Keyboard
   // ----------------------------------------------------------------
@@ -437,37 +468,15 @@ function Board({ canvas }: { canvas: Canvas }) {
         e.preventDefault()
         travel(1)
       } else if (key === 'd') {
-        // Duplicate the selection, arrows between duplicated cards included.
-        const selected = flow.getNodes().filter((n) => n.selected)
-        if (selected.length === 0) return
-        e.preventDefault()
-        const idMap = new Map(selected.map((n) => [n.id, uid()]))
-        const copies: CardNode[] = selected.map((n) => ({
-          ...n,
-          id: idMap.get(n.id)!,
-          position: { x: n.position.x + 40, y: n.position.y + 40 },
-          selected: true,
-          dragging: false,
-          data: { ...n.data, raw: { ...n.data.raw, id: idMap.get(n.id)! } }
-        }))
-        const linkCopies: LinkEdge[] = flow
-          .getEdges()
-          .filter((edge) => idMap.has(edge.source) && idMap.has(edge.target))
-          .map((edge) => ({
-            ...edge,
-            id: uid(),
-            source: idMap.get(edge.source)!,
-            target: idMap.get(edge.target)!,
-            selected: false,
-            data: { ...edge.data, raw: {} }
-          }))
-        setNodes((current) => [...current.map((n) => ({ ...n, selected: false })), ...copies])
-        setEdges((current) => [...current, ...linkCopies])
+        if (flow.getNodes().some((n) => n.selected)) {
+          e.preventDefault()
+          duplicateSelection()
+        }
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [editingId, travel, flow, setNodes, setEdges])
+  }, [editingId, travel, duplicateSelection])
 
   /**
    * Where the pointer last was over the board, in screen coordinates. A paste
@@ -487,6 +496,22 @@ function Board({ canvas }: { canvas: Canvas }) {
 
   /** Pasting the same copy twice in one spot steps the second one down and right. */
   const lastPaste = useRef<{ x: number; y: number; n: number } | null>(null)
+
+  /** Put copied cards down centred on `spot`, selected, stepping a repeat paste down and right. */
+  const placeCopied = useCallback(
+    (fragment: CanvasDoc, spot: { x: number; y: number }) => {
+      const prev = lastPaste.current
+      const n = prev && Math.abs(prev.x - spot.x) < 8 && Math.abs(prev.y - spot.y) < 8 ? prev.n + 1 : 0
+      lastPaste.current = { ...spot, n }
+      const placed = placeFragment(fragment, { x: spot.x + n * 32, y: spot.y + n * 32 })
+      const groups = placed.nodes.filter((p) => p.type === 'group')
+      const cards = placed.nodes.filter((p) => p.type !== 'group')
+      setEditingId(null)
+      setNodes((current) => [...groups, ...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...cards])
+      setEdges((current) => [...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...placed.edges])
+    },
+    [setNodes, setEdges]
+  )
 
   /**
    * Copy and cut the selected cards — with the arrows between them, and with
@@ -532,16 +557,7 @@ function Board({ canvas }: { canvas: Canvas }) {
       const fragment = readFragment(e.clipboardData)
       if (fragment) {
         e.preventDefault()
-        const spot = pasteSpot()
-        const prev = lastPaste.current
-        const n = prev && Math.abs(prev.x - spot.x) < 8 && Math.abs(prev.y - spot.y) < 8 ? prev.n + 1 : 0
-        lastPaste.current = { ...spot, n }
-        const placed = placeFragment(fragment, { x: spot.x + n * 32, y: spot.y + n * 32 })
-        const groups = placed.nodes.filter((p) => p.type === 'group')
-        const cards = placed.nodes.filter((p) => p.type !== 'group')
-        setEditingId(null)
-        setNodes((current) => [...groups, ...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...cards])
-        setEdges((current) => [...current.map((c) => (c.selected ? { ...c, selected: false } : c)), ...placed.edges])
+        placeCopied(fragment, pasteSpot())
         return
       }
 
@@ -561,7 +577,121 @@ function Board({ canvas }: { canvas: Canvas }) {
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
-  }, [addImages, addCard, viewCentre, pasteSpot, setNodes, setEdges])
+  }, [addImages, addCard, viewCentre, pasteSpot, placeCopied])
+
+  // ----------------------------------------------------------------
+  // Right-click
+  // ----------------------------------------------------------------
+
+  /** Where a "+ page" or "+ image" started from a right-click lands, instead of mid-view. */
+  const pickerSpot = useRef<{ x: number; y: number } | null>(null)
+  const imageSpot = useRef<{ x: number; y: number } | null>(null)
+  const pageTitle = (id: string) => useAppStore.getState().pages.find((p) => p.id === id)?.title
+  const selectedIds = () => flow.getNodes().filter((n) => n.selected).map((n) => n.id)
+
+  /** What every right-clicked card offers, acting on the whole selection. */
+  const selectionEntries = (): MenuEntry[] => [
+    { label: 'Copy', onSelect: () => void copySelectionFromMenu(flow.getNodes(), flow.getEdges(), pageTitle) },
+    {
+      label: 'Cut',
+      onSelect: async () => {
+        const ids = await copySelectionFromMenu(flow.getNodes(), flow.getEdges(), pageTitle)
+        if (ids) actions.remove(ids)
+      }
+    },
+    { label: 'Duplicate', onSelect: duplicateSelection },
+    MENU_SEPARATOR,
+    { label: 'Delete', danger: true, onSelect: () => actions.remove(selectedIds()) }
+  ]
+
+  const onNodeContextMenu = (e: React.MouseEvent, node: CardNode) => {
+    e.preventDefault()
+    // As in the page tree: right-clicking outside the selection moves the
+    // selection to that card; inside a selection, the menu acts on all of it.
+    const alreadySelected = !!flow.getNode(node.id)?.selected
+    if (!alreadySelected) {
+      setNodes((current) => current.map((n) => (n.selected !== (n.id === node.id) ? { ...n, selected: n.id === node.id } : n)))
+      setEdges((current) => current.map((ed) => (ed.selected ? { ...ed, selected: false } : ed)))
+    }
+    const many = alreadySelected && selectedIds().length > 1
+    const own: MenuEntry[] = []
+    if (!many && node.type === 'text') {
+      own.push({ label: 'Edit', onSelect: () => setEditingId(node.id) })
+      own.push({ label: 'Make page', onSelect: () => void actions.makePage(node.id) })
+    } else if (!many && node.type === 'page' && node.data.pageId) {
+      const pageId = node.data.pageId
+      own.push({ label: 'Edit here', onSelect: () => setEditingId(node.id) })
+      own.push({ label: 'Open in Notes', onSelect: () => actions.openPage(pageId) })
+    } else if (!many && node.type === 'group') {
+      own.push({ label: 'Rename', onSelect: () => setEditingId(node.id) })
+    } else if (!many && node.type === 'image' && node.data.file) {
+      const src = attachmentUrl(node.data.file)
+      own.push({
+        label: 'Fit to image',
+        onSelect: () => {
+          const img = new Image()
+          img.onload = () => actions.fitImage(node.id, img.naturalWidth, img.naturalHeight)
+          img.src = src
+        }
+      })
+    }
+    openMenu(e.clientX, e.clientY, [...own, MENU_SEPARATOR, ...selectionEntries()])
+  }
+
+  const onPaneContextMenu = (e: React.MouseEvent | MouseEvent) => {
+    e.preventDefault()
+    const at = flow.screenToFlowPosition({ x: e.clientX, y: e.clientY })
+    openMenu(e.clientX, e.clientY, [
+      { label: 'New text card here', onSelect: () => addCard('text', at) },
+      {
+        label: 'New page card here…',
+        onSelect: () => {
+          pickerSpot.current = at
+          setPickerOpen(true)
+        }
+      },
+      { label: 'New group here', onSelect: () => addCard('group', at) },
+      {
+        label: 'Add picture here…',
+        onSelect: () => {
+          imageSpot.current = at
+          imageInput.current?.click()
+        }
+      },
+      MENU_SEPARATOR,
+      {
+        label: 'Paste here',
+        onSelect: async () => {
+          const text = await window.api.edit.readText()
+          const cards = copiedFragment(text)
+          if (cards) placeCopied(cards, at)
+          else if (text.trim()) {
+            const id = addCard('text', at, { text })
+            setEditingId((current) => (current === id ? null : current))
+          }
+        }
+      },
+      MENU_SEPARATOR,
+      {
+        label: 'Select all',
+        onSelect: () => setNodes((current) => current.map((n) => (n.selected ? n : { ...n, selected: true })))
+      },
+      { label: 'Fit everything', onSelect: () => void flow.fitView({ padding: 0.2, maxZoom: 1 }) }
+    ])
+  }
+
+  const onEdgeContextMenu = (e: React.MouseEvent, edge: LinkEdge) => {
+    e.preventDefault()
+    setEdges((current) => current.map((ed) => (ed.selected !== (ed.id === edge.id) ? { ...ed, selected: ed.id === edge.id } : ed)))
+    setNodes((current) => current.map((n) => (n.selected ? { ...n, selected: false } : n)))
+    const isLine = edge.data?.toEnd === 'none'
+    openMenu(e.clientX, e.clientY, [
+      { label: edge.data?.label ? 'Relabel' : 'Label', onSelect: () => setEditingId(`edge:${edge.id}`) },
+      { label: isLine ? 'Make it an arrow' : 'Make it a line', onSelect: () => actions.updateLink(edge.id, { toEnd: isLine ? undefined : 'none' }) },
+      MENU_SEPARATOR,
+      { label: 'Delete', danger: true, onSelect: () => actions.remove([edge.id]) }
+    ])
+  }
 
   // Arrowheads take the arrow's colour, which React Flow wants on the edge
   // object rather than from CSS.
@@ -627,6 +757,13 @@ function Board({ canvas }: { canvas: Canvas }) {
             if (editingId && editingId !== node.id) setEditingId(null)
           }}
           onEdgeDoubleClick={(_, edge) => setEditingId(`edge:${edge.id}`)}
+          onNodeContextMenu={onNodeContextMenu}
+          onPaneContextMenu={onPaneContextMenu}
+          onEdgeContextMenu={onEdgeContextMenu}
+          onSelectionContextMenu={(e) => {
+            e.preventDefault()
+            openMenu(e.clientX, e.clientY, selectionEntries())
+          }}
           onMoveEnd={(_, viewport) => writeViewport(canvas.id, viewport)}
           // A hand pressing a mouse button moves it a pixel or two. React Flow
           // took that as a drag (threshold 1) and nudged the card instead of
@@ -662,13 +799,26 @@ function Board({ canvas }: { canvas: Canvas }) {
             <button onClick={() => addCard('text', viewCentre())} title="A markdown card (or double-click the canvas)">
               + text
             </button>
-            <button onClick={() => setPickerOpen((v) => !v)} aria-expanded={pickerOpen} title="A card for one of your pages">
+            <button
+              onClick={() => {
+                pickerSpot.current = null
+                setPickerOpen((v) => !v)
+              }}
+              aria-expanded={pickerOpen}
+              title="A card for one of your pages"
+            >
               + page
             </button>
             <button onClick={() => addCard('group', viewCentre())} title="A labelled region that carries what is inside it">
               + group
             </button>
-            <button onClick={() => imageInput.current?.click()} title="A picture (or paste one, or drop files on the canvas)">
+            <button
+              onClick={() => {
+                imageSpot.current = null
+                imageInput.current?.click()
+              }}
+              title="A picture (or paste one, or drop files on the canvas)"
+            >
               + image
             </button>
             <input
@@ -680,7 +830,8 @@ function Board({ canvas }: { canvas: Canvas }) {
               onChange={(e) => {
                 const files = Array.from(e.target.files ?? [])
                 e.target.value = ''
-                void addImages(files, viewCentre())
+                void addImages(files, imageSpot.current ?? viewCentre())
+                imageSpot.current = null
               }}
             />
             <span className="nx-canvas-bar__sep" />
@@ -706,10 +857,14 @@ function Board({ canvas }: { canvas: Canvas }) {
             </button>
             {pickerOpen && (
               <PagePicker
-                onClose={() => setPickerOpen(false)}
+                onClose={() => {
+                  setPickerOpen(false)
+                  pickerSpot.current = null
+                }}
                 onPick={(pageId) => {
                   setPickerOpen(false)
-                  addCard('page', viewCentre(), { pageId })
+                  addCard('page', pickerSpot.current ?? viewCentre(), { pageId })
+                  pickerSpot.current = null
                 }}
               />
             )}

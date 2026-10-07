@@ -159,15 +159,18 @@ await sleep(3500)
 const released = await centreOf(sel(linked))
 check('an unpinned node settles back after release', Math.hypot(released.x - target.x, released.y - target.y) > 8)
 
-// Right-click pins, and the pin is kept on the widget instance.
+// Pinning is in the node's right-click menu, and the pin is kept on the
+// widget instance.
 const pinAt = await centreOf(sel(ids[10]))
 await page.mouse.click(pinAt.x, pinAt.y, { button: 'right' })
+await sleep(300)
+await page.locator('.nx-menu .nx-menu__item', { hasText: 'Pin here' }).click()
 await sleep(800)
 const pinned = await page.evaluate(async (id) => {
   const dash = await window.api.dashboard.get()
   return { el: !!document.querySelector(`[data-node-id="${id}"].nx-graph__node--pinned`), raw: JSON.stringify(dash ?? null) }
 }, ids[10])
-check('right-click pins a node', pinned.el)
+check("the node's menu pins it", pinned.el)
 check('the pin is written to the dashboard', pinned.raw.includes(ids[10]), pinned.raw.slice(0, 120))
 check('an unpin control appears', await page.evaluate(() => /unpin 1/.test(document.querySelector('.nx-graph__controls').innerText)))
 

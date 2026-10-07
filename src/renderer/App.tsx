@@ -9,6 +9,7 @@ import { CommandPalette } from './design/CommandPalette'
 import { QuickCapture } from './design/CaptureBar'
 import { useShortcuts } from './hooks/use-shortcuts'
 import { ConfirmHost } from './design/Confirm'
+import { MenuHost } from './design/menu-host'
 import { PasswordHost } from './design/PasswordDialog'
 import { Home } from './views/Home'
 import { Notes } from './views/Notes'
@@ -215,6 +216,7 @@ export function App() {
       {captureOpen && <QuickCapture onClose={() => setCaptureOpen(false)} />}
       <ConfirmHost />
       <PasswordHost />
+      <MenuHost />
       <Toaster
         position="bottom-right"
         toastOptions={{

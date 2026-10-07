@@ -113,3 +113,35 @@ export function placeFragment(
   const flow = docToFlow(placed)
   return { nodes: flow.nodes.map((n) => ({ ...n, selected: true })), edges: flow.edges }
 }
+
+/**
+ * The cards last copied in this window, for a "Paste" menu item that has no
+ * clipboard event to read — but only while the clipboard still holds what
+ * that copy wrote. Copying something in another app since means that is what
+ * gets pasted.
+ */
+export function copiedFragment(clipboardText: string): CanvasDoc | null {
+  if (!lastCopy || lastCopy.plain !== clipboardText) return null
+  const doc = parseCanvas(lastCopy.fragment)
+  return doc.nodes.length > 0 ? doc : null
+}
+
+/**
+ * Copy from a menu, where there is no clipboard event to write a custom type
+ * into. The plain text goes on the system clipboard; the cards are held in
+ * `lastCopy`, which a later Ctrl+V recognises by that same plain text.
+ */
+export async function copySelectionFromMenu(
+  nodes: CardNode[],
+  edges: LinkEdge[],
+  pageTitle: (id: string) => string | undefined
+): Promise<string[] | null> {
+  const copied = copySelection(nodes, edges, pageTitle)
+  if (!copied) return null
+  try {
+    await navigator.clipboard.writeText(copied.plain)
+  } catch {
+    // The window lost focus mid-copy: the cards are still held for Paste here.
+  }
+  return copied.ids
+}

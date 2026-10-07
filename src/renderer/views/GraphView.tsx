@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { GraphData } from '@shared/types'
 import { useAppStore } from '../store/app-store'
+import { MENU_SEPARATOR, type MenuEntry } from '../design/ContextMenu'
+import { openMenu } from '../design/menu-host'
 import './GraphView.css'
 
 /** How a node is coloured. `recency` fades from accent to dim as a page goes quiet. */
@@ -882,9 +884,7 @@ export function GraphView({
     reheat()
   }
 
-  const togglePin = (e: React.MouseEvent, id: string) => {
-    e.preventDefault()
-    e.stopPropagation()
+  const togglePin = (id: string) => {
     if (!onPinsChange) return
     const p = positions.current.get(id)
     if (!p) return
@@ -895,6 +895,33 @@ export function GraphView({
     } else {
       onPinsChange({ ...pins, [id]: [Math.round(p.x), Math.round(p.y)] })
     }
+  }
+
+  /**
+   * Right-click on a node. Pinning used to be the right-click itself, which
+   * left no way to discover it and no room for anything else; it is the
+   * second item now, under opening the thing.
+   */
+  const onNodeContextMenu = (e: React.MouseEvent, node: SimNode) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const entries: MenuEntry[] = []
+    if (node.kind === 'page') entries.push({ label: 'Open page', onSelect: () => openPage(node.id) })
+    else if (node.kind === 'canvas' && node.refId) {
+      const canvasId = node.refId
+      entries.push({ label: 'Open canvas', onSelect: () => openCanvas(canvasId) })
+    } else if (node.kind === 'tag' && node.refId && onOpenTag) {
+      const tagId = node.refId
+      entries.push({ label: 'Show pages with this tag', onSelect: () => onOpenTag(tagId) })
+    }
+    if (onPinsChange) {
+      entries.push(MENU_SEPARATOR, {
+        label: pins[node.id] ? 'Unpin' : 'Pin here',
+        icon: 'pin',
+        onSelect: () => togglePin(node.id)
+      })
+    }
+    openMenu(e.clientX, e.clientY, entries)
   }
 
   const onPointerDownBackground = (e: React.PointerEvent) => {
@@ -1021,6 +1048,13 @@ export function GraphView({
           onPointerUpBackground(e)
         }}
         onDoubleClick={resetView}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          openMenu(e.clientX, e.clientY, [
+            { label: 'Fit graph to view', onSelect: resetView },
+            ...(onPinsChange && Object.keys(pins).length > 0 ? [{ label: 'Unpin all', onSelect: unpinAll }] : [])
+          ])
+        }}
       >
         {/* SVG transforms take no percentages, so the origin is centred from
             the measured size rather than with translate(50%, 50%). */}
@@ -1091,7 +1125,7 @@ export function GraphView({
                   onPointerUp={onPointerUpNode}
                   onPointerEnter={() => setHovered(node.id)}
                   onPointerLeave={() => setHovered(null)}
-                  onContextMenu={(e) => togglePin(e, node.id)}
+                  onContextMenu={(e) => onNodeContextMenu(e, node)}
                   onDoubleClick={(e) => e.stopPropagation()}
                   onClick={(e) => {
                     e.stopPropagation()

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useCreateBlockNote, SuggestionMenuController } from '@blocknote/react'
-import { filterSuggestionItems } from '@blocknote/core'
+import { filterSuggestionItems, SuggestionMenu } from '@blocknote/core'
 import { BlockNoteView } from '@blocknote/ariakit'
 import type { Page } from '@shared/types'
 import { nexusSchema } from './schema'
@@ -11,6 +11,8 @@ import { registerPendingWrite } from '../pending-writes'
 import { getLinkMenuItems, LinkMenu } from './link-menu'
 import { TagBar } from './TagBar'
 import { IconPicker } from '../design/IconPicker'
+import { MENU_SEPARATOR } from '../design/ContextMenu'
+import { editEntries, openMenu } from '../design/menu-host'
 import './Editor.css'
 
 interface EditorProps {
@@ -195,6 +197,54 @@ export function Editor({ page, children, compact = false }: EditorProps) {
     return () => root.removeEventListener('keydown', onKeyDown, true)
   }, [editor])
 
+  /**
+   * Right-click in the document: the edit commands, and what you can do to
+   * the block under the pointer. The block is read from the DOM under the
+   * click, not from the editor's cursor: Chromium moves the caret on the
+   * right-button press, but ProseMirror only hears of it on the next
+   * selectionchange, after this handler has run — so the cursor still named
+   * whichever block was clicked before.
+   */
+  const onContextMenu = (e: React.MouseEvent) => {
+    const target = e.target as Element
+    if (!target.closest('.bn-editor')) return
+    e.preventDefault()
+    const blockId = target.closest('.bn-block-outer')?.getAttribute('data-id')
+    const block = blockId ? editor.getBlock(blockId) : undefined
+    const withoutIds = (b: Record<string, unknown>): Record<string, unknown> => {
+      const { id: _id, children, ...rest } = b
+      return { ...rest, children: Array.isArray(children) ? children.map((c) => withoutIds(c as Record<string, unknown>)) : [] }
+    }
+    openMenu(e.clientX, e.clientY, [
+      ...editEntries(e.target as Element),
+      MENU_SEPARATOR,
+      {
+        label: 'Link to a page',
+        icon: 'link',
+        onSelect: () => {
+          editor.focus()
+          editor.getExtension(SuggestionMenu)?.openSuggestionMenu('[[')
+        }
+      },
+      {
+        label: 'Duplicate block',
+        disabled: !block,
+        onSelect: () => {
+          if (!block) return
+          editor.insertBlocks([withoutIds(block as never) as never], block, 'after')
+        }
+      },
+      {
+        label: 'Delete block',
+        danger: true,
+        disabled: !block,
+        onSelect: () => {
+          if (block) editor.removeBlocks([block])
+        }
+      }
+    ])
+  }
+
   const handleLinkSelect = async (target: Page | null, linkTitle: string) => {
     let targetPage = target
     if (!targetPage) {
@@ -228,7 +278,7 @@ export function Editor({ page, children, compact = false }: EditorProps) {
   }
 
   return (
-    <div className={`nx-editor ${compact ? 'nx-editor--compact' : ''}`} ref={editorRootRef}>
+    <div className={`nx-editor ${compact ? 'nx-editor--compact' : ''}`} ref={editorRootRef} onContextMenu={onContextMenu}>
       {!compact && (
         <>
       <IconPicker value={icon} onChange={(next) => { setIcon(next); void saveIcon(next) }} />
