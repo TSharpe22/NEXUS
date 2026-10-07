@@ -85,7 +85,9 @@
   --nx-radius-md: 6px;
   --nx-radius-lg: 10px;
 
-  --nx-motion: 120ms ease-out;
+  /* The fast end of DESIGN.md's 80–120ms. Presses take no transition at all
+     (App.css); this is only how hover and release ease. */
+  --nx-motion: 80ms ease-out;
 
   /* Width of the editor's reading column. */
   --nx-reading-width: 720px;

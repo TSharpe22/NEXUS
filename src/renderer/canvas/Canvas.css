@@ -424,6 +424,22 @@
   box-shadow: inset 2px 0 0 var(--nx-card-tone);
 }
 
+/*
+   Taking hold of a card. It answers the press with its accent edge before
+   anything has moved, and while it is carried it sits on the raised surface
+   — the design system has no shadows, so "lifted" is a fill and an edge.
+*/
+.react-flow__node:active > .nx-canvas-card,
+.react-flow__node.dragging > .nx-canvas-card {
+  border-color: var(--nx-accent);
+}
+
+.react-flow__node.dragging > .nx-canvas-card {
+  background: var(--nx-surface-raised);
+  outline: 1px solid var(--nx-accent);
+  outline-offset: 0;
+}
+
 .nx-canvas-card.is-selected {
   border-color: var(--nx-accent);
   outline: 1px solid var(--nx-accent);

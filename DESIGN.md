@@ -84,11 +84,16 @@ Both sets are `aria-hidden`: a glyph is redundant with the text beside it, and t
 
 Near-instant. Transitions ~80–120ms, linear or ease-out. No bounce, no springy easing — states change, they don't animate in.
 
+**A press is never eased.** Hover may fade in over `--nx-motion` (80ms); the pressed state appears on the frame the button goes down, and is visibly stronger than hover. Respond to the press, not the release.
+
 ## Interactive states
 
 - **Nav item:** default (dim text, no bg) → hover (faint bg lift) → selected (accent-tinted bg + 2px accent left border + accent text) → focus (1.5px accent outline, inset).
 - **Table row:** default → hover (bg lift) → selected (accent-tinted bg + 2px accent left border).
-- **Button:** default (solid accent, dark text) → hover (lighter accent) → pressed (darker accent) → disabled (flat neutral grey, muted text, no accent).
+- **Button:** default (solid accent, dark text) → hover (lighter accent) → pressed (darker accent, 1px dip) → disabled (flat neutral grey, muted text, no accent).
+- **Any clickable row:** hover (bg lift) → pressed (accent tint, the selected fill, so a press reads as taking hold).
+- **Checkbox / habit square:** pressed squeezes to 86%.
+- **Something you can drag** (canvas card, graph node): open hand on hover, closed hand from the press on. Pressed shows the accent edge; carried sits on `--nx-surface-raised` with an accent outline — lifted by fill and edge, since there are no shadows.
 
 ## Empty & error states
 

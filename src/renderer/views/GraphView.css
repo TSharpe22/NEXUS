@@ -89,6 +89,17 @@
   fill: transparent;
 }
 
+/* A node held under the pointer: a closed hand and an accent ring, from the
+   moment of the press rather than once it starts to move. */
+.nx-graph__node:active {
+  cursor: grabbing;
+}
+
+.nx-graph .nx-graph__node:active .nx-graph__node-dot {
+  stroke: var(--nx-accent);
+  stroke-width: 3;
+}
+
 .nx-graph__node-dot {
   fill: var(--nx-graph-tone);
   stroke: var(--nx-surface-sunken);

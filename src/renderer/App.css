@@ -37,21 +37,77 @@
 
    DESIGN.md specifies these and nothing but the primary button had one, so
    a click landed with no acknowledgement at all — the other half of why
-   this felt unresponsive. Everything clickable dips on press.
+   this felt unresponsive. Everything clickable answers the press itself,
+   not the release, and visibly harder than it answers a hover.
    ------------------------------------------------------------------ */
-.nx-app button:active:not(:disabled),
-.nx-app [role='button']:active {
-  transform: translateY(0.5px);
+
+/*
+   A press lands at once. Hover may ease in over --nx-motion; the press itself
+   has no transition, so the frame the button goes down is the frame the
+   screen answers. (It eases back out on release, which reads as letting go.)
+   `:active` holds for the pressed element and its ancestors, which costs
+   nothing but their fades for the length of a click.
+*/
+body :active {
+  transition-duration: 0s !important;
 }
 
-.nx-nav-item:active,
-.nx-table-row--clickable:active,
-.nx-tree-row:active,
-.nx-home__row-open:active,
-.nx-home__entry:active,
-.nx-tracker__task:active,
-.nx-tracker__page:active {
-  background: var(--nx-surface-raised);
+/* Buttons dip a whole pixel: half a pixel was invisible on a 1x screen. */
+.nx-app button:active:not(:disabled),
+.nx-app [role='button']:active {
+  transform: translateY(1px);
+}
+
+/*
+   Rows press to the accent tint. Each selector carries `.nx-app` (`body` for
+   the context menu, which is portalled) so it outranks the row's own
+   `:hover` rule — a press always happens under the pointer, and on equal
+   footing whichever stylesheet loaded last would win.
+
+   They used to press to --nx-surface-raised,
+   which is within a shade of the hover colour, so on most rows the press was
+   indistinguishable from the hover it came from. The tint is what a selected
+   row is filled with, so a press reads as taking hold of the thing.
+*/
+.nx-app .nx-nav-item:active,
+.nx-app .nx-table-row--clickable:active,
+.nx-app .nx-table tbody tr.nx-table-row--clickable:active,
+.nx-app .nx-tree-row:active,
+.nx-app .nx-notes__item:active,
+.nx-app .nx-backlinks__item:active,
+.nx-app .nx-home__row-open:active,
+.nx-app .nx-home__row:active,
+.nx-app .nx-home__entry:active,
+.nx-app .nx-home__task:active,
+.nx-app .nx-home__loose:active,
+.nx-app .nx-home__overdue:active,
+.nx-app .nx-tracker__task:active,
+.nx-app .nx-tracker__page:active,
+.nx-app .nx-tracker__source:active,
+.nx-app .nx-views__rail-item:active,
+.nx-app .nx-view__list-row:active,
+.nx-app .nx-view__table tbody tr:active,
+.nx-app .nx-canvas-rail__item:active,
+body .nx-menu__item:active:not(:disabled) {
+  background: var(--nx-accent-tint);
+}
+
+/* A gallery card presses at its edge, like a canvas card. */
+.nx-app .nx-view__card:active {
+  border-color: var(--nx-accent);
+}
+
+/*
+   Checkboxes and habit squares squeeze while held. The nearest thing a
+   screen has to the give of a switch under a finger.
+*/
+.nx-app input[type='checkbox']:active,
+.nx-home__check:active,
+.nx-tracker__check:active,
+.nx-properties__checkbox:active,
+.nx-habits__cell:not(:disabled):active,
+.nx-home__habit-day:not(:disabled):active {
+  transform: scale(0.86);
 }
 
 .nx-sidebar {
