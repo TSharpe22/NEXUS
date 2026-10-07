@@ -79,6 +79,9 @@ export function createPage(typeId: string = 'note', folderId: string | null = nu
   const db = getDb()
   const id = uuidv4()
   const ts = now()
+  // No folder asked for means the type's own, when it names one — which is
+  // what keeps "Training — <date>" out of the root without anyone filing it.
+  folderId = folderId ?? getTypeFolder(typeId)
 
   // A type can name one page as its template; a new page of that type starts
   // from a copy of it. Blank when the type has none, or when the template page
@@ -204,12 +207,20 @@ const LIST_COLUMNS =
   'id, type_id, title, icon, page_width, folder_id, is_deleted, is_pinned, pinned_at, is_locked, created_at, updated_at'
 
 /**
+ * The page's `date` property, carried on the sidebar's list so the tree can
+ * put a folder of logs in the order they happened rather than the order they
+ * were last touched. One indexed lookup per row — `properties` is UNIQUE on
+ * (page_id, key). Only for queries over an unaliased `pages`.
+ */
+const LIST_DATE = "(SELECT value_date FROM properties WHERE page_id = pages.id AND key = 'date') AS date"
+
+/**
  * Every live page without its body, newest first — what the sidebar, the
  * command palette and the tag filter all actually read.
  */
 export function getPageList(): PageListItem[] {
   return getDb()
-    .prepare(`SELECT ${LIST_COLUMNS} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`)
+    .prepare(`SELECT ${LIST_COLUMNS}, ${LIST_DATE} FROM pages WHERE is_deleted = 0 ORDER BY updated_at DESC`)
     .all() as PageListItem[]
 }
 
@@ -983,19 +994,24 @@ function block(type: string, text: string, level?: number): Record<string, unkno
  * template all exist. Lazy — nothing is created until the first entry is
  * asked for, so a vault that never journals stays clean.
  */
-function ensureJournalSetup(): { typeId: string; folderId: string } {
+function ensureJournalSetup(): { typeId: string } {
   const db = getDb()
 
   let type = db.prepare('SELECT * FROM types WHERE name = ?').get(JOURNAL_TYPE_NAME) as
     | TypeDef
     | undefined
-  if (!type) type = createType(JOURNAL_TYPE_NAME)
+  if (!type) {
+    type = createType(JOURNAL_TYPE_NAME)
+    // Filed the way any type is, by the folder on its row — set once, here,
+    // when the type is born. After that it is the user's to change, and an
+    // entry made with the folder cleared lands at the root as asked.
+    const folder = findFolderByName(JOURNAL_FOLDER_NAME) ?? createFolder(JOURNAL_FOLDER_NAME, null)
+    setTypeFolder(type.id, folder.id)
+  }
 
   if (!getPropertyDefinitions(type.id).some((d) => d.key === JOURNAL_DATE_KEY)) {
     defineProperty(type.id, 'Date', 'date')
   }
-
-  const folder = findFolderByName(JOURNAL_FOLDER_NAME) ?? createFolder(JOURNAL_FOLDER_NAME, null)
 
   // A starter template, so the feature is visible rather than theoretical.
   // It is an ordinary page — rewrite it, or point the type elsewhere.
@@ -1033,7 +1049,7 @@ function ensureJournalSetup(): { typeId: string; folderId: string } {
     setTypeTemplate(type.id, templateId)
   }
 
-  return { typeId: type.id, folderId: folder.id }
+  return { typeId: type.id }
 }
 
 /**
@@ -1075,7 +1091,7 @@ export function getTodayEntry(): Page | null {
 }
 
 export function getOrCreateTodayEntry(): Page {
-  const { typeId, folderId } = ensureJournalSetup()
+  const { typeId } = ensureJournalSetup()
   // The logical day, not the calendar one: at 1am this is still yesterday's
   // entry, which is the one that has been written in all evening.
   const startHour = getDayStartHour()
@@ -1084,7 +1100,7 @@ export function getOrCreateTodayEntry(): Page {
   const existing = findEntryFor(typeId, today)
   if (existing) return existing
 
-  const page = createPage(typeId, folderId)
+  const page = createPage(typeId)
   // Titled for the day it belongs to, not the wall clock — an entry opened at
   // 1am must not be called tomorrow.
   updatePage(page.id, { title: journalEntryTitle(logicalDate(startHour)) })
@@ -1899,8 +1915,69 @@ export function deleteType(id: string): { reassigned: number } {
   return trx()
 }
 
+/**
+ * Retyping a page at the root files it in the new type's folder.
+ *
+ * Only from the root: a page sitting in a folder is somewhere the user put
+ * it, and changing what it is does not overrule where they keep it. The
+ * common case this is for is the other one — a page made with New, which is
+ * a Note at the root, and turned into a Training log a moment later.
+ */
 export function setPageType(pageId: string, typeId: string): void {
   updatePage(pageId, { type_id: typeId })
+  const folderId = getTypeFolder(typeId)
+  const page = getPageById(pageId)
+  if (folderId && page && !page.folder_id) movePageToFolder(pageId, folderId)
+}
+
+/** The folder a type files its new pages in, or null for the root. */
+export function getTypeFolder(typeId: string): string | null {
+  const row = getDb()
+    .prepare(
+      `SELECT f.id FROM types t
+       JOIN folders f ON f.id = t.folder_id
+       WHERE t.id = ?`
+    )
+    .get(typeId) as { id: string } | undefined
+  return row?.id ?? null
+}
+
+/** Point a type at a folder, or back at the root with null. Files nothing by itself. */
+export function setTypeFolder(typeId: string, folderId: string | null): void {
+  getDb().prepare('UPDATE types SET folder_id = ? WHERE id = ?').run(folderId, typeId)
+}
+
+/**
+ * The pages of a type still sitting at the root — what "File" would move.
+ *
+ * Root only, for the reason `setPageType` gives. A page that is some type's
+ * template is left out: templates live in Templates, and filing one beside
+ * the entries it makes is how it gets mistaken for one.
+ */
+function looseOfType(typeId: string): { id: string }[] {
+  return getDb()
+    .prepare(
+      `SELECT id FROM pages
+        WHERE type_id = ? AND folder_id IS NULL AND is_deleted = 0
+          AND id NOT IN (SELECT template_page_id FROM types WHERE template_page_id IS NOT NULL)`
+    )
+    .all(typeId) as { id: string }[]
+}
+
+export function countLooseOfType(typeId: string): number {
+  return looseOfType(typeId).length
+}
+
+/** Move a type's loose pages into its folder. Returns the ids moved. */
+export function fileLooseOfType(typeId: string): string[] {
+  const folderId = getTypeFolder(typeId)
+  if (!folderId) return []
+  const db = getDb()
+  const ids = looseOfType(typeId).map((r) => r.id)
+  db.transaction(() => {
+    for (const id of ids) movePageToFolder(id, folderId)
+  })()
+  return ids
 }
 
 export function getPropertyDefinitions(typeId: string): PropertyDefinition[] {
@@ -3084,6 +3161,9 @@ export function deleteFolder(id: string): void {
 
     db.prepare('UPDATE pages SET folder_id = ? WHERE folder_id = ?').run(parent, id)
     db.prepare('UPDATE folders SET parent_folder_id = ? WHERE parent_folder_id = ?').run(parent, id)
+    // A type filing into this folder files into its parent instead, so the
+    // next Training log lands beside the ones just lifted there.
+    db.prepare('UPDATE types SET folder_id = ? WHERE folder_id = ?').run(parent, id)
     db.prepare('DELETE FROM folders WHERE id = ?').run(id)
     logActivity(null, 'folder', `deleted folder "${folder.name}"`)
   })

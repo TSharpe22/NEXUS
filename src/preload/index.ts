@@ -106,6 +106,9 @@ const api: NexusAPI = {
   types: {
     setTemplate: (typeId, pageId) => ipcRenderer.invoke('types:setTemplate', typeId, pageId),
     getTemplate: (typeId) => ipcRenderer.invoke('types:getTemplate', typeId),
+    setFolder: (typeId, folderId) => ipcRenderer.invoke('types:setFolder', typeId, folderId),
+    countLoose: (typeId) => ipcRenderer.invoke('types:countLoose', typeId),
+    fileLoose: (typeId) => ipcRenderer.invoke('types:fileLoose', typeId),
     list: () => ipcRenderer.invoke('types:list'),
     create: (name, icon) => ipcRenderer.invoke('types:create', name, icon),
     rename: (id, name) => ipcRenderer.invoke('types:rename', id, name),

@@ -127,8 +127,33 @@ export function FolderTree({
       if (list) list.push(page)
       else map.set(key, [page])
     }
+    // Pages arrive most recently touched first. Inside a folder, anything
+    // carrying a date goes first and newest first instead, so a folder of
+    // logs reads in the order things happened: opening last month's session
+    // to fix a typo must not lift it above yesterday's. Sorting is stable, so
+    // undated pages keep their recency order beneath.
+    for (const [key, list] of map) {
+      if (key === ROOT) continue
+      list.sort((a, b) => {
+        if (a.date && b.date) return a.date < b.date ? 1 : a.date > b.date ? -1 : 0
+        return a.date ? -1 : b.date ? 1 : 0
+      })
+    }
     return map
   }, [pages, folders])
+
+  /**
+   * The root, split: pinned pages are the hubs, so they sit above the
+   * folders; everything else loose sits below them. Pins keep the order they
+   * were made in, the same order Home shows them.
+   */
+  const [pinnedRoot, looseRoot] = useMemo(() => {
+    const root = pagesByFolder.get(ROOT) ?? []
+    const pinned = root
+      .filter((p) => p.is_pinned)
+      .sort((a, b) => (a.pinned_at ?? '').localeCompare(b.pinned_at ?? ''))
+    return [pinned, root.filter((p) => !p.is_pinned)]
+  }, [pagesByFolder])
 
   /**
    * Folders holding a match at any depth. While filtering, only these render
@@ -419,8 +444,9 @@ export function FolderTree({
         acceptDrop(null)
       }}
     >
+      {pinnedRoot.map((page) => renderPage(page, 0))}
       {(foldersByParent.get(ROOT) ?? []).map((folder) => renderFolder(folder, 0))}
-      {(pagesByFolder.get(ROOT) ?? []).map((page) => renderPage(page, 0))}
+      {looseRoot.map((page) => renderPage(page, 0))}
       <ContextMenu state={menu} onClose={() => setMenu(null)} />
     </div>
   )

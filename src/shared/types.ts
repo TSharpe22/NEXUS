@@ -180,6 +180,8 @@ export interface TypeDef {
   id: string
   name: string
   icon: string | null
+  /** Where new pages of this type are filed; null is the root. Schema v15. */
+  folder_id?: string | null
 }
 
 export interface PropertyDefinition {
@@ -219,7 +221,10 @@ export interface PageLocation {
  * title, a type and a folder. Shipping every page's whole document to the
  * renderer on every mutation is what made small actions feel chunky.
  */
-export type PageListItem = Omit<Page, 'content'>
+export type PageListItem = Omit<Page, 'content'> & {
+  /** The page's `date` property, when the list query carries it. */
+  date?: string | null
+}
 
 /**
  * Where a captured line lands. `page` is the default — a thought worth typing
@@ -550,6 +555,12 @@ export interface NexusAPI {
     /** Point a type at the page its new pages start from, or null to clear. */
     setTemplate(typeId: string, pageId: string | null): Promise<void>
     getTemplate(typeId: string): Promise<Page | null>
+    /** Point a type at the folder its new pages are filed in, or null for the root. */
+    setFolder(typeId: string, folderId: string | null): Promise<void>
+    /** How many of the type's pages sit at the root, templates aside. */
+    countLoose(typeId: string): Promise<number>
+    /** Move those pages into the type's folder. Returns how many moved. */
+    fileLoose(typeId: string): Promise<number>
     list(): Promise<TypeDef[]>
     create(name: string, icon?: string): Promise<TypeDef>
     rename(id: string, name: string): Promise<TypeDef>

@@ -676,6 +676,51 @@ console.log('\nv14 canvases on an existing vault:')
   v13.close()
 }
 
+// ------------------------------------------------------------------
+// v15: a type names its folder, and Journal — filed by name until now — has
+// its folder written into its row on the way past.
+// ------------------------------------------------------------------
+console.log('\nv15 type folders:')
+{
+  const v14 = new Database(join(dir, 'v14.db'))
+  v14.pragma('foreign_keys = OFF')
+  applySchema(v14, () => null)
+  // A v14 file: no `types.folder_id`, a Journal type, a Journal folder, and a
+  // second root folder with the same name nested elsewhere to stay away from.
+  v14.exec('ALTER TABLE types DROP COLUMN folder_id')
+  v14.pragma('user_version = 14')
+  v14.exec(`
+    INSERT INTO folders (id, name, parent_folder_id, sort_order) VALUES ('logs', 'Logs', NULL, 0);
+    INSERT INTO folders (id, name, parent_folder_id, sort_order) VALUES ('nested-j', 'Journal', 'logs', 0);
+    INSERT INTO folders (id, name, parent_folder_id, sort_order) VALUES ('jf', 'Journal', NULL, 1);
+    INSERT INTO types (id, name) VALUES ('jt', 'Journal');
+    INSERT INTO types (id, name) VALUES ('tt', 'Training');
+  `)
+  applySchema(v14, () => null)
+  v14.pragma('foreign_keys = ON')
+  check('the file moves to the current version', v14.pragma('user_version', { simple: true }), SCHEMA_VERSION)
+  check('Journal is filed in the root Journal folder', v14.prepare(`SELECT folder_id FROM types WHERE id = 'jt'`).get().folder_id, 'jf')
+  check('other types start unfiled', v14.prepare(`SELECT folder_id FROM types WHERE id = 'tt'`).get().folder_id, null)
+
+  // Cleared by the user, then reopened: the one-time step must not refile it.
+  v14.exec(`UPDATE types SET folder_id = NULL WHERE id = 'jt'`)
+  applySchema(v14, () => null)
+  check('a cleared Journal folder stays cleared on the next launch', v14.prepare(`SELECT folder_id FROM types WHERE id = 'jt'`).get().folder_id, null)
+
+  v14.exec(`UPDATE types SET folder_id = 'logs' WHERE id = 'tt'`)
+  v14.exec(`DELETE FROM folders WHERE id = 'nested-j'`)
+  v14.exec(`DELETE FROM folders WHERE id = 'logs'`)
+  check('deleting a type\'s folder un-files the type', v14.prepare(`SELECT folder_id FROM types WHERE id = 'tt'`).get().folder_id, null)
+  check('foreign keys satisfied', v14.pragma('foreign_key_check'), [])
+  v14.close()
+
+  console.log('\nv15 on a fresh vault:')
+  const fresh15 = new Database(join(dir, 'fresh15.db'))
+  applySchema(fresh15, () => null)
+  check('types has folder_id', fresh15.prepare(`SELECT count(*) c FROM pragma_table_info('types') WHERE name = 'folder_id'`).get().c, 1)
+  fresh15.close()
+}
+
 rmSync(dir, { recursive: true, force: true })
 console.log(failures === 0 ? '\nall checks passed' : `\n${failures} check(s) failed`)
 process.exit(failures === 0 ? 0 : 1)

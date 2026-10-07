@@ -435,6 +435,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   createPage: async (typeId) => {
     const page = await window.api.pages.create(typeId)
     await get().refresh()
+    // A typed page can be filed straight into its type's folder, which may be
+    // shut — and a new page you cannot see in the list reads as nothing made.
+    revealFolder(page.folder_id)
     set((state) => ({
       activeView: 'notes',
       activePageId: page.id,
@@ -497,6 +500,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   setPageType: async (id, typeId) => {
     await window.api.pages.setType(id, typeId)
     await get().refresh()
+    // Retyping a root page files it; follow it so it does not vanish from view.
+    revealFolder(get().pages.find((p) => p.id === id)?.folder_id ?? null)
   },
 
   createType: async (name) => {
@@ -846,4 +851,16 @@ export function today(): string {
 /** The calendar date, for the one place that shows a clock rather than a day. */
 export function useWallToday(): string {
   return useAppStore((s) => s.wallToday)
+}
+
+/** Open a folder and every folder above it, so a page filed inside is on screen. */
+function revealFolder(folderId: string | null): void {
+  const { folders, setFolderExpanded } = useAppStore.getState()
+  const seen = new Set<string>()
+  let id = folderId
+  while (id && !seen.has(id)) {
+    seen.add(id)
+    setFolderExpanded(id, true)
+    id = folders.find((f) => f.id === id)?.parent_folder_id ?? null
+  }
 }

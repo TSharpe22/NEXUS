@@ -240,6 +240,21 @@ feedback, not speed.
 - **Right-click** in the editor, every text field, the canvas and the graph,
   through one menu host.
 
+## Wave 7 — a type files its pages (schema v15, shipped)
+
+Q4 item 4, first half. The plan for items 4 and 5 is in `PLAN_Q4_4_5.md`.
+
+- **`types.folder_id`.** New pages of a type land in its folder. A
+  top-level page that is retyped follows it there. Settings → Types has the
+  picker and a "File N" button for pages already loose. Templates are never
+  moved.
+- **Journal is ordinary data now.** It used to be filed by a hardcoded
+  folder name. The migration writes its folder into its row once, so
+  clearing it later sticks.
+- **Deleting a folder** hands its types to the parent, as it does its pages.
+- **Sidebar:** pinned top-level pages (hubs) sit above the folders. Inside a
+  folder, dated pages sort newest date first, not most recently edited.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
@@ -264,12 +279,9 @@ overlay, so the rule is the multi-block-selection rule: the library's
 blocks or nothing. `schema.ts` still unwraps legacy `column` / `columnList`
 in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 
-**Organisation of Pages, and a note-taking framework.** Dated logs
-("Training — <date>", "Trading — <date>") sit at the root beside the hub
-pages they belong to. Hubs on top, logs filed by type and read through
-views, an inbox — and a framework for notes that a learning topic (Spanish
-first) can be built in: concepts as linked pages, the graph and canvas as
-the map. Design, then build.
+**A note-taking framework.** The rest of item 4: Topic, Concept and Lesson
+types with templates, in which the learn-repo method is written by hand
+(Spanish first). There's no AI teaching unless asked. See `PLAN_Q4_4_5.md`.
 
 **Week and quarter views.** A week planned as it goes (at the weekly
 review) beside what was logged; a quarter as directions and a few loose

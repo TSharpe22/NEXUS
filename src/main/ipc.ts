@@ -83,6 +83,30 @@ export function registerIpcHandlers(): void {
       rethrow('types:getTemplate', e)
     }
   })
+  ipcMain.handle('types:setFolder', (_, typeId: string, folderId: string | null) => {
+    try {
+      return repo.setTypeFolder(typeId, folderId ?? null)
+    } catch (e) {
+      rethrow('types:setFolder', e)
+    }
+  })
+  ipcMain.handle('types:countLoose', (_, typeId: string) => {
+    try {
+      return repo.countLooseOfType(typeId)
+    } catch (e) {
+      rethrow('types:countLoose', e)
+    }
+  })
+  ipcMain.handle('types:fileLoose', (_, typeId: string) => {
+    try {
+      const moved = repo.fileLooseOfType(typeId)
+      // Each moved page changes path on disk, so the mirror is told by name.
+      for (const id of moved) mirror.scheduleSync(id)
+      return moved.length
+    } catch (e) {
+      rethrow('types:fileLoose', e)
+    }
+  })
   ipcMain.handle('mirror:getConfig', () => {
     try {
       return mirror.getConfig()

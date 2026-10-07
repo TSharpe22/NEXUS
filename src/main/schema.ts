@@ -83,8 +83,15 @@ let db: Database.Database
  *     document. `canvas_refs` is a projection of which pages a canvas shows
  *     or links to, rebuilt on every save — derived, like `links`, and refilled
  *     at startup when it is missing.
+ * 15 — a type names the folder its new pages are filed in: `types.folder_id`.
+ *     The decision `MODEL.md` made ("a type may set the folder its new
+ *     objects land in"), built. Additive — one ALTER guarded by
+ *     `columnExists` — plus one data step: Journal, which filed its entries
+ *     by a hardcoded folder name, gets that folder written into its row, so
+ *     the journal keeps landing where it always did and the special case
+ *     becomes data the user can change.
  */
-export const SCHEMA_VERSION = 14
+export const SCHEMA_VERSION = 15
 
 const CURRENT_SCHEMA = `
   CREATE TABLE IF NOT EXISTS types (
@@ -921,6 +928,24 @@ export function applySchema(
     // EXISTS, so there is nothing to alter and nothing to rewrite — an existing
     // vault simply has no canvases yet, and `canvas_refs` is refilled from
     // `canvases` at startup by `repo.ensureCanvasRefs`.
+
+    // v15. A type's folder. ON DELETE SET NULL for the same reason as the
+    // template: losing the folder un-files the type, it never takes the type
+    // with it. (`repo.deleteFolder` does better and hands the type to the
+    // folder's parent, the way it does the folder's pages.)
+    if (!columnExists('types', 'folder_id')) {
+      db.exec(`ALTER TABLE types ADD COLUMN folder_id TEXT REFERENCES folders(id) ON DELETE SET NULL`)
+    }
+    // Journal filed by name before this — the type called Journal into the
+    // root folder called Journal. Written once, on the way past 15, so that a
+    // user who later sets Journal to no folder is not overruled every launch.
+    if (version < 15) {
+      db.exec(`
+        UPDATE types
+           SET folder_id = (SELECT id FROM folders WHERE name = 'Journal' AND parent_folder_id IS NULL LIMIT 1)
+         WHERE name = 'Journal' AND folder_id IS NULL
+      `)
+    }
 
     db.pragma(`user_version = ${SCHEMA_VERSION}`)
   })

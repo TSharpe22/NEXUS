@@ -4,7 +4,7 @@ import { Panel } from '../design/Panel'
 import { Button } from '../design/Button'
 import { confirmDialog } from '../design/Confirm'
 import { useAppStore } from '../store/app-store'
-import type { PropertyDefinition, PropertyType } from '@shared/types'
+import type { Folder, PropertyDefinition, PropertyType } from '@shared/types'
 
 /**
  * Types, and the properties that hang off them.
@@ -44,16 +44,43 @@ function isHabitShaped(defs: PropertyDefinition[]): boolean {
   )
 }
 
+/** Every folder with its full path, "Logs / Training", in tree order. */
+function folderPaths(folders: Folder[]): { id: string; path: string }[] {
+  const byParent = new Map<string | null, Folder[]>()
+  for (const f of folders) {
+    const list = byParent.get(f.parent_folder_id) ?? []
+    list.push(f)
+    byParent.set(f.parent_folder_id, list)
+  }
+  const out: { id: string; path: string }[] = []
+  const walk = (parent: string | null, prefix: string, seen: Set<string>) => {
+    const children = [...(byParent.get(parent) ?? [])].sort((a, b) => a.sort_order - b.sort_order)
+    for (const f of children) {
+      if (seen.has(f.id)) continue
+      seen.add(f.id)
+      const path = prefix ? `${prefix} / ${f.name}` : f.name
+      out.push({ id: f.id, path })
+      walk(f.id, path, seen)
+    }
+  }
+  walk(null, '', new Set())
+  return out
+}
+
 export function TypesPanel() {
   const types = useAppStore((s) => s.types)
   const pages = useAppStore((s) => s.pages)
   const createType = useAppStore((s) => s.createType)
   const renameType = useAppStore((s) => s.renameType)
   const deleteType = useAppStore((s) => s.deleteType)
+  const folders = useAppStore((s) => s.folders)
+  const refresh = useAppStore((s) => s.refresh)
 
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [defs, setDefs] = useState<PropertyDefinition[]>([])
   const [templateId, setTemplateId] = useState<string | null>(null)
+  /** Pages of this type still at the root — what "File" would move. */
+  const [looseCount, setLooseCount] = useState(0)
 
   const [creating, setCreating] = useState(false)
   const [newName, setNewName] = useState('')
@@ -75,19 +102,24 @@ export function TypesPanel() {
     if (!typeId) {
       setDefs([])
       setTemplateId(null)
+      setLooseCount(0)
       return
     }
-    const [definitions, template] = await Promise.all([
+    const [definitions, template, loose] = await Promise.all([
       window.api.types.getPropertyDefinitions(typeId),
-      window.api.types.getTemplate(typeId)
+      window.api.types.getTemplate(typeId),
+      window.api.types.countLoose(typeId)
     ])
     setDefs(definitions)
     setTemplateId(template?.id ?? null)
+    setLooseCount(loose)
   }, [])
 
+  // `pageCount` is in the list so the loose count follows pages made or
+  // moved while this panel is open.
   useEffect(() => {
     void loadDefs(activeId)
-  }, [activeId, loadDefs])
+  }, [activeId, loadDefs, pageCount])
 
   const handleCreate = async () => {
     const name = newName.trim()
@@ -185,6 +217,20 @@ export function TypesPanel() {
     if (!accepted) return
     await window.api.types.removeProperty(def.id)
     await loadDefs(active?.id ?? null)
+  }
+
+  const handleSetFolder = async (folderId: string | null) => {
+    if (!active) return
+    await window.api.types.setFolder(active.id, folderId)
+    await refresh()
+  }
+
+  const handleFileLoose = async () => {
+    if (!active) return
+    const moved = await window.api.types.fileLoose(active.id)
+    await refresh()
+    setLooseCount(await window.api.types.countLoose(active.id))
+    toast.success(`Filed ${moved} page${moved === 1 ? '' : 's'}`)
   }
 
   const handleSetTemplate = async (pageId: string | null) => {
@@ -388,6 +434,36 @@ export function TypesPanel() {
                   </option>
                 ))}
             </select>
+          </div>
+
+          <div className="nx-settings__row">
+            <div>
+              <div className="nx-type-body">Folder</div>
+              <div className="nx-type-data">
+                New pages of this type are filed here.
+                {active.folder_id && looseCount > 0 &&
+                  ` ${looseCount} still sit at the top level.`}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 'var(--nx-space-2)', alignItems: 'center' }}>
+              {active.folder_id && looseCount > 0 && (
+                <Button variant="ghost" onClick={() => void handleFileLoose()}>
+                  File {looseCount}
+                </Button>
+              )}
+              <select
+                className="nx-select nx-settings__select"
+                value={active.folder_id ?? ''}
+                onChange={(e) => void handleSetFolder(e.target.value || null)}
+              >
+                <option value="">None (top level)</option>
+                {folderPaths(folders).map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.path}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
       )}

@@ -1451,6 +1451,109 @@ check('and its chip is gone with it',
     [...document.querySelectorAll('.nx-tag-chip--type .nx-tag-chip__label')].some((el) =>
       el.textContent.trim().startsWith('Book')))))
 
+// ------------------------------------------------------ a type's folder
+log('\n— a type files its pages —')
+// Dated logs sat at the root beside the hubs they belong to, because nothing
+// filed them. A type now names a folder; new pages land in it, a root page
+// retyped into it follows, and the ones already loose are filed on request.
+const fileFixture = await page.evaluate(async () => {
+  const api = window.api
+  const s = window.nexus.store.getState()
+  const type = await api.types.create('Lift', null)
+  await api.types.defineProperty(type.id, 'Date', 'date')
+  const logs = await api.folders.create('Logs', null)
+  const folder = await api.folders.create('Lift', logs.id)
+
+  // Made before the type had a folder: two loose logs and a template.
+  const older = await api.pages.create(type.id)
+  await api.pages.update(older.id, { title: 'Lift — 2026-09-01' })
+  await api.properties.set(older.id, 'date', 'date', '2026-09-01')
+  const touched = await api.pages.create(type.id)
+  await api.pages.update(touched.id, { title: 'Lift — 2026-08-01' })
+  await api.properties.set(touched.id, 'date', 'date', '2026-08-01')
+  const template = await api.pages.create(type.id)
+  await api.pages.update(template.id, { title: 'Lift template' })
+  await api.types.setTemplate(type.id, template.id)
+
+  await api.types.setFolder(type.id, folder.id)
+  const looseBefore = await api.types.countLoose(type.id)
+  const filed = await api.types.fileLoose(type.id)
+
+  const made = await s.createPage(type.id)
+  const note = await api.pages.create('note')
+  await s.setPageType(note.id, type.id)
+  // Edit the oldest log last, so recency and date disagree about the order.
+  await api.pages.update(touched.id, { title: 'Lift — 2026-08-01 (fixed)' })
+  await s.refresh()
+
+  const pages = window.nexus.store.getState().pages
+  const folderOf = (id) => pages.find((p) => p.id === id)?.folder_id ?? null
+  return {
+    typeId: type.id,
+    folderId: folder.id,
+    logsId: logs.id,
+    ids: [older.id, touched.id, template.id, made.id, note.id],
+    looseBefore,
+    filed,
+    olderIn: folderOf(older.id),
+    templateIn: folderOf(template.id),
+    madeIn: folderOf(made.id),
+    noteIn: folderOf(note.id),
+    typeRow: (await api.types.list()).find((t) => t.id === type.id),
+    expanded: window.nexus.store.getState().expandedFolderIds
+  }
+})
+check('a type remembers its folder', fileFixture.typeRow?.folder_id === fileFixture.folderId,
+  JSON.stringify(fileFixture.typeRow))
+check('the loose count leaves the template out', fileFixture.looseBefore === 2, String(fileFixture.looseBefore))
+check('File moves the loose pages', fileFixture.filed === 2 && fileFixture.olderIn === fileFixture.folderId)
+check('and leaves the template where it was', fileFixture.templateIn === null)
+check('a new page of the type lands in its folder', fileFixture.madeIn === fileFixture.folderId)
+check('a root page retyped to it follows', fileFixture.noteIn === fileFixture.folderId)
+check('and the folders above it open so it can be seen',
+  fileFixture.expanded.includes(fileFixture.folderId) && fileFixture.expanded.includes(fileFixture.logsId),
+  JSON.stringify(fileFixture.expanded))
+
+await nav('Notes')
+await sleep(800)
+const liftRows = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tree-row__title')].map((t) => t.textContent.trim())
+    .filter((t) => t.startsWith('Lift — ')))
+check('a folder of logs reads newest date first, not most recently edited',
+  liftRows[0] === 'Lift — 2026-09-01' && liftRows[1] === 'Lift — 2026-08-01 (fixed)',
+  JSON.stringify(liftRows))
+
+const pinOrder = await page.evaluate(async () => {
+  const api = window.api
+  const hub = await api.pages.create('note')
+  await api.pages.update(hub.id, { title: 'Pinned hub check' })
+  await api.pages.setPinned(hub.id, true)
+  await window.nexus.store.getState().refresh()
+  await new Promise((r) => setTimeout(r, 400))
+  const tree = document.querySelector('.nx-tree')
+  const rows = [...tree.children].map((el) =>
+    el.querySelector('.nx-tree-row--folder') ? 'folder' : el.querySelector('.nx-tree-row__title')?.textContent.trim())
+  return { hubId: hub.id, hubAt: rows.indexOf('Pinned hub check'), firstFolder: rows.indexOf('folder') }
+})
+check('a pinned root page sits above the folders',
+  pinOrder.hubAt >= 0 && pinOrder.firstFolder >= 0 && pinOrder.hubAt < pinOrder.firstFolder,
+  JSON.stringify(pinOrder))
+
+const afterDelete = await page.evaluate(async (fx) => {
+  await window.api.folders.remove(fx.folderId)
+  const row = (await window.api.types.list()).find((t) => t.id === fx.typeId)
+  return row?.folder_id ?? null
+}, fileFixture)
+check('deleting the folder hands the type to its parent', afterDelete === fileFixture.logsId, String(afterDelete))
+
+await page.evaluate(async (fx) => {
+  for (const id of [...fx.ids, fx.hubId]) await window.api.pages.hardDelete(id)
+  await window.api.types.remove(fx.typeId)
+  await window.api.folders.remove(fx.logsId)
+  await window.nexus.store.getState().refresh()
+}, { ...fileFixture, hubId: pinOrder.hubId })
+await sleep(400)
+
 // -------------------------------------------------- several pages at once
 log('\n— several pages at once —')
 // Everything here could be done one page at a time already, which is the
