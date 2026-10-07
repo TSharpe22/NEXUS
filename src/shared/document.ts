@@ -234,6 +234,39 @@ export function setDueInDocument(
  * with a separator instead of a space so a heading does not run into the
  * paragraph under it.
  */
+/**
+ * The lines written under one heading, as plain text — what the week view
+ * shows of a week's Plan without opening the page.
+ *
+ * Everything after the first top-level heading whose text is `heading`
+ * (ignoring case) up to the next heading of the same level or higher.
+ * Checkboxes are left out: they are tasks, and the tracker draws those as
+ * tasks, tickable, rather than as text. Blank lines are dropped.
+ */
+export function sectionLines(content: string | null, heading: string): string[] {
+  const blocks = parseDocument(content) as DocumentNode[]
+  const want = heading.trim().toLowerCase()
+  const levelOf = (b: DocumentNode) => Number((b.props as { level?: unknown } | undefined)?.level ?? 1)
+
+  const start = blocks.findIndex(
+    (b) => b && b.type === 'heading' && blockText(b.content).trim().toLowerCase() === want
+  )
+  if (start < 0) return []
+  const level = levelOf(blocks[start])
+
+  const lines: string[] = []
+  for (const block of blocks.slice(start + 1)) {
+    if (!block || typeof block !== 'object') continue
+    if (block.type === 'heading' && levelOf(block) <= level) break
+    walk([block], (node, text) => {
+      if (node.type === 'checkListItem') return
+      const trimmed = text.trim()
+      if (trimmed) lines.push(trimmed)
+    })
+  }
+  return lines
+}
+
 export function documentPreview(content: string | null, limit = 240): string {
   const parts: string[] = []
   walk(parseDocument(content), (_block, text) => {

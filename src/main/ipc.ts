@@ -69,6 +69,22 @@ export function registerIpcHandlers(): void {
       rethrow('journal:peek', e)
     }
   })
+  ipcMain.handle('week:peek', (_, date: string) => {
+    try {
+      return repo.getWeekPage(date)
+    } catch (e) {
+      rethrow('week:peek', e)
+    }
+  })
+  ipcMain.handle('week:open', (_, date: string) => {
+    try {
+      const page = repo.getOrCreateWeekPage(date)
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('week:open', e)
+    }
+  })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
     try {
       return repo.setTypeTemplate(typeId, pageId ?? null)

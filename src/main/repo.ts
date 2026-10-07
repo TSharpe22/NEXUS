@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 import { getDb, getDbPath } from './database'
-import { journalEntryTitle } from '@shared/journal-date'
+import { journalEntryTitle, localDateISO } from '@shared/journal-date'
+import { fromISO, startOfWeek } from '@shared/date-range'
 import { DEFAULT_DAY_START_HOUR, logicalDate, logicalDateISO, normaliseDayStartHour } from '@shared/day'
 import {
   extractAttachmentNames,
@@ -1109,6 +1110,104 @@ export function getOrCreateTodayEntry(): Page {
 }
 
 // ============================================================
+// Weeks — a plan written at the weekly review, one page per week
+// ============================================================
+
+const WEEK_TYPE_NAME = 'Week'
+const PLANS_FOLDER_NAME = 'Plans'
+const WEEKS_FOLDER_NAME = 'Weeks'
+
+/** A folder by name under `parentId` (null is the root), made if missing. */
+function folderUnder(name: string, parentId: string | null): Folder {
+  const row = getDb()
+    .prepare('SELECT * FROM folders WHERE name = ? AND parent_folder_id IS ?')
+    .get(name, parentId) as Folder | undefined
+  return row ?? createFolder(name, parentId)
+}
+
+/**
+ * The Week type, its `date` (the Monday) and a template, made the first time
+ * a week is planned — the same lazy setup as the journal, for the same
+ * reason: a vault that never plans a week stays clean.
+ *
+ * The type files into Plans / Weeks through `types.folder_id`, set once when
+ * the type is born and the user's to change after.
+ */
+function ensureWeekSetup(): { typeId: string } {
+  const db = getDb()
+  let type = db.prepare('SELECT * FROM types WHERE name = ?').get(WEEK_TYPE_NAME) as TypeDef | undefined
+  if (!type) {
+    type = createType(WEEK_TYPE_NAME)
+    const plans = folderUnder(PLANS_FOLDER_NAME, null)
+    setTypeFolder(type.id, folderUnder(WEEKS_FOLDER_NAME, plans.id).id)
+  }
+
+  if (!getPropertyDefinitions(type.id).some((d) => d.key === JOURNAL_DATE_KEY)) {
+    defineProperty(type.id, 'Date', 'date')
+  }
+
+  if (!getTypeTemplate(type.id)) {
+    const templates = findFolderByName(TEMPLATES_FOLDER_NAME) ?? createFolder(TEMPLATES_FOLDER_NAME, null)
+    const templateId = uuidv4()
+    const ts = now()
+    // Two headings, because a week is written twice: what it is for, at the
+    // review that opens it, and what happened, at the one that closes it.
+    // The week view reads the lines under Plan by that heading's name.
+    db.prepare(
+      `INSERT INTO pages (id, type_id, title, content, folder_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      templateId,
+      type.id,
+      'Week template',
+      JSON.stringify([
+        block('heading', 'Plan', 2),
+        block('paragraph', ''),
+        block('heading', 'Review', 2),
+        block('paragraph', '')
+      ]),
+      templates.id,
+      ts,
+      ts
+    )
+    reindexPage(templateId)
+    setTypeTemplate(type.id, templateId)
+  }
+
+  return { typeId: type.id }
+}
+
+/** The Monday of the week `date` falls in, as `YYYY-MM-DD`. */
+function mondayOf(date: string): string {
+  return localDateISO(startOfWeek(fromISO(date)))
+}
+
+/**
+ * The week's page if it has been written, without creating anything — the
+ * tracker shows a week, and showing a thing must never make it.
+ */
+export function getWeekPage(date: string): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(WEEK_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  if (!type) return null
+  return findEntryFor(type.id, mondayOf(date))
+}
+
+/** The week's page, made from the Week template when it does not exist yet. */
+export function getOrCreateWeekPage(date: string): Page {
+  const { typeId } = ensureWeekSetup()
+  const monday = mondayOf(date)
+  const existing = findEntryFor(typeId, monday)
+  if (existing) return existing
+
+  const page = createPage(typeId)
+  updatePage(page.id, { title: `Week — ${monday}` })
+  setProperty(page.id, JOURNAL_DATE_KEY, 'date', monday)
+  return getPageById(page.id)!
+}
+
+// ============================================================
 // Settings (key/value) and the vault-mirror manifest
 // ============================================================
 
@@ -1619,10 +1718,12 @@ export function getUndatedTasks(limit = 100): TrackerTask[] {
 export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
   const rows = getDb()
     .prepare(
-      `SELECT p.id, p.title, p.icon, pr.key, pr.value_date, t.name AS type_name
+      `SELECT p.id, p.title, p.icon, pr.key, pr.value_date, t.name AS type_name,
+              d.value_text AS done
          FROM properties pr
          JOIN pages p ON p.id = pr.page_id AND p.is_deleted = 0
          LEFT JOIN types t ON t.id = p.type_id
+         LEFT JOIN properties d ON d.page_id = p.id AND d.key = 'done' AND d.type = 'boolean'
         WHERE pr.type = 'date' AND pr.value_date BETWEEN ? AND ?
         ORDER BY pr.value_date, p.title`
     )
@@ -1633,6 +1734,7 @@ export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
     key: string
     value_date: string
     type_name: string | null
+    done: string | null
   }[]
 
   return rows.map((r) => ({
@@ -1641,7 +1743,9 @@ export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
     pageIcon: r.icon,
     typeName: r.type_name,
     propertyKey: r.key,
-    date: r.value_date
+    date: r.value_date,
+    // Checkboxes are stored as the text 'true' / 'false'.
+    done: r.done === null ? null : r.done === 'true'
   }))
 }
 

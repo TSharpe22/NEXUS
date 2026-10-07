@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { TrackerTask, DatedPage } from '@shared/types'
+import type { TrackerTask, DatedPage, Page } from '@shared/types'
+import { sectionLines } from '@shared/document'
 import { rangeFor, eachDay, dayLabel, monthLabel, fromISO, type RangeKind } from '@shared/date-range'
 import { useAppStore, useToday, type TrackerMode } from '../store/app-store'
 import { Panel } from '../design/Panel'
 import { EmptyState } from '../design/EmptyState'
 import { Icon } from '../design/Icon'
 import { DueDate } from '../design/DueDate'
+import { Button } from '../design/Button'
 import { HabitGrid } from './HabitGrid'
 import './Tracker.css'
 
@@ -49,12 +51,20 @@ function TaskRow({
   task,
   onToggle,
   onReschedule,
-  onOpen
+  onOpen,
+  inPlan = false
 }: {
   task: TrackerTask
   onToggle: (task: TrackerTask) => void
   onReschedule: (task: TrackerTask, due: string | null) => Promise<void>
   onOpen: (pageId: string) => void
+  /**
+   * Drawn inside the week's plan: the Monday it inherits from the week page
+   * is not a date anyone gave it, and the page it comes from is the plan it
+   * is already sitting in — so neither is shown. Giving it a date moves it
+   * onto that day.
+   */
+  inPlan?: boolean
 }) {
   return (
     <div className={`nx-tracker__task ${task.isDone ? 'nx-tracker__task--done' : ''}`}>
@@ -72,18 +82,34 @@ function TaskRow({
         />
       </button>
       <span className="nx-tracker__task-text">{task.text || 'Untitled task'}</span>
-      <DueDate task={task} onChange={(due) => onReschedule(task, due)} />
-      <button className="nx-tracker__source nx-type-data" onClick={() => onOpen(task.pageId)}>
-        {task.pageTitle || 'Untitled'}
-      </button>
+      <DueDate
+        task={inPlan ? { ...task, dueDate: null, dueDateSource: null } : task}
+        onChange={(due) => onReschedule(task, due)}
+      />
+      {!inPlan && (
+        <button className="nx-tracker__source nx-type-data" onClick={() => onOpen(task.pageId)}>
+          {task.pageTitle || 'Untitled'}
+        </button>
+      )}
     </div>
   )
 }
 
 function PageRow({ page, onOpen }: { page: DatedPage; onOpen: (pageId: string) => void }) {
+  // A log with a `done` box says whether it happened: filled when it did,
+  // the same mark a ticked task carries.
   return (
-    <button className="nx-tracker__page" onClick={() => onOpen(page.pageId)}>
-      <Icon shape="diamond" size={11} color="var(--nx-text-dim)" />
+    <button
+      className={`nx-tracker__page ${page.done === false ? 'nx-tracker__page--undone' : ''}`}
+      onClick={() => onOpen(page.pageId)}
+      title={page.done === null ? undefined : page.done ? 'Done' : 'Not done'}
+    >
+      <Icon
+        shape="diamond"
+        size={11}
+        filled={page.done === true}
+        color={page.done === true ? 'var(--nx-accent)' : 'var(--nx-text-dim)'}
+      />
       <span className="nx-tracker__page-title">{page.pageTitle || 'Untitled'}</span>
       <span className="nx-tracker__page-meta nx-type-data">
         {page.typeName ? `${page.typeName} · ` : ''}
@@ -93,9 +119,29 @@ function PageRow({ page, onOpen }: { page: DatedPage; onOpen: (pageId: string) =
   )
 }
 
+/**
+ * What a week's logs add up to, by type: "Training 2/3" when the type has a
+ * done box (done of logged), a bare count when it does not.
+ */
+function loggedByType(pages: DatedPage[]): { name: string; text: string }[] {
+  const byType = new Map<string, { total: number; done: number; checkable: boolean }>()
+  for (const page of pages) {
+    const name = page.typeName ?? 'Note'
+    const entry = byType.get(name) ?? { total: 0, done: 0, checkable: false }
+    entry.total++
+    if (page.done !== null) entry.checkable = true
+    if (page.done) entry.done++
+    byType.set(name, entry)
+  }
+  return [...byType.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, e]) => ({ name, text: e.checkable ? `${e.done}/${e.total}` : String(e.total) }))
+}
+
 export function Tracker() {
   const openPage = useAppStore((s) => s.openPage)
   const patchPage = useAppStore((s) => s.patchPage)
+  const openWeek = useAppStore((s) => s.openWeek)
 
   // The two date windows plus the year grid. Habits are not a range — they
   // are a whole year at a glance — so they sit alongside `RangeKind` rather
@@ -110,6 +156,8 @@ export function Tracker() {
   const [overdue, setOverdue] = useState<TrackerTask[]>([])
   const [undated, setUndated] = useState<TrackerTask[]>([])
   const [looseEnds, setLooseEnds] = useState<TrackerTask[]>([])
+  /** The page written for the week on screen, when there is one. */
+  const [weekPage, setWeekPage] = useState<Page | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -126,13 +174,15 @@ export function Tracker() {
       return
     }
     try {
-      const [rangeTasks, rangePages, before, none, loose] = await Promise.all([
+      const [rangeTasks, rangePages, before, none, loose, week] = await Promise.all([
         window.api.tasks.inRange(range.from, range.to),
         window.api.tasks.datedPages(range.from, range.to),
         window.api.tasks.overdue(today),
         window.api.tasks.undated(),
-        window.api.tasks.looseEnds(today)
+        window.api.tasks.looseEnds(today),
+        kind === 'week' ? window.api.week.peek(range.from) : Promise.resolve(null)
       ])
+      setWeekPage(week)
       setTasks(rangeTasks)
       setPages(rangePages)
       setOverdue(before)
@@ -145,7 +195,7 @@ export function Tracker() {
     } finally {
       setLoading(false)
     }
-  }, [mode, range.from, range.to, today])
+  }, [mode, kind, range.from, range.to, today])
 
   useEffect(() => {
     void load()
@@ -189,8 +239,30 @@ export function Tracker() {
     }
   }
 
+  /**
+   * The week page is dated by its Monday, and a task with no date of its own
+   * counts against its page's — so without this, every line of a week's plan
+   * would pile up on Monday and turn into "left open" on Tuesday. A plan item
+   * belongs to the whole week: it is drawn in the plan, not on a day, and is
+   * only left open once the week is over. A plan item given its own `@date`
+   * is an ordinary task on that day.
+   */
+  const weekId = weekPage?.id ?? null
+  const isWeekItem = useCallback(
+    (t: TrackerTask) => t.pageId === weekId && t.dueDateSource !== 'block',
+    [weekId]
+  )
+  const planTasks = useMemo(() => tasks.filter(isWeekItem), [tasks, isWeekItem])
+  const dayTasks = useMemo(() => tasks.filter((t) => !isWeekItem(t)), [tasks, isWeekItem])
+  const dayPages = useMemo(() => pages.filter((p) => p.pageId !== weekId), [pages, weekId])
+  const planLines = useMemo(() => sectionLines(weekPage?.content ?? null, 'Plan'), [weekPage])
+  const logged = useMemo(() => loggedByType(dayPages), [dayPages])
+  // Only this week's page can be "left open" too early; a past week's
+  // unfinished plan items are left open for real.
+  const shownLooseEnds = useMemo(() => looseEnds.filter((t) => !isWeekItem(t)), [looseEnds, isWeekItem])
+
   const days = useMemo(() => eachDay(range.from, range.to), [range.from, range.to])
-  const buckets = useMemo(() => bucketByDay(days, tasks, pages), [days, tasks, pages])
+  const buckets = useMemo(() => bucketByDay(days, dayTasks, dayPages), [days, dayTasks, dayPages])
 
   // A week shows every day, empty ones included — the shape of the week is
   // part of what you are reading. A quarter is ninety days, so there only the
@@ -275,6 +347,71 @@ export function Tracker() {
           </Panel>
         )}
 
+        {kind === 'week' && !loading && (
+          <Panel
+            title="Plan"
+            className="nx-tracker__plan"
+            actions={
+              weekPage ? (
+                <Button variant="ghost" onClick={() => void openPage(weekPage.id)}>
+                  Open week
+                </Button>
+              ) : null
+            }
+          >
+            <div className="nx-tracker__plan-body">
+              {weekPage ? (
+                planLines.length + planTasks.length === 0 ? (
+                  <div className="nx-tracker__blank nx-type-data">Nothing written under Plan yet.</div>
+                ) : (
+                  <>
+                    {planLines.map((line, i) => (
+                      <div key={i} className="nx-tracker__plan-line">
+                        {line}
+                      </div>
+                    ))}
+                    {planTasks.map((task) => (
+                      <TaskRow
+                        key={`${task.pageId}:${task.blockId}`}
+                        task={task}
+                        onToggle={toggle}
+                        onReschedule={reschedule}
+                        onOpen={openPage}
+                        inPlan
+                      />
+                    ))}
+                  </>
+                )
+              ) : offset === 0 || offset === 1 ? (
+                // This week, or the next one at a review held before it starts.
+                // Never further ahead: weeks are planned as they come.
+                <div className="nx-tracker__plan-empty">
+                  <span className="nx-type-data">
+                    {offset === 0 ? 'No plan for this week yet.' : 'No plan for next week yet.'}
+                  </span>
+                  <Button onClick={() => void openWeek(range.from)}>
+                    {offset === 0 ? 'Plan this week' : 'Plan next week'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="nx-tracker__blank nx-type-data">
+                  {offset < 0 ? 'No plan was written for this week.' : 'Weeks are planned as they come.'}
+                </div>
+              )}
+              {logged.length > 0 && (
+                <div className="nx-tracker__logged nx-type-data">
+                  <span className="nx-tracker__logged-label">Logged</span>
+                  {logged.map((l) => (
+                    <span key={l.name}>
+                      {l.name} {l.text}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Panel>
+        )}
+
         <Panel dense flush>
           {!loading && visible.length === 0 ? (
             <EmptyState
@@ -324,9 +461,9 @@ export function Tracker() {
         {/* Open lines on days that are over. Not overdue — nothing here was
             ever scheduled — so this sits below the window rather than above
             it, and carries no colour. */}
-        {isCurrent && looseEnds.length > 0 && (
-          <Panel title={`Left open · ${looseEnds.length}`}>
-            {looseEnds.map((task) => (
+        {isCurrent && shownLooseEnds.length > 0 && (
+          <Panel title={`Left open · ${shownLooseEnds.length}`}>
+            {shownLooseEnds.map((task) => (
               <TaskRow
                 key={`${task.pageId}:${task.blockId}`}
                 task={task}

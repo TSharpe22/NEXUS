@@ -113,6 +113,8 @@ export interface DatedPage {
   /** Which date property put it here — a type can define more than one. */
   propertyKey: string
   date: string
+  /** The page's `done` checkbox, or null when it has none. */
+  done: boolean | null
 }
 
 /**
@@ -407,6 +409,12 @@ export interface NexusAPI {
      * Home reads this: showing the entry must not be what makes it.
      */
     peek(): Promise<Page | null>
+  }
+  week: {
+    /** The page for the week holding `date`, or null — creates nothing. */
+    peek(date: string): Promise<Page | null>
+    /** The page for the week holding `date`, made from the Week template if absent. */
+    open(date: string): Promise<Page>
   }
   mirror: {
     getConfig(): Promise<MirrorConfig>

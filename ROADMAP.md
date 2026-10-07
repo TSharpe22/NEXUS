@@ -255,6 +255,26 @@ Q4 item 4, first half. The plan for items 4 and 5 is in `PLAN_Q4_4_5.md`.
 - **Sidebar:** pinned top-level pages (hubs) sit above the folders. Inside a
   folder, dated pages sort newest date first, not most recently edited.
 
+## Wave 7b — the week, planned as it goes (shipped)
+
+Q4 item 5, first half.
+
+- **A Week page per week**, dated by its Monday and titled `Week — <date>`.
+  It's made from a Week template (two headings, Plan and Review) and filed
+  in Plans / Weeks through the type's folder. It's created lazily, like the
+  journal.
+- **Tracker → Week** shows the week's plan above the days:
+  - the lines under Plan, then the week's undated tasks;
+  - a "Logged" line counting each type's logs (done of total when the type
+    has a done box).
+- **"Plan this week" and "Plan next week" buttons.** Next week is offered so
+  a review held on Sunday can plan it. Nothing further ahead.
+- **Plan tasks belong to the week, not to Monday.** Otherwise they would
+  inherit the page's date, pile up on Monday and count as "left open" on
+  Tuesday. A plan task given its own `@date` moves onto that day.
+- **Done marks.** Logs with a `done` box show it on their day: filled when
+  done, quieter when not.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
@@ -283,10 +303,10 @@ in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 types with templates, in which the learn-repo method is written by hand
 (Spanish first). There's no AI teaching unless asked. See `PLAN_Q4_4_5.md`.
 
-**Week and quarter views.** A week planned as it goes (at the weekly
-review) beside what was logged; a quarter as directions and a few loose
-milestones with trend lines, not a schedule. The views system was built so
-a calendar layout is a function and a line; these sit on it.
+**The quarter view.** The rest of item 5: a quarter page (directions, a
+floor and a signal per goal area, and a few loose milestones), and Tracker →
+Quarter as 13 week rows with log counts per type. Week-page tasks must stay
+off their Mondays there too. Trend lines wait until a log carries a number.
 
 ## Future — an encrypted vault
 

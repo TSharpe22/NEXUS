@@ -1554,6 +1554,147 @@ await page.evaluate(async (fx) => {
 }, { ...fileFixture, hubId: pinOrder.hubId })
 await sleep(400)
 
+// ------------------------------------------------------------- the week
+log('\n— a week planned as it goes —')
+// A page per week, dated by its Monday, written at the weekly review and read
+// in the tracker above the days it is for. Its undated tasks belong to the
+// week, not to Monday.
+const weekMonday = (() => {
+  const [y, m, d] = dayFromToday(0).split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() - ((date.getDay() + 6) % 7))
+  return localISO(date)
+})()
+const weekBefore = await page.evaluate(async (monday) => ({
+  peek: await window.api.week.peek(monday),
+  hasType: (await window.api.types.list()).some((t) => t.name === 'Week')
+}), weekMonday)
+check('looking at a week makes nothing', weekBefore.peek === null && !weekBefore.hasType)
+
+const weekLog = await page.evaluate(async (today) => {
+  const api = window.api
+  const type = await api.types.create('Lift2', null)
+  await api.types.defineProperty(type.id, 'Date', 'date')
+  await api.types.defineProperty(type.id, 'Done', 'boolean')
+  const p = await api.pages.create(type.id)
+  await api.pages.update(p.id, { title: 'Lift2 — today' })
+  await api.properties.set(p.id, 'date', 'date', today)
+  await api.properties.set(p.id, 'done', 'boolean', true)
+  return { typeId: type.id, pageId: p.id }
+}, dayFromToday(0))
+
+const planButton = (label) =>
+  page.evaluate((label) => {
+    const b = [...document.querySelectorAll('.nx-tracker__plan button')].find((el) => el.textContent.trim() === label)
+    if (!b) return 'NOT_FOUND'
+    b.click()
+    return 'OK'
+  }, label)
+
+await page.evaluate(() => window.nexus.store.getState().setTrackerMode('week'))
+await nav('Tracker')
+await sleep(900)
+check('a week with no plan offers to plan it', (await planButton('Plan this week')) === 'OK')
+await sleep(1200)
+
+const weekMade = await page.evaluate(async () => {
+  const s = window.nexus.store.getState()
+  const page = s.pages.find((p) => p.id === s.activePageId)
+  const folders = s.folders
+  const folder = folders.find((f) => f.id === page?.folder_id)
+  const parent = folders.find((f) => f.id === folder?.parent_folder_id)
+  const type = s.types.find((t) => t.name === 'Week')
+  const template = await window.api.types.getTemplate(type?.id)
+  return {
+    view: s.activeView,
+    title: page?.title,
+    path: [parent?.name, folder?.name].join('/'),
+    typeFolder: type?.folder_id === folder?.id,
+    template: template?.title,
+    templateFolder: folders.find((f) => f.id === template?.folder_id)?.name,
+    id: page?.id,
+    typeId: type?.id,
+    templateId: template?.id,
+    plansId: parent?.id
+  }
+})
+check('it opens the week page in Notes', weekMade.view === 'notes' && weekMade.title === `Week — ${weekMonday}`,
+  JSON.stringify(weekMade))
+check('filed in Plans / Weeks, through the type', weekMade.path === 'Plans/Weeks' && weekMade.typeFolder)
+check('made from a Week template kept in Templates',
+  weekMade.template === 'Week template' && weekMade.templateFolder === 'Templates')
+check('opening the week again finds the same page',
+  (await page.evaluate((m) => window.api.week.open(m).then((p) => p.id), weekMonday)) === weekMade.id)
+
+await page.evaluate(async ([id, tomorrow]) => {
+  const para = (type, text, props = {}) => ({
+    id: crypto.randomUUID(),
+    type,
+    props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left', ...props },
+    content: text ? [{ type: 'text', text, styles: {} }] : [],
+    children: []
+  })
+  const doc = [
+    para('heading', 'Plan', { level: 2 }),
+    para('paragraph', 'Three lifting sessions'),
+    para('checkListItem', 'book the dentist', { checked: false }),
+    para('checkListItem', `call the bank @${tomorrow}`, { checked: false }),
+    para('heading', 'Review', { level: 2 }),
+    para('paragraph', 'went fine, not shown')
+  ]
+  await window.api.pages.update(id, { content: JSON.stringify(doc) })
+  await window.nexus.store.getState().refresh()
+}, [weekMade.id, TOMORROW])
+
+await nav('Tracker')
+await sleep(1000)
+const weekShown = await page.evaluate(() => ({
+  plan: document.querySelector('.nx-tracker__plan')?.innerText ?? '',
+  days: [...document.querySelectorAll('.nx-tracker__day')].map((d) => d.innerText).join('\n'),
+  loose: document.querySelector('.nx-tracker')?.innerText.includes('LEFT OPEN') ?? false
+}))
+check('the plan shows the lines written under Plan', weekShown.plan.includes('Three lifting sessions'), weekShown.plan)
+check('but not what is under Review', !weekShown.plan.includes('went fine'))
+check('an undated plan task sits in the plan', weekShown.plan.includes('book the dentist'))
+check('and not on Monday', !weekShown.days.includes('book the dentist'))
+check('a plan task with its own date sits on its day',
+  weekShown.days.includes('call the bank') && !weekShown.plan.includes('call the bank'))
+check('the week page is not listed as a log on Monday', await page.evaluate((title) =>
+  ![...document.querySelectorAll('.nx-tracker__page')].some((r) => r.innerText.includes(title)), `Week — ${weekMonday}`))
+check('a plan task carries neither Monday\'s date nor its own page\'s name',
+  !weekShown.plan.includes(weekMonday), weekShown.plan)
+check('the plan counts what was logged, done of total', /Lift2 1\/1/.test(weekShown.plan), weekShown.plan)
+check('a done log is drawn filled', await page.evaluate(() => {
+  const row = [...document.querySelectorAll('.nx-tracker__page')].find((r) => r.innerText.includes('Lift2 — today'))
+  return !!row && !row.classList.contains('nx-tracker__page--undone') && row.title === 'Done'
+}))
+await page.screenshot({ path: SHOT + '/11b-tracker-week-plan.png' })
+
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[2].click())
+await sleep(700)
+check('next week can be planned ahead of it', (await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tracker__plan button')].some((b) => b.textContent.trim() === 'Plan next week'))))
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[2].click())
+await sleep(700)
+check('but no further', await page.evaluate(() => {
+  const plan = document.querySelector('.nx-tracker__plan')
+  return plan.innerText.includes('planned as they come') && !plan.querySelector('button')
+}))
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].click())
+await sleep(400)
+
+await page.evaluate(async ([fx, log]) => {
+  const api = window.api
+  for (const id of [fx.id, fx.templateId, log.pageId]) await api.pages.hardDelete(id)
+  await api.types.remove(fx.typeId)
+  await api.types.remove(log.typeId)
+  await api.folders.remove(fx.plansId)
+  const weeks = (await api.folders.list()).find((f) => f.name === 'Weeks')
+  if (weeks) await api.folders.remove(weeks.id)
+  await window.nexus.store.getState().refresh()
+}, [weekMade, weekLog])
+await sleep(400)
+
 // -------------------------------------------------- several pages at once
 log('\n— several pages at once —')
 // Everything here could be done one page at a time already, which is the
