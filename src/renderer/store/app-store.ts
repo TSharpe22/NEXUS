@@ -180,6 +180,8 @@ interface AppState {
   openTodayEntry: () => Promise<Page>
   /** Open the page for the week holding `date`, making it from the Week template if needed. */
   openWeek: (date: string) => Promise<Page>
+  /** Open the page for the quarter holding `date`, making it from the Quarter template if needed. */
+  openQuarter: (date: string) => Promise<Page>
   duplicatePage: (id: string) => Promise<Page>
   /** Pin a page to Home, or unpin it. */
   setPagePinned: (id: string, pinned: boolean) => Promise<void>
@@ -425,6 +427,19 @@ export const useAppStore = create<AppState>((set, get) => ({
     // The entry lives in the Journal folder; open that folder so the page
     // appears in context rather than seemingly from nowhere.
     if (page.folder_id) get().setFolderExpanded(page.folder_id, true)
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: page.id,
+      pageContent: { ...state.pageContent, [page.id]: page.content }
+    }))
+    void get().loadPageTags(page.id)
+    return page
+  },
+
+  openQuarter: async (date) => {
+    const page = await window.api.quarter.open(date)
+    await get().refresh()
+    revealFolder(page.folder_id)
     set((state) => ({
       activeView: 'notes',
       activePageId: page.id,

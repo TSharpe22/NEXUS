@@ -430,6 +430,12 @@ export interface NexusAPI {
     /** The page for the week holding `date`, made from the Week template if absent. */
     open(date: string): Promise<Page>
   }
+  quarter: {
+    /** The page for the quarter holding `date`, or null — creates nothing. */
+    peek(date: string): Promise<Page | null>
+    /** The page for the quarter holding `date`, made from the Quarter template if absent. */
+    open(date: string): Promise<Page>
+  }
   mirror: {
     getConfig(): Promise<MirrorConfig>
     /** Passing a folder also enables the mirror; passing null disables it. */

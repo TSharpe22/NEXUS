@@ -97,12 +97,6 @@
   padding: var(--nx-space-2) 0 0;
 }
 
-.nx-tracker__month {
-  border-bottom: 1px solid var(--nx-border);
-  color: var(--nx-text-muted);
-  padding: var(--nx-space-4) var(--nx-space-4) var(--nx-space-2);
-}
-
 /* A day is a label column and a body column, so every day's items line up
    down the page whatever their label's length. */
 .nx-tracker__day {
@@ -485,4 +479,175 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ---- Quarter ----
+
+   The quarter's page above its weeks: one card per area (direction, floor,
+   signal), then its milestones. The cards sit on the panel's own fill with a
+   hairline, like every other cell — nothing sunk, nothing raised. */
+
+.nx-quarter__areas {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: var(--nx-space-2);
+}
+
+.nx-quarter__area {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: var(--nx-space-2) var(--nx-space-3);
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+}
+
+.nx-quarter__area-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Inline, so a long value wraps back under its label instead of into a
+   narrow column beside it. */
+.nx-quarter__line {
+  font-size: 12.5px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.nx-quarter__line-label {
+  color: var(--nx-text-dim);
+  margin-right: 6px;
+}
+
+.nx-quarter__line-empty {
+  color: var(--nx-text-dim);
+}
+
+.nx-quarter__milestones {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--nx-space-3);
+  padding-top: var(--nx-space-3);
+  border-top: 1px solid var(--nx-row-line);
+}
+
+/* Thirteen weeks as rows; log types as columns, so a column read downwards
+   is one habit across the quarter. */
+.nx-quarter__row {
+  display: grid;
+  align-items: center;
+  gap: var(--nx-space-2);
+  min-height: 34px;
+  padding: 5px var(--nx-space-4);
+  border-bottom: 1px solid var(--nx-row-line);
+}
+
+.nx-quarter__row:last-child {
+  border-bottom: none;
+}
+
+.nx-quarter__row--head {
+  min-height: 0;
+  padding-top: var(--nx-space-3);
+  padding-bottom: var(--nx-space-2);
+  border-bottom-color: var(--nx-border);
+}
+
+.nx-quarter__col {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The week you are in: the same mark the week view gives today. */
+.nx-quarter__row--now {
+  background: var(--nx-accent-tint-soft);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+}
+
+.nx-quarter__week {
+  color: var(--nx-text-muted);
+  white-space: nowrap;
+}
+
+.nx-quarter__week-no {
+  color: var(--nx-text);
+}
+
+.nx-quarter__row--now .nx-quarter__week-no {
+  color: var(--nx-accent);
+}
+
+.nx-quarter__row--ahead .nx-quarter__week,
+.nx-quarter__row--ahead .nx-quarter__week-no {
+  color: var(--nx-text-dim);
+}
+
+.nx-quarter__cell {
+  color: var(--nx-text-muted);
+}
+
+/* Every log of the type that week was done. */
+.nx-quarter__cell--full {
+  color: var(--nx-accent);
+}
+
+.nx-quarter__cell--none {
+  color: var(--nx-text-dim);
+}
+
+.nx-quarter__link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--nx-text-muted);
+  cursor: pointer;
+  transition: color var(--nx-motion);
+}
+
+.nx-quarter__link:hover {
+  color: var(--nx-accent);
+}
+
+.nx-quarter__link:active {
+  color: var(--nx-accent-pressed);
+  transition: none;
+}
+
+.nx-quarter__milestone-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px var(--nx-space-3);
+  min-width: 0;
+}
+
+.nx-quarter__milestone {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 0;
+  background: none;
+  border: none;
+  color: var(--nx-text);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12.5px;
+  text-align: left;
+}
+
+.nx-quarter__milestone-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nx-quarter__milestone--done .nx-quarter__milestone-text {
+  color: var(--nx-text-dim);
+  text-decoration: line-through;
 }

@@ -235,6 +235,40 @@ export function setDueInDocument(
  * paragraph under it.
  */
 /**
+ * Every section of a document, as its heading and the plain lines under it —
+ * how the quarter view reads a quarter page's areas without opening it.
+ *
+ * Sections are the headings at the level of the first heading in the
+ * document; deeper headings are read as lines of the section they sit in.
+ * Checkboxes are left out, as in `sectionLines`: they are tasks. Lines
+ * written before the first heading belong to no section and are dropped.
+ */
+export function documentSections(content: string | null): { heading: string; lines: string[] }[] {
+  const blocks = parseDocument(content) as DocumentNode[]
+  const levelOf = (b: DocumentNode) => Number((b.props as { level?: unknown } | undefined)?.level ?? 1)
+  const first = blocks.find((b) => b && b.type === 'heading')
+  if (!first) return []
+  const level = levelOf(first)
+
+  const sections: { heading: string; lines: string[] }[] = []
+  for (const block of blocks) {
+    if (!block || typeof block !== 'object') continue
+    if (block.type === 'heading' && levelOf(block) <= level) {
+      sections.push({ heading: blockText(block.content).trim(), lines: [] })
+      continue
+    }
+    const current = sections[sections.length - 1]
+    if (!current) continue
+    walk([block], (node, text) => {
+      if (node.type === 'checkListItem') return
+      const trimmed = text.trim()
+      if (trimmed) current.lines.push(trimmed)
+    })
+  }
+  return sections
+}
+
+/**
  * The lines written under one heading, as plain text — what the week view
  * shows of a week's Plan without opening the page.
  *

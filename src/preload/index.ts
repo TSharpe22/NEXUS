@@ -17,6 +17,10 @@ const api: NexusAPI = {
     peek: (date) => ipcRenderer.invoke('week:peek', date),
     open: (date) => ipcRenderer.invoke('week:open', date)
   },
+  quarter: {
+    peek: (date) => ipcRenderer.invoke('quarter:peek', date),
+    open: (date) => ipcRenderer.invoke('quarter:open', date)
+  },
   lifecycle: {
     // Main holds the window open until `app:flushed` comes back, so the ack
     // has to wait for the handler's own writes — hence awaiting it rather

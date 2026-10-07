@@ -1208,6 +1208,118 @@ export function getOrCreateWeekPage(date: string): Page {
 }
 
 // ============================================================
+// Quarters — directions for thirteen weeks, one page per quarter
+// ============================================================
+
+const QUARTER_TYPE_NAME = 'Quarter'
+/** The text property naming a quarter page's quarter, as `2026-Q4`. */
+const QUARTER_KEY = 'quarter'
+/** What a quarter is steered by. One section each, written by hand after. */
+const QUARTER_AREAS = ['Body', 'Trading', 'MMA', 'Spanish', 'Systems']
+
+/** `2026-Q4` for any date in October to December 2026. */
+export function quarterKeyOf(date: string): string {
+  const d = fromISO(date)
+  return `${d.getFullYear()}-Q${Math.floor(d.getMonth() / 3) + 1}`
+}
+
+/**
+ * The Quarter type and its template, made the first time a quarter is
+ * planned — lazily, like the week and the journal.
+ *
+ * Found by a text property, never a date one. A task with no date of its own
+ * inherits any date its page carries (`EFFECTIVE_DUE`), so a quarter page
+ * dated by its first day would pile every undated line of its body onto
+ * 1 October and call it left open on the 2nd. A quarter's undated lines
+ * belong to the quarter; its milestones carry their own `@date`.
+ */
+function ensureQuarterSetup(): { typeId: string } {
+  const db = getDb()
+  let type = db.prepare('SELECT * FROM types WHERE name = ?').get(QUARTER_TYPE_NAME) as TypeDef | undefined
+  if (!type) {
+    type = createType(QUARTER_TYPE_NAME)
+    setTypeFolder(type.id, folderUnder(PLANS_FOLDER_NAME, null).id)
+  }
+
+  if (!getPropertyDefinitions(type.id).some((d) => d.key === QUARTER_KEY)) {
+    defineProperty(type.id, 'Quarter', 'text')
+  }
+
+  if (!getTypeTemplate(type.id)) {
+    const templates = findFolderByName(TEMPLATES_FOLDER_NAME) ?? createFolder(TEMPLATES_FOLDER_NAME, null)
+    const templateId = uuidv4()
+    const ts = now()
+    // One section per area — where it is heading, the least that still
+    // counts, and what would show it is working — then the milestones, as
+    // tasks given their own dates so each lands on its week.
+    const milestone = block('checkListItem', '')
+    ;(milestone.props as Record<string, unknown>).checked = false
+    db.prepare(
+      `INSERT INTO pages (id, type_id, title, content, folder_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(
+      templateId,
+      type.id,
+      'Quarter template',
+      JSON.stringify([
+        ...QUARTER_AREAS.flatMap((area) => [
+          block('heading', area, 2),
+          block('paragraph', 'Direction: '),
+          block('paragraph', 'Floor: '),
+          block('paragraph', 'Signal: ')
+        ]),
+        block('heading', 'Milestones', 2),
+        milestone
+      ]),
+      templates.id,
+      ts,
+      ts
+    )
+    reindexPage(templateId)
+    setTypeTemplate(type.id, templateId)
+  }
+
+  return { typeId: type.id }
+}
+
+function findQuarterPage(typeId: string, key: string): Page | null {
+  return (
+    (getDb()
+      .prepare(
+        `SELECT p.* FROM pages p
+         JOIN properties pr ON pr.page_id = p.id
+         WHERE p.type_id = ? AND p.is_deleted = 0
+           AND pr.key = ? AND pr.value_text = ?
+         LIMIT 1`
+      )
+      .get(typeId, QUARTER_KEY, key) as Page) ?? null
+  )
+}
+
+/** The page for the quarter holding `date`, or null — creates nothing. */
+export function getQuarterPage(date: string): Page | null {
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(QUARTER_TYPE_NAME) as
+    | { id: string }
+    | undefined
+  if (!type) return null
+  return findQuarterPage(type.id, quarterKeyOf(date))
+}
+
+/** The quarter's page, made from the Quarter template when it does not exist yet. */
+export function getOrCreateQuarterPage(date: string): Page {
+  const { typeId } = ensureQuarterSetup()
+  const key = quarterKeyOf(date)
+  const existing = findQuarterPage(typeId, key)
+  if (existing) return existing
+
+  const [year, q] = key.split('-')
+  const page = createPage(typeId)
+  updatePage(page.id, { title: `${q} ${year}` })
+  setProperty(page.id, QUARTER_KEY, 'text', key)
+  return getPageById(page.id)!
+}
+
+// ============================================================
 // Settings (key/value) and the vault-mirror manifest
 // ============================================================
 
@@ -1707,6 +1819,9 @@ export function getUndatedTasks(limit = 100): TrackerTask[] {
     .prepare(
       `${TASK_SELECT}
         WHERE t.is_done = 0 AND ${EFFECTIVE_DUE} IS NULL
+          -- A quarter page's undated lines belong to the quarter, and the
+          -- quarter view shows them there; they are not lost todos.
+          AND p.type_id IS NOT (SELECT id FROM types WHERE name = 'Quarter')
         ORDER BY p.updated_at DESC, t.sort_order
         LIMIT ?`
     )

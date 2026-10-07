@@ -330,6 +330,29 @@ that.
 - `scripts/probes/home-look.mjs` seeds habits and a calendar feed and
   screenshots Home and the year grid, for looking at rather than asserting.
 
+## Wave 7f — the quarter, read as its weeks (shipped)
+
+Q4 item 5, second half.
+
+- **A Quarter page per quarter**, titled `Q4 2026`, filed in Plans, made
+  lazily from a Quarter template: a section per area (Body, Trading, MMA,
+  Spanish, Systems) with Direction / Floor / Signal lines, then Milestones.
+- **No date on it, on purpose.** An undated task inherits any date its page
+  carries, so a quarter page dated 1 October would pile its lines onto that
+  day and call them left open on the 2nd. It's found by a text property
+  (`quarter` = `2026-Q4`) instead. Milestones carry their own `@date`, so
+  they land on their day and go overdue like any commitment. Undated lines
+  stay in the quarter and out of "No date".
+- **Tracker → Quarter** shows the areas as cards with the milestones under
+  them, then one row per week the quarter touches (13 or 14): the week
+  page (open, or plan for this week and next), tasks done of total (plan
+  items excluded), a column per log type (done of total, emerald when all
+  done), and the milestones due that week, tickable. The week you're in is
+  marked like today is in the week view. The 90-day list of days is gone;
+  the week rows replace it.
+- "Plan this quarter" and "Plan next quarter", never further ahead.
+- **Trend lines** still wait until a log carries a number.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
@@ -357,11 +380,6 @@ in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 **A note-taking framework.** The rest of item 4: Topic, Concept and Lesson
 types with templates, in which the learn-repo method is written by hand
 (Spanish first). There's no AI teaching unless asked. See `PLAN_Q4_4_5.md`.
-
-**The quarter view.** The rest of item 5: a quarter page (directions, a
-floor and a signal per goal area, and a few loose milestones), and Tracker →
-Quarter as 13 week rows with log counts per type. Week-page tasks must stay
-off their Mondays there too. Trend lines wait until a log carries a number.
 
 ## Future — an encrypted vault
 

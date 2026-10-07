@@ -122,6 +122,22 @@ export function registerIpcHandlers(): void {
       rethrow('week:open', e)
     }
   })
+  ipcMain.handle('quarter:peek', (_, date: string) => {
+    try {
+      return repo.getQuarterPage(date)
+    } catch (e) {
+      rethrow('quarter:peek', e)
+    }
+  })
+  ipcMain.handle('quarter:open', (_, date: string) => {
+    try {
+      const page = repo.getOrCreateQuarterPage(date)
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('quarter:open', e)
+    }
+  })
   ipcMain.handle('types:setTemplate', (_, typeId: string, pageId: string | null) => {
     try {
       return repo.setTypeTemplate(typeId, pageId ?? null)

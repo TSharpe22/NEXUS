@@ -1134,7 +1134,7 @@ await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].clic
 await sleep(800)
 check('returning lands on this week again', (await weekLabel()) === thisWeek)
 
-// A quarter is ninety days, so it lists only the days carrying something.
+// A quarter is read as its weeks, not its ninety days.
 await page.evaluate(() => {
   const quarter = [...document.querySelectorAll('.nx-tracker__mode')].find((b) => /quarter/i.test(b.innerText))
   quarter.click()
@@ -1143,10 +1143,13 @@ await sleep(900)
 trackerShown = await trackerText()
 check('the quarter view names the quarter', /^Q[1-4] \d{4}$/m.test(trackerShown), trackerShown.slice(0, 200))
 check('the quarter view still finds the dated task', trackerShown.includes('chase the invoice'))
-check('and does not render ninety empty days',
-  (await page.evaluate(() => document.querySelectorAll('.nx-tracker__day').length)) < 90)
-check('a month heading groups the quarter',
-  await page.evaluate(() => !!document.querySelector('.nx-tracker__month')))
+check('and does not render ninety days',
+  (await page.evaluate(() => document.querySelectorAll('.nx-tracker__day').length)) === 0)
+const quarterRows = await page.evaluate(() =>
+  document.querySelectorAll('.nx-quarter__row:not(.nx-quarter__row--head)').length)
+check('it draws one row per week the quarter touches', quarterRows === 13 || quarterRows === 14, String(quarterRows))
+check('and marks the week you are in',
+  (await page.evaluate(() => document.querySelectorAll('.nx-quarter__row--now').length)) === 1)
 await page.screenshot({ path: SHOT + '/12-tracker-quarter.png' })
 
 // A habit is a type with a date property and a checkbox property — nothing
@@ -1683,6 +1686,105 @@ check('but no further', await page.evaluate(() => {
 }))
 await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].click())
 await sleep(400)
+
+// ---------------------------------------------------------------- quarter
+log('\n— a quarter planned, read as its weeks —')
+const quarterBefore = await page.evaluate(async (today) => ({
+  peek: await window.api.quarter.peek(today),
+  hasType: (await window.api.types.list()).some((t) => t.name === 'Quarter')
+}), dayFromToday(0))
+check('looking at a quarter makes nothing', quarterBefore.peek === null && !quarterBefore.hasType)
+
+await page.evaluate(() => window.nexus.store.getState().setTrackerMode('quarter'))
+await nav('Notes')
+await sleep(300)
+await nav('Tracker')
+await sleep(1000)
+check('a quarter with no plan offers to plan it', (await planButton('Plan this quarter')) === 'OK')
+await sleep(1200)
+const quarterMade = await page.evaluate(async () => {
+  const s = window.nexus.store.getState()
+  const page = s.pages.find((p) => p.id === s.activePageId)
+  const type = s.types.find((t) => t.name === 'Quarter')
+  const template = await window.api.types.getTemplate(type?.id)
+  return {
+    view: s.activeView,
+    title: page?.title,
+    folder: s.folders.find((f) => f.id === page?.folder_id)?.name,
+    template: template?.title,
+    areas: JSON.parse((await window.api.pages.getById(page?.id))?.content ?? '[]')
+      .filter((b) => b.type === 'heading').map((b) => b.content[0]?.text),
+    id: page?.id
+  }
+})
+const [qYear, qMonth] = dayFromToday(0).split('-').map(Number)
+check('it opens the quarter page, named for its quarter',
+  quarterMade.view === 'notes' && quarterMade.title === `Q${Math.floor((qMonth - 1) / 3) + 1} ${qYear}`,
+  JSON.stringify(quarterMade))
+check('filed in Plans, made from the Quarter template',
+  quarterMade.folder === 'Plans' && quarterMade.template === 'Quarter template')
+check('with a section per area, then Milestones',
+  quarterMade.areas.join(',') === 'Body,Trading,MMA,Spanish,Systems,Milestones', quarterMade.areas.join(','))
+check('opening the quarter again finds the same page',
+  (await page.evaluate((d) => window.api.quarter.open(d).then((p) => p.id), dayFromToday(0))) === quarterMade.id)
+
+await page.evaluate(async ([id, today]) => {
+  const para = (type, text, props = {}) => ({
+    id: crypto.randomUUID(),
+    type,
+    props: { textColor: 'default', backgroundColor: 'default', textAlignment: 'left', ...props },
+    content: text ? [{ type: 'text', text, styles: {} }] : [],
+    children: []
+  })
+  const doc = [
+    para('heading', 'Body', { level: 2 }),
+    para('paragraph', 'Direction: stronger by December'),
+    para('paragraph', 'Floor: '),
+    para('heading', 'Milestones', { level: 2 }),
+    para('checkListItem', `first sparring round @${today}`, { checked: false }),
+    para('checkListItem', 'renew the gym pass', { checked: false })
+  ]
+  await window.api.pages.update(id, { content: JSON.stringify(doc) })
+  await window.nexus.store.getState().refresh()
+}, [quarterMade.id, dayFromToday(0)])
+
+const quarterData = await page.evaluate(async ([id, from, to]) => ({
+  undated: (await window.api.tasks.undated()).map((t) => t.text),
+  inRange: (await window.api.tasks.inRange(from, to)).filter((t) => t.pageId === id).map((t) => t.text),
+  dated: (await window.api.tasks.datedPages(from, to)).some((p) => p.pageId === id)
+}), [quarterMade.id, '1900-01-01', '2999-12-31'])
+check('the quarter page carries no date for its lines to inherit', !quarterData.dated)
+check('so its undated line is not a lost todo', !quarterData.undated.includes('renew the gym pass'),
+  quarterData.undated.join(' | '))
+check('and is due on no day', quarterData.inRange.join('|') === 'first sparring round', quarterData.inRange.join('|'))
+
+await nav('Tracker')
+await sleep(1000)
+const quarterShown = await page.evaluate(() => ({
+  plan: document.querySelector('.nx-tracker__plan')?.innerText ?? '',
+  now: document.querySelector('.nx-quarter__row--now')?.innerText ?? '',
+  head: document.querySelector('.nx-quarter__row--head')?.innerText ?? '',
+  all: document.querySelector('.nx-tracker')?.innerText ?? ''
+}))
+check('the quarter panel shows each area and what is written in it',
+  quarterShown.plan.includes('Body') && quarterShown.plan.includes('stronger by December'), quarterShown.plan)
+check('a label still waiting for its value says so', /Floor\s*—/.test(quarterShown.plan), quarterShown.plan)
+check('both milestones are listed in the quarter',
+  quarterShown.plan.includes('first sparring round') && quarterShown.plan.includes('renew the gym pass'))
+check('the dated one lands on its week', quarterShown.now.includes('first sparring round'), quarterShown.now)
+check('this week links its week page', /open/.test(quarterShown.now), quarterShown.now)
+check('and counts its logs by type, done of total',
+  quarterShown.head.includes('LIFT2') && /1\/1/.test(quarterShown.now), `${quarterShown.head} / ${quarterShown.now}`)
+check('the undated line is not in No date', !/NO DATE[\s\S]*renew the gym pass/.test(quarterShown.all))
+await page.screenshot({ path: SHOT + '/12b-tracker-quarter-plan.png' })
+
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[2].click())
+await sleep(700)
+check('next quarter can be planned ahead of it', await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tracker__plan button')].some((b) => b.textContent.trim() === 'Plan next quarter')))
+await page.evaluate(() => document.querySelectorAll('.nx-tracker__step')[1].click())
+await sleep(400)
+await page.evaluate(() => window.nexus.store.getState().setTrackerMode('week'))
 
 // The same week on Home. A saved layout still naming the retired Vault panel
 // loses it quietly rather than drawing a "not installed" placeholder.
