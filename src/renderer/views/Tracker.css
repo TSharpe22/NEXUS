@@ -448,3 +448,41 @@
 .nx-tracker__page--undone .nx-tracker__page-title {
   color: var(--nx-text-muted);
 }
+
+/* A calendar event: read-only, so it carries no checkbox, only a dot. */
+.nx-tracker__event {
+  align-items: center;
+  background: transparent;
+  border: none;
+  border-radius: var(--nx-radius-sm);
+  color: var(--nx-text);
+  cursor: default;
+  display: flex;
+  gap: var(--nx-space-2);
+  min-width: 0;
+  padding: 3px var(--nx-space-2) 3px 2px;
+  text-align: left;
+  width: 100%;
+}
+
+.nx-tracker__event:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-tracker__event--link {
+  cursor: pointer;
+}
+
+.nx-tracker__event-time {
+  color: var(--nx-text-muted);
+  flex: 0 0 auto;
+  min-width: 56px;
+}
+
+.nx-tracker__event-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

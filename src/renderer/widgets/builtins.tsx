@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import toast from 'react-hot-toast'
 import type { DatedPage, GraphData, Page, PageListItem, TrackerTask, ViewRow } from '@shared/types'
+import type { CalendarResult } from '@shared/calendar'
 import type { ViewDef } from '@shared/views'
 import { STALE_DAYS, eachDay, fromISO, isOlderThan, rangeFor } from '@shared/date-range'
 import { documentPreview, sectionLines } from '@shared/document'
@@ -13,6 +14,7 @@ import { GraphView, type GraphColour, type GraphPins } from '../views/GraphView'
 import { HabitStrips, STRIP_DAYS } from '../views/HabitStrips'
 import { relativeTime } from '../hooks/use-relative-time'
 import { isWeekItem, loggedByType } from '../views/week'
+import { eventTime, eventTooltip, openEventLink } from '../views/calendar-format'
 import type { WidgetProps } from './context'
 
 /**
@@ -706,6 +708,128 @@ export function WeekWidget({ ctx }: WidgetProps) {
               {l.name} {l.text}
             </span>
           ))}
+        </div>
+      )}
+    </>
+  )
+}
+
+/** How often an open Home asks for the calendar again. Main only refetches what is stale. */
+const CALENDAR_POLL_MS = 10 * 60 * 1000
+
+const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+
+/**
+ * The calendar, a week at a time, Monday first: seven columns of what is on.
+ * Read from the feeds added in Settings → Calendars, re-read every ten
+ * minutes while Home is open, never written to.
+ */
+export function CalendarWidget({ ctx }: WidgetProps) {
+  const [offset, setOffset] = useState(0)
+  const range = useMemo(() => rangeFor('week', offset, fromISO(ctx.today)), [ctx.today, offset])
+  const [result, setResult] = useState<CalendarResult | null>(null)
+  const [feedCount, setFeedCount] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const [feeds, events] = await Promise.all([
+        ctx.read.calendarFeeds(),
+        ctx.read.calendarEvents(range.from, range.to)
+      ])
+      if (cancelled) return
+      setFeedCount(feeds.length)
+      setResult(events)
+      setNow(Date.now())
+    }
+    void load()
+    const timer = setInterval(() => void load(), CALENDAR_POLL_MS)
+    return () => {
+      cancelled = true
+      clearInterval(timer)
+    }
+  }, [ctx, range.from, range.to])
+
+  const days = useMemo(() => eachDay(range.from, range.to), [range.from, range.to])
+
+  if (feedCount === null || !result) return null
+
+  if (feedCount === 0) {
+    return (
+      <div className="nx-home__entry nx-home__entry--absent">
+        <span className="nx-home__entry-absent-text">
+          No calendar yet. Add a calendar link — Proton&apos;s &ldquo;Share with anyone&rdquo; link — in
+          Settings → Calendars.
+        </span>
+        <Button onClick={ctx.openSettings}>Open Settings</Button>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="nx-home__cal-bar">
+        <span className="nx-type-data">{range.label}</span>
+        <span className="nx-home__cal-step">
+          <button className="nx-home__link nx-type-data" onClick={() => setOffset(offset - 1)} title="Previous week">
+            ‹
+          </button>
+          <button
+            className="nx-home__link nx-type-data"
+            onClick={() => setOffset(0)}
+            disabled={offset === 0}
+            title="This week"
+          >
+            this week
+          </button>
+          <button className="nx-home__link nx-type-data" onClick={() => setOffset(offset + 1)} title="Next week">
+            ›
+          </button>
+        </span>
+      </div>
+
+      <div className="nx-home__cal">
+        {days.map((day, i) => {
+          const events = result.events.filter((e) => e.days.includes(day))
+          return (
+            <div
+              key={day}
+              className={`nx-home__cal-day ${day === ctx.today ? 'nx-home__cal-day--today' : ''} ${
+                day < ctx.today ? 'nx-home__cal-day--past' : ''
+              }`}
+            >
+              <div className="nx-home__cal-head nx-type-data">
+                {DAY_NAMES[i]} {Number(day.slice(8))}
+              </div>
+              {events.length === 0 ? (
+                <div className="nx-home__cal-none nx-type-data">—</div>
+              ) : (
+                events.map((event) => {
+                  const over = !event.allDay && Date.parse(event.end) < now
+                  return (
+                    <button
+                      key={`${event.id}:${day}`}
+                      className={`nx-home__cal-event ${event.allDay ? 'nx-home__cal-event--allday' : ''} ${
+                        over ? 'nx-home__cal-event--over' : ''
+                      } ${event.link ? 'nx-home__cal-event--link' : ''}`}
+                      title={eventTooltip(event)}
+                      onClick={() => openEventLink(event)}
+                    >
+                      {!event.allDay && <span className="nx-home__cal-time nx-type-data">{eventTime(event, day)}</span>}
+                      <span className="nx-home__cal-title">{event.title}</span>
+                    </button>
+                  )
+                })
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {result.errors.length > 0 && (
+        <div className="nx-home__cal-error nx-type-data">
+          {result.errors.map((e) => `${e.feedName}: ${e.message}`).join(' · ')} — showing the last copy read.
         </div>
       )}
     </>

@@ -6,6 +6,13 @@ const api: NexusAPI = {
     today: () => ipcRenderer.invoke('journal:today'),
     peek: () => ipcRenderer.invoke('journal:peek'),
   },
+  calendar: {
+    feeds: () => ipcRenderer.invoke('calendar:feeds'),
+    addFeed: (name, url) => ipcRenderer.invoke('calendar:addFeed', name, url),
+    renameFeed: (id, name) => ipcRenderer.invoke('calendar:renameFeed', id, name),
+    removeFeed: (id) => ipcRenderer.invoke('calendar:removeFeed', id),
+    events: (from, to, force) => ipcRenderer.invoke('calendar:events', from, to, force)
+  },
   week: {
     peek: (date) => ipcRenderer.invoke('week:peek', date),
     open: (date) => ipcRenderer.invoke('week:open', date)

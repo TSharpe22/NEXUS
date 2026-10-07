@@ -4,6 +4,7 @@ import { join } from 'path'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
+import * as calendar from './calendar'
 import { getDataDir, getBackupInfo, getDbPath, closeDatabase, initDatabase } from './database'
 import * as files from './files'
 import { restoreBackup } from './backup'
@@ -67,6 +68,42 @@ export function registerIpcHandlers(): void {
       return repo.getTodayEntry()
     } catch (e) {
       rethrow('journal:peek', e)
+    }
+  })
+  // ---- Calendars ----
+  ipcMain.handle('calendar:feeds', () => {
+    try {
+      return calendar.listFeeds()
+    } catch (e) {
+      rethrow('calendar:feeds', e)
+    }
+  })
+  ipcMain.handle('calendar:addFeed', async (_, name: string, url: string) => {
+    try {
+      return await calendar.addFeed(name, url)
+    } catch (e) {
+      rethrow('calendar:addFeed', e)
+    }
+  })
+  ipcMain.handle('calendar:renameFeed', (_, id: string, name: string) => {
+    try {
+      return calendar.renameFeed(id, name)
+    } catch (e) {
+      rethrow('calendar:renameFeed', e)
+    }
+  })
+  ipcMain.handle('calendar:removeFeed', (_, id: string) => {
+    try {
+      return calendar.removeFeed(id)
+    } catch (e) {
+      rethrow('calendar:removeFeed', e)
+    }
+  })
+  ipcMain.handle('calendar:events', async (_, from: string, to: string, force?: boolean) => {
+    try {
+      return await calendar.getEvents(from, to, force === true)
+    } catch (e) {
+      rethrow('calendar:events', e)
     }
   })
   ipcMain.handle('week:peek', (_, date: string) => {

@@ -1,5 +1,6 @@
 import type { ViewAggregate, ViewDef } from '@shared/views'
 import type { CanvasListItem } from '@shared/canvas'
+import type { CalendarFeedInfo, CalendarResult } from '@shared/calendar'
 import type {
   CaptureTarget,
   DatedPage,
@@ -50,6 +51,8 @@ export interface WidgetContext {
   goToTracker(mode: TrackerMode): void
   /** The Notes list, filtered to one tag. */
   openTag(tagId: string): void
+  /** Settings, for a widget whose fix is there (no calendar added yet). */
+  openSettings(): void
   /** Start today's journal entry, creating it if it does not exist. */
   openTodayEntry(): Promise<Page>
   /** Open the page for the week holding `date`, making it from the Week template if needed. */
@@ -71,6 +74,9 @@ export interface WidgetContext {
     runView(id: string, limit?: number): Promise<ViewRow[]>
     /** Totals for a saved view, over everything it matches. */
     aggregateView(id: string, aggregates: ViewAggregate[]): Promise<ViewAggregateResult[]>
+    /** Calendar occurrences overlapping [from, to]. Stale feeds are fetched first. */
+    calendarEvents(from: string, to: string): Promise<CalendarResult>
+    calendarFeeds(): Promise<CalendarFeedInfo[]>
     /** The week's page if it has been written. Never creates it. */
     weekPeek(date: string): Promise<Page | null>
     /** Pages whose `date` property falls in [from, to], with their done box. */

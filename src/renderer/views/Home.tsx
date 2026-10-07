@@ -249,6 +249,7 @@ export function Home() {
         toggleTagFilter(tagId)
         setActiveView('notes')
       },
+      openSettings: () => setActiveView('settings'),
       openTodayEntry,
       openWeek,
       reload,
@@ -259,6 +260,8 @@ export function Home() {
         tasksLooseEnds: (before, limit) => window.api.tasks.looseEnds(before, limit),
         runView: (id, limit) => window.api.views.run(id, limit),
         aggregateView: (id, aggregates) => window.api.views.aggregate(id, aggregates),
+        calendarEvents: (from, to) => window.api.calendar.events(from, to),
+        calendarFeeds: () => window.api.calendar.feeds(),
         weekPeek: (date) => window.api.week.peek(date),
         datedPages: (from, to) => window.api.tasks.datedPages(from, to),
         graph: () => window.api.stats.getGraph(),

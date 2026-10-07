@@ -3,6 +3,7 @@ import type { WidgetSpan } from '@shared/widgets'
 import { fromISO, rangeFor } from '@shared/date-range'
 import type { WidgetContext, WidgetProps } from './context'
 import {
+  CalendarWidget,
   CaptureWidget,
   GraphWidget,
   HabitsWidget,
@@ -118,6 +119,14 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     frame: 'panel',
     actions: () => <span className="nx-type-data">untouched 30d+</span>,
     Component: StaleWidget
+  },
+  {
+    kind: 'calendar',
+    label: 'Calendar',
+    hint: 'Your calendar feeds, Monday to Sunday',
+    defaultSpan: 12,
+    frame: 'panel',
+    Component: CalendarWidget
   },
   {
     kind: 'week',

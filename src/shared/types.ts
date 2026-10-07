@@ -1,5 +1,6 @@
 import type { AggregateFn, ViewAggregate, ViewDef, ViewDraft } from './views'
 import type { Canvas, CanvasListItem } from './canvas'
+import type { CalendarFeedInfo, CalendarResult } from './calendar'
 export type PageWidth = number
 
 export interface Page {
@@ -409,6 +410,19 @@ export interface NexusAPI {
      * Home reads this: showing the entry must not be what makes it.
      */
     peek(): Promise<Page | null>
+  }
+  calendar: {
+    /** The calendar feeds Nexus reads. Hosts only; the links stay in the main process. */
+    feeds(): Promise<CalendarFeedInfo[]>
+    /** Add an ICS link (https, or webcal). Fetched once straight away. */
+    addFeed(name: string, url: string): Promise<CalendarFeedInfo>
+    renameFeed(id: string, name: string): Promise<void>
+    removeFeed(id: string): Promise<void>
+    /**
+     * Occurrences overlapping [from, to], local `YYYY-MM-DD`, inclusive.
+     * Stale feeds are fetched first; `force` fetches every one.
+     */
+    events(from: string, to: string, force?: boolean): Promise<CalendarResult>
   }
   week: {
     /** The page for the week holding `date`, or null — creates nothing. */

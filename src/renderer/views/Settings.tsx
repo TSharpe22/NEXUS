@@ -5,6 +5,7 @@ import { Button } from '../design/Button'
 import { useAppStore } from '../store/app-store'
 import { TypesPanel } from './TypesPanel'
 import { AppLockPanel } from './AppLockPanel'
+import { CalendarPanel } from './CalendarPanel'
 import { confirmDialog } from '../design/Confirm'
 import { dayStartLabel } from '@shared/day'
 import { formatBytes } from '@shared/format'
@@ -405,6 +406,8 @@ export function Settings() {
           />
         </div>
       </Panel>
+
+      <CalendarPanel />
 
       <Panel title="Vault mirror">
         <div className="nx-settings__row">

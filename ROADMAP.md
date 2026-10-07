@@ -287,6 +287,32 @@ Q4 item 5, first half.
   rather than drawing it as "not installed". The default Home is now Today
   next to Week.
 
+## Wave 7d — calendars, read from a link (shipped)
+
+- **Settings → Calendars.** Paste an ICS link (Proton's "share with anyone"
+  link, or any other) into a password field. It's stored in `settings`, in
+  the main process only, and the renderer is only told the host. You can add
+  several feeds.
+- **Fetching.** Feeds are fetched on demand, at most every 10 minutes. The
+  last good copy is kept, so Nexus works offline, and a feed that fails is
+  named and doesn't block the others. Links must be https (or `webcal`), or
+  http to localhost.
+- **Expansion** uses `ical.js` (MPL-2.0): recurrence, EXDATE, moved
+  occurrences, VTIMEZONE, plus an `Intl` fallback for a TZID the feed names
+  but doesn't define. `scripts/check-calendar.mjs` covers it.
+- **A Calendar widget** shows Mon–Sun with week arrows. All-day items come
+  first. Events that are over are dimmed. Clicking an event with a link opens
+  it in the browser.
+- **Tracker → Week** shows each day's events above its tasks.
+- **Monday first everywhere.** Home's habit strip now shows last week and
+  this one, Monday to Sunday, instead of the last 14 days. Days still ahead
+  are drawn but can't be clicked.
+
+**Later — a calendar an AI fills.** Feeds are read-only, and Proton has no
+write API. So the shape is: the AI writes its own ICS feed, Proton
+subscribes to it, and Nexus reads both. Nothing here needs to change for
+that.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

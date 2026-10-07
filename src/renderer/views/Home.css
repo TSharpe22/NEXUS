@@ -594,6 +594,13 @@ button.nx-home__entry:hover {
   border-color: var(--nx-accent);
 }
 
+/* This week's days still to come: the outline of a box, nothing to click. */
+.nx-home__habit-day--ahead {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--nx-row-line);
+}
+
 .nx-home__habit-day--missed {
   background: var(--nx-surface-sunken);
   border-color: var(--nx-border-2);
@@ -695,6 +702,128 @@ button.nx-home__entry:hover {
   padding-top: var(--nx-space-2);
   border-top: 1px solid var(--nx-row-line);
   color: var(--nx-text-muted);
+}
+
+/* ---- Calendar ---- */
+
+.nx-home__cal-bar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--nx-space-2);
+  color: var(--nx-text-muted);
+}
+
+.nx-home__cal-step {
+  display: flex;
+  gap: var(--nx-space-3);
+}
+
+.nx-home__cal-step button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Seven columns, Monday first — the same week the strip and the Tracker show.
+   minmax(0, 1fr) so a long title truncates instead of widening its day. */
+.nx-home__cal {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  align-items: stretch;
+}
+
+.nx-home__cal-day {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 5px;
+  border: 1px solid var(--nx-row-line);
+  border-radius: var(--nx-radius-sm);
+}
+
+.nx-home__cal-day--today {
+  border-color: var(--nx-accent);
+  box-shadow: inset 0 2px 0 var(--nx-accent);
+}
+
+.nx-home__cal-day--past {
+  background: var(--nx-surface-sunken);
+}
+
+.nx-home__cal-head {
+  color: var(--nx-text-muted);
+  font-size: 10.5px;
+  margin-bottom: 2px;
+}
+
+.nx-home__cal-day--today .nx-home__cal-head {
+  color: var(--nx-accent);
+}
+
+.nx-home__cal-none {
+  color: var(--nx-text-dim);
+}
+
+.nx-home__cal-event {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  min-width: 0;
+  padding: 2px 4px;
+  border: none;
+  border-left: 2px solid var(--nx-border-2);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--nx-text);
+  cursor: default;
+  text-align: left;
+}
+
+.nx-home__cal-event:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-home__cal-event--link {
+  cursor: pointer;
+}
+
+.nx-home__cal-event--link:active {
+  background: var(--nx-accent-tint);
+  transition: none;
+}
+
+/* All-day items are the frame of the day, not a slot in it: tinted, no time. */
+.nx-home__cal-event--allday {
+  border-left-color: var(--nx-accent);
+  background: var(--nx-accent-tint-soft);
+}
+
+/* Over and done with: still there to read, no longer asking for attention. */
+.nx-home__cal-event--over {
+  opacity: 0.5;
+}
+
+.nx-home__cal-time {
+  color: var(--nx-text-muted);
+  font-size: 10px;
+}
+
+.nx-home__cal-title {
+  font-size: 12px;
+  line-height: 1.35;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.nx-home__cal-error {
+  margin-top: var(--nx-space-2);
+  color: var(--nx-critical);
 }
 
 /* ---- Small print ---- */

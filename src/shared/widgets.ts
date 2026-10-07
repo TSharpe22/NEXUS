@@ -122,6 +122,7 @@ export const DEFAULT_DASHBOARD: Dashboard = {
     // needs a third of the row to show three weeks without clipping.
     { id: 'w-today', kind: 'today', config: {}, span: 5 },
     { id: 'w-week', kind: 'week', config: {}, span: 7 },
+    { id: 'w-calendar', kind: 'calendar', config: {}, span: 12 },
     { id: 'w-habits', kind: 'habits', config: {}, span: 4 },
     { id: 'w-pinned', kind: 'pinned', config: {}, span: 4 },
     { id: 'w-stale', kind: 'stale', config: {}, span: 4 },

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { WidgetContext } from '../widgets/context'
 import type { HabitCandidate, HabitDay } from '@shared/types'
-import { addDays, eachDay, fromISO } from '@shared/date-range'
+import { addDays, eachDay, fromISO, startOfWeek } from '@shared/date-range'
 import { localDateISO } from '@shared/journal-date'
 
 /**
@@ -21,7 +21,10 @@ import { localDateISO } from '@shared/journal-date'
  *
  * Two weeks. Three was what fitted the panel, not what could be read: at 21
  * squares in a row nobody can tell which one is Tuesday, and the strip stops
- * being a calendar and becomes a texture.
+ * being a calendar and becomes a texture. Two calendar weeks, Monday to
+ * Sunday — last week and this one — so every seven-day row in Nexus starts
+ * on the same day; this week's days still to come are drawn and not
+ * clickable.
  */
 export const STRIP_DAYS = 14
 
@@ -42,20 +45,23 @@ interface Strip {
   dateKey: string
   booleanKey: string
   /** One entry per drawn day, oldest first. */
-  days: { date: string; state: 'done' | 'missed' | 'blank'; pageId: string | null }[]
+  days: { date: string; state: 'done' | 'missed' | 'blank' | 'ahead'; pageId: string | null }[]
 }
 
 function buildStrip(candidate: HabitCandidate, history: HabitDay[], today: string): Strip {
   const byDate = new Map(history.map((day) => [day.date, day]))
-  const from = localDateISO(addDays(fromISO(today), -(STRIP_DAYS - 1)))
+  const monday = startOfWeek(fromISO(today))
+  const from = localDateISO(addDays(monday, -7))
+  const to = localDateISO(addDays(monday, 6))
 
   return {
     typeId: candidate.typeId,
     typeName: candidate.typeName,
     dateKey: candidate.dateKeys[0],
     booleanKey: candidate.booleanKeys[0],
-    days: eachDay(from, today).map((date) => {
+    days: eachDay(from, to).map((date) => {
       const day = byDate.get(date)
+      if (date > today) return { date, state: 'ahead' as const, pageId: null }
       return {
         date,
         // Three states, not two: a day with no entry at all is not the same
@@ -141,15 +147,17 @@ export function HabitStrips({ ctx }: Props) {
                 {WEEKDAY_INITIALS[fromISO(day.date).getDay()]}
               </span>
               <button
+                disabled={day.state === 'ahead'}
                 className={`nx-home__habit-day nx-home__habit-day--${day.state}${
                   day.date === today ? ' nx-home__habit-day--today' : ''
                 }`}
-                title={`${day.date} — ${
+                title={day.state === 'ahead' ? `${day.date} — still to come` : `${day.date} — ${
                   day.state === 'done' ? 'done' : day.state === 'missed' ? 'not done' : 'no entry'
                 } — click to ${day.state === 'done' ? 'clear' : 'mark done'}${
                   day.pageId ? ', ⌘/Ctrl-click to open the page' : ''
                 }`}
                 onClick={(e) => {
+                  if (day.state === 'ahead') return
                   // Read-only until now: a day with no page could not even be
                   // clicked, so the panel that shows the habit was the one
                   // place you could not record one.

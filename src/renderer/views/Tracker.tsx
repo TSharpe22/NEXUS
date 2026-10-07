@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TrackerTask, DatedPage, Page } from '@shared/types'
 import { sectionLines } from '@shared/document'
+import type { CalendarEvent } from '@shared/calendar'
+import { eventTime, eventTooltip, openEventLink } from './calendar-format'
 import { rangeFor, eachDay, dayLabel, monthLabel, fromISO, type RangeKind } from '@shared/date-range'
 import { useAppStore, useToday, type TrackerMode } from '../store/app-store'
 import { Panel } from '../design/Panel'
@@ -31,13 +33,22 @@ const MODE_LABELS: Record<Mode, string> = {
 
 interface DayBucket {
   date: string
+  events: CalendarEvent[]
   tasks: TrackerTask[]
   pages: DatedPage[]
 }
 
-function bucketByDay(dates: string[], tasks: TrackerTask[], pages: DatedPage[]): DayBucket[] {
+function bucketByDay(
+  dates: string[],
+  tasks: TrackerTask[],
+  pages: DatedPage[],
+  events: CalendarEvent[]
+): DayBucket[] {
   const buckets = new Map<string, DayBucket>()
-  for (const date of dates) buckets.set(date, { date, tasks: [], pages: [] })
+  for (const date of dates) buckets.set(date, { date, events: [], tasks: [], pages: [] })
+  for (const event of events) {
+    for (const day of event.days) buckets.get(day)?.events.push(event)
+  }
 
   for (const task of tasks) {
     if (task.dueDate) buckets.get(task.dueDate)?.tasks.push(task)
@@ -96,6 +107,22 @@ function TaskRow({
   )
 }
 
+/** A calendar event on its day: time, title, and which calendar it came from. */
+function EventRow({ event, day }: { event: CalendarEvent; day: string }) {
+  return (
+    <button
+      className={`nx-tracker__event ${event.link ? 'nx-tracker__event--link' : ''}`}
+      title={eventTooltip(event)}
+      onClick={() => openEventLink(event)}
+    >
+      <Icon shape="circle" size={9} color={event.allDay ? 'var(--nx-accent)' : 'var(--nx-text-dim)'} />
+      <span className="nx-tracker__event-time nx-type-data">{event.allDay ? 'all day' : eventTime(event, day)}</span>
+      <span className="nx-tracker__event-title">{event.title}</span>
+      <span className="nx-tracker__page-meta nx-type-data">{event.feedName}</span>
+    </button>
+  )
+}
+
 function PageRow({ page, onOpen }: { page: DatedPage; onOpen: (pageId: string) => void }) {
   // A log with a `done` box says whether it happened: filled when it did,
   // the same mark a ticked task carries.
@@ -140,6 +167,8 @@ export function Tracker() {
   const [looseEnds, setLooseEnds] = useState<TrackerTask[]>([])
   /** The page written for the week on screen, when there is one. */
   const [weekPage, setWeekPage] = useState<Page | null>(null)
+  /** Calendar events, week view only — a quarter of them would bury the tasks. */
+  const [events, setEvents] = useState<CalendarEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -156,15 +185,20 @@ export function Tracker() {
       return
     }
     try {
-      const [rangeTasks, rangePages, before, none, loose, week] = await Promise.all([
+      const [rangeTasks, rangePages, before, none, loose, week, calendar] = await Promise.all([
         window.api.tasks.inRange(range.from, range.to),
         window.api.tasks.datedPages(range.from, range.to),
         window.api.tasks.overdue(today),
         window.api.tasks.undated(),
         window.api.tasks.looseEnds(today),
-        kind === 'week' ? window.api.week.peek(range.from) : Promise.resolve(null)
+        kind === 'week' ? window.api.week.peek(range.from) : Promise.resolve(null),
+        // A calendar that cannot be read must not take the tracker down with it.
+        kind === 'week'
+          ? window.api.calendar.events(range.from, range.to).catch(() => ({ events: [], errors: [] }))
+          : Promise.resolve({ events: [], errors: [] })
       ])
       setWeekPage(week)
+      setEvents(calendar.events)
       setTasks(rangeTasks)
       setPages(rangePages)
       setOverdue(before)
@@ -234,12 +268,16 @@ export function Tracker() {
   const shownLooseEnds = useMemo(() => looseEnds.filter((t) => !isWeekItem(t)), [looseEnds, isWeekItem])
 
   const days = useMemo(() => eachDay(range.from, range.to), [range.from, range.to])
-  const buckets = useMemo(() => bucketByDay(days, dayTasks, dayPages), [days, dayTasks, dayPages])
+  const buckets = useMemo(
+    () => bucketByDay(days, dayTasks, dayPages, events),
+    [days, dayTasks, dayPages, events]
+  )
 
   // A week shows every day, empty ones included — the shape of the week is
   // part of what you are reading. A quarter is ninety days, so there only the
   // days carrying something are worth a row.
-  const visible = kind === 'week' ? buckets : buckets.filter((b) => b.tasks.length + b.pages.length > 0)
+  const visible =
+    kind === 'week' ? buckets : buckets.filter((b) => b.tasks.length + b.pages.length + b.events.length > 0)
 
   const openCount = tasks.filter((t) => !t.isDone).length
   const doneCount = tasks.length - openCount
@@ -404,10 +442,13 @@ export function Tracker() {
                       {bucket.date === today && <span className="nx-tracker__today">today</span>}
                     </div>
                     <div className="nx-tracker__day-body">
-                      {bucket.tasks.length + bucket.pages.length === 0 ? (
+                      {bucket.tasks.length + bucket.pages.length + bucket.events.length === 0 ? (
                         <div className="nx-tracker__blank nx-type-data">—</div>
                       ) : (
                         <>
+                          {bucket.events.map((event) => (
+                            <EventRow key={event.id} event={event} day={bucket.date} />
+                          ))}
                           {bucket.tasks.map((task) => (
                             <TaskRow
                               key={`${task.pageId}:${task.blockId}`}

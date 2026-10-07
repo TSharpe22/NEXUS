@@ -147,3 +147,11 @@
 .nx-settings__warn {
   color: var(--nx-warning);
 }
+
+/* Adding a calendar: name, link, and the two buttons on one line. */
+.nx-calendar-add {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) minmax(200px, 2fr) auto auto;
+  gap: var(--nx-space-2);
+  align-items: center;
+}

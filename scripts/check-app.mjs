@@ -15,6 +15,7 @@ import { mkdtempSync, mkdirSync, rmSync, readdirSync, readFileSync, writeFileSyn
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { createHash } from 'crypto'
+import { createServer } from 'http'
 import { fileURLToPath } from 'url'
 
 // `URL.pathname` is percent-encoded, so a vault checked out to a path with a
@@ -1730,6 +1731,106 @@ await page.evaluate(async ([fx, log]) => {
 }, [weekMade, weekLog])
 await sleep(400)
 
+// --------------------------------------------------------- calendars
+log('\n— a calendar read from a link —')
+// A feed served from this machine, dated from today, standing in for a Proton
+// "share with anyone" link. Nexus reads it, never writes it, never hands the
+// link back to the renderer.
+const icsStamp = (d) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
+const atLocal = (iso, h, m = 0) => {
+  const [y, mo, d] = iso.split('-').map(Number)
+  return new Date(y, mo - 1, d, h, m)
+}
+const calToday = dayFromToday(0)
+const calTomorrow = dayFromToday(1)
+const ics = [
+  'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//nexus//check-app//EN',
+  'BEGIN:VEVENT', 'UID:cal-1', 'SUMMARY:Check fight night',
+  `DTSTART:${icsStamp(atLocal(calToday, 19))}`, `DTEND:${icsStamp(atLocal(calToday, 21))}`,
+  'DESCRIPTION:Stream at https://example.com/stream', 'END:VEVENT',
+  'BEGIN:VEVENT', 'UID:cal-2', 'SUMMARY:Check premiere day',
+  `DTSTART;VALUE=DATE:${calTomorrow.replace(/-/g, '')}`, 'END:VEVENT',
+  'END:VCALENDAR', ''
+].join('\r\n')
+const calServer = createServer((req, res) => {
+  if (req.url === '/cal.ics') {
+    res.writeHead(200, { 'Content-Type': 'text/calendar' })
+    res.end(ics)
+  } else {
+    res.writeHead(404)
+    res.end('gone')
+  }
+})
+await new Promise((r) => calServer.listen(0, '127.0.0.1', r))
+const calPort = calServer.address().port
+
+const calSetup = await page.evaluate(async (port) => {
+  const api = window.api.calendar
+  let refusedPlainHttp = false
+  try {
+    await api.addFeed('Leaky', 'http://example.com/cal.ics')
+  } catch {
+    refusedPlainHttp = true
+  }
+  const good = await api.addFeed('Check cal', `http://127.0.0.1:${port}/cal.ics`)
+  const dead = await api.addFeed('Dead cal', `http://127.0.0.1:${port}/missing.ics`)
+  const feeds = await api.feeds()
+  return { refusedPlainHttp, good, dead, feeds }
+}, calPort)
+check('a plain-http link to another machine is refused', calSetup.refusedPlainHttp)
+check('a feed is read as soon as it is added', calSetup.good.error === null && !!calSetup.good.fetchedAt,
+  JSON.stringify(calSetup.good))
+check('a dead link is added but says why it cannot be read', /404/.test(calSetup.dead.error ?? ''),
+  JSON.stringify(calSetup.dead))
+check('the renderer is told the host, never the link',
+  calSetup.feeds.every((f) => !('url' in f)) && calSetup.feeds.some((f) => f.host === `127.0.0.1:${calPort}`),
+  JSON.stringify(calSetup.feeds))
+
+const calWeek = await page.evaluate(async ([from, to]) => window.api.calendar.events(from, to), [weekMonday, dayFromToday(6)])
+const fight = calWeek.events.find((e) => e.title === 'Check fight night')
+check('events come back on their local days', fight?.days?.[0] === calToday, JSON.stringify(fight))
+check('with the link found in the description', fight?.link === 'https://example.com/stream')
+check('and a dead feed is named in the errors, not fatal',
+  calWeek.errors.some((e) => e.feedName === 'Dead cal') && calWeek.events.length >= 1)
+
+await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
+  version: 1, widgets: [{ id: 'w-cal', kind: 'calendar', config: {}, span: 12 }]
+})))
+await nav('Notes')
+await sleep(300)
+await nav('Home')
+await sleep(1500)
+const homeCal = await page.evaluate((today) => {
+  const days = [...document.querySelectorAll('.nx-home__cal-day')]
+  const todayCol = document.querySelector('.nx-home__cal-day--today')
+  return {
+    count: days.length,
+    heads: days.map((d) => d.querySelector('.nx-home__cal-head')?.textContent.slice(0, 3)).join(','),
+    todayText: todayCol?.innerText ?? '',
+    error: document.querySelector('.nx-home__cal-error')?.innerText ?? ''
+  }
+}, calToday)
+check('the Calendar widget shows all seven days, Monday first',
+  homeCal.count === 7 && homeCal.heads === 'Mon,Tue,Wed,Thu,Fri,Sat,Sun', homeCal.heads)
+check('today\'s column has today\'s event', homeCal.todayText.includes('Check fight night'), homeCal.todayText)
+check('and the widget says which feed could not be read', /Dead cal/.test(homeCal.error), homeCal.error)
+await page.screenshot({ path: SHOT + '/11d-home-calendar.png' })
+
+await page.evaluate(() => window.nexus.store.getState().setTrackerMode('week'))
+await nav('Tracker')
+await sleep(1000)
+const trackerCal = await page.evaluate(() =>
+  [...document.querySelectorAll('.nx-tracker__day')].map((d) => d.innerText).join('\n'))
+check('Tracker → Week shows the events on their days',
+  trackerCal.includes('Check fight night') && trackerCal.includes('Check premiere day'), trackerCal.slice(0, 300))
+
+await page.evaluate(async (raw) => {
+  for (const f of await window.api.calendar.feeds()) await window.api.calendar.removeFeed(f.id)
+  await window.api.dashboard.set(raw)
+}, savedLayout)
+check('removing the feeds leaves none', (await page.evaluate(() => window.api.calendar.feeds())).length === 0)
+calServer.close()
+
 // -------------------------------------------------- several pages at once
 log('\n— several pages at once —')
 // Everything here could be done one page at a time already, which is the
@@ -2824,7 +2925,7 @@ check('a habit draws a two-week strip',
 check('the day just marked reads as done',
   await page.evaluate(() => {
     const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
-    return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day')?.className.includes('--done')
+    return !!strip?.querySelector('.nx-home__habit-day--today')?.className.includes('--done')
   }))
 // A square with no day on it is a texture, not a calendar.
 check('the weekday label sits above its square',
@@ -2841,11 +2942,20 @@ check('each square says which weekday it is',
   await page.evaluate(() =>
     [...document.querySelectorAll('.nx-home__habit-strip')[0]?.children ?? []]
       .map((c) => c.querySelector('.nx-home__habit-tick')?.textContent).join('')))
-check('and today is marked at the end of the strip',
-  await page.evaluate(() => {
-    const strip = document.querySelectorAll('.nx-home__habit-strip')[0]
-    return !!strip?.lastElementChild?.querySelector('.nx-home__habit-day--today')
-  }))
+// Two calendar weeks, Monday first, like every other seven-day row: last
+// week and this one, with this week's remaining days drawn and inert.
+const stripShape = await page.evaluate((today) => {
+  const cols = [...(document.querySelectorAll('.nx-home__habit-strip')[0]?.children ?? [])]
+  const ticks = cols.map((c) => c.querySelector('.nx-home__habit-tick')?.textContent).join('')
+  const todayAt = cols.findIndex((c) => c.querySelector('.nx-home__habit-day--today'))
+  const ahead = cols.slice(todayAt + 1).map((c) => c.querySelector('.nx-home__habit-day'))
+  const [y, m, d] = today.split('-').map(Number)
+  const mondayIndex = (new Date(y, m - 1, d).getDay() + 6) % 7
+  return { ticks, todayAt, mondayIndex, aheadInert: ahead.every((b) => b?.disabled && b.className.includes('--ahead')) }
+}, dayFromToday(0))
+check('the strip runs Monday to Sunday, twice', stripShape.ticks === 'MTWTFSSMTWTFSS', stripShape.ticks)
+check('today sits in this week at its weekday', stripShape.todayAt === 7 + stripShape.mondayIndex, JSON.stringify(stripShape))
+check('and the days still to come cannot be marked', stripShape.aheadInert)
 // The streak number is gone from Home: the strip already shows the run, and
 // the Tracker's grid is where a count belongs. What Home owes is the marks.
 check('Home shows no streak number, only the marks',
@@ -2896,8 +3006,9 @@ check('Home does not overflow horizontally',
     return `${c.scrollWidth} vs ${c.clientWidth}`
   }))
 
+// Capture, Today, Week, Calendar, Habits, Pinned, Stale, Graph.
 check('the default Home draws every built-in widget',
-  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7,
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 8,
   `${await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length)} slots`)
 
 check('no widget slot is left unregistered',
@@ -2913,18 +3024,18 @@ await sleep(150)
 check('Edit Home reveals the per-widget controls',
   await page.evaluate(() => document.querySelectorAll('.nx-home__wctl').length) > 0)
 
-// Remove the last widget, which the default layout says is Vault.
+// Remove the last widget, which the default layout says is Graph.
 await page.evaluate(() => {
   const xs = [...document.querySelectorAll('.nx-home__wctl-x')]
   xs[xs.length - 1]?.click()
 })
 await sleep(400)
 check('removing a widget takes it off Home',
-  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 6)
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7)
 
 const savedDashboard = await page.evaluate(() => window.api.dashboard.get())
 check('the arrangement was written to the vault, not just to the screen',
-  typeof savedDashboard === 'string' && JSON.parse(savedDashboard).widgets.length === 6,
+  typeof savedDashboard === 'string' && JSON.parse(savedDashboard).widgets.length === 7,
   savedDashboard ? `${JSON.parse(savedDashboard).widgets.length} widgets` : 'nothing stored')
 
 /**
@@ -2953,7 +3064,7 @@ await page.evaluate(() => window.api.dashboard.set(null))
 await page.reload()
 await sleep(1200)
 check('clearing the stored dashboard restores the default layout',
-  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7)
+  await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 8)
 
 await page.screenshot({ path: SHOT + '/15-home.png' })
 check('no uncaught renderer errors on Home', errors.length === 0, errors.join(' | '))
