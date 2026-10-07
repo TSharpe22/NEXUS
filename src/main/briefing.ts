@@ -8,6 +8,7 @@ import * as reminders from './reminders'
 import { getEvents } from './calendar'
 import { parseDocument, sectionLines } from '@shared/document'
 import type { BriefingInfo, BriefingSyncStatus, Page } from '@shared/types'
+import { parseEvent, type ParsedEvent } from '@shared/event-time'
 
 /**
  * The Exec-Bot hand-off: a snapshot out, a briefing back.
@@ -84,12 +85,15 @@ export function setEnabled(enabled: boolean): BriefingSyncStatus {
 
 let queue: Promise<unknown> = Promise.resolve()
 
-/** Git calls run one at a time: a pull and a push must never interleave. */
-function git(dir: string, args: string[]): Promise<string> {
-  const run = () =>
+/**
+ * Commands in the checkout run one at a time: a pull and a push must never
+ * interleave, and neither may a calendar edit and a rebase's autostash.
+ */
+function run(cmd: string, dir: string, args: string[]): Promise<string> {
+  const job = () =>
     new Promise<string>((resolve, reject) => {
       execFile(
-        'git',
+        cmd,
         args,
         { cwd: dir, timeout: GIT_TIMEOUT_MS, env: { ...process.env, GIT_TERMINAL_PROMPT: '0' } },
         (err, stdout, stderr) => {
@@ -98,10 +102,12 @@ function git(dir: string, args: string[]): Promise<string> {
         }
       )
     })
-  const next = queue.then(run, run)
+  const next = queue.then(job, job)
   queue = next.catch(() => undefined)
   return next
 }
+
+const git = (dir: string, args: string[]) => run('git', dir, args)
 
 // ---------------------------------------------------------------- snapshot
 
@@ -254,6 +260,44 @@ export async function pull(): Promise<void> {
     state.error = null
   } catch (e) {
     state.error = `Pull: ${e instanceof Error ? e.message : String(e)}`
+  }
+}
+
+// ---------------------------------------------------------------- calendar
+
+/**
+ * Add an event to the Exec-Bot calendar from words ("nov 14 2000 armored mma").
+ *
+ * The feed lives in the same checkout: `tools/cal.py` adds the event to
+ * `calendar/events.json` and rebuilds `calendar/feed.ics`, and the push is
+ * what publishes it — a Cloudflare Worker serves that file at the secret link
+ * Proton and Nexus subscribe to. Nexus holds no key for any of it; the push
+ * uses this machine's git login, as the snapshot does. Works whether or not
+ * the briefing hand-off is switched on, as long as the folder is set.
+ */
+export async function addEvent(input: string): Promise<ParsedEvent & { pushed: boolean }> {
+  const parsed = parseEvent(input)
+  if (!parsed) {
+    throw new Error('Start with a day: "nov 14 2000 armored mma", "sat 1900-2100 open mat", "12/5 rally day".')
+  }
+  const dir = getDir()
+  if (!isReady(dir)) throw new Error('No Exec-Bot folder. Set it in Settings → Phone.')
+
+  // Up to date first, so the event lands on the latest events.json.
+  await git(dir, ['pull', '-q', '--rebase', '--autostash']).catch(() => undefined)
+  const args = ['tools/cal.py', 'add', parsed.title, parsed.start]
+  if (parsed.end) args.push('--end', parsed.end)
+  await run('python3', dir, args)
+  await git(dir, ['add', 'calendar'])
+  await git(dir, ['commit', '-q', '-m', `calendar: add ${parsed.title}`, '--', 'calendar'])
+  // Committed is saved: if the push fails, the next sync takes it up.
+  try {
+    await git(dir, ['pull', '-q', '--rebase', '--autostash'])
+    await git(dir, ['push', '-q'])
+    return { ...parsed, pushed: true }
+  } catch (e) {
+    state.error = `Push: ${e instanceof Error ? e.message : String(e)}`
+    return { ...parsed, pushed: false }
   }
 }
 

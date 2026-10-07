@@ -99,6 +99,13 @@ export function registerIpcHandlers(): void {
     }
   })
   ipcMain.handle('reminders:upcoming', () => reminders.upcoming())
+  ipcMain.handle('briefing:addEvent', async (_, text: string) => {
+    try {
+      return await briefing.addEvent(text)
+    } catch (e) {
+      rethrow('briefing:addEvent', e)
+    }
+  })
   ipcMain.handle('briefing:today', () => briefing.today())
   ipcMain.handle('briefing:status', () => briefing.status())
   ipcMain.handle('briefing:setDir', (_, dir: string | null) => briefing.setDir(dir))

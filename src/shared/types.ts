@@ -273,7 +273,7 @@ export type PageListItem = Omit<Page, 'content'> & {
  * is worth a page, and a page can be typed, tagged and linked afterwards,
  * which a line inside a journal entry cannot.
  */
-export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox' | 'remind'
+export type CaptureTarget = 'page' | 'journal' | 'task' | 'inbox' | 'remind' | 'event'
 
 /** The handful of things that are settings rather than data. */
 /** Whether Nexus needs a password to open, and whether it is shut right now. */
@@ -491,6 +491,12 @@ export interface NexusAPI {
     syncNow(): Promise<BriefingSyncStatus>
     /** Put today's briefing at the top of today's entry. Returns the entry. */
     addToEntry(): Promise<Page>
+    /**
+     * Add an event to the Exec-Bot calendar feed (which Proton subscribes to)
+     * from words, e.g. "nov 14 2000 armored mma". `pushed` is false when it
+     * was saved but the push failed; the next sync sends it.
+     */
+    addEvent(text: string): Promise<{ start: string; end: string | null; title: string; pushed: boolean }>
   }
   quarter: {
     /** The page for the quarter holding `date`, or null — creates nothing. */

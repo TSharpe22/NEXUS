@@ -35,7 +35,7 @@ function weekdayIndex(word: string): number {
 }
 
 /** `HH:MM` from one token (or two, for "4 pm"); null when it isn't a time. */
-function readTime(token: string, next: string | undefined): { h: number; m: number; used: number } | null {
+export function readTime(token: string, next: string | undefined): { h: number; m: number; used: number } | null {
   const t = token.toLowerCase()
   let match = /^(\d{1,2})(?::(\d{2}))?(am|pm)$/.exec(t)
   let used = 1
@@ -85,7 +85,7 @@ function readSpan(token: string, next: string | undefined): { minutes: number; u
   return null
 }
 
-function readDay(token: string, now: Date): Date | null {
+export function readDay(token: string, now: Date): Date | null {
   const t = token.toLowerCase()
   const base = new Date(now.getFullYear(), now.getMonth(), now.getDate())
   if (t === 'today') return base

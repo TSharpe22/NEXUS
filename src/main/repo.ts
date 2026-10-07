@@ -817,6 +817,7 @@ export function capture(rawText: string, target: CaptureTarget = 'page'): Page {
   if (!text) throw new Error('Nothing to capture')
   // A reminder makes no page; the capture bar sends it through `reminders`.
   if (target === 'remind') throw new Error('Reminders are set through reminders.schedule')
+  if (target === 'event') throw new Error('Events are added through briefing.addEvent')
 
   if (target === 'page') {
     const { title, overflow } = captureTitle(text)
@@ -918,7 +919,7 @@ const SETTING_CAPTURE_TARGET = 'capture.target'
  */
 export const DEFAULT_CAPTURE_TARGET: CaptureTarget = 'task'
 
-const CAPTURE_TARGETS: readonly CaptureTarget[] = ['page', 'journal', 'task', 'inbox', 'remind']
+const CAPTURE_TARGETS: readonly CaptureTarget[] = ['page', 'journal', 'task', 'inbox', 'remind', 'event']
 
 export function getCaptureTarget(): CaptureTarget {
   const stored = getSetting(SETTING_CAPTURE_TARGET)

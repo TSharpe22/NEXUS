@@ -32,7 +32,8 @@ const api: NexusAPI = {
     setDir: (dir) => ipcRenderer.invoke('briefing:setDir', dir),
     setEnabled: (enabled) => ipcRenderer.invoke('briefing:setEnabled', enabled),
     syncNow: () => ipcRenderer.invoke('briefing:syncNow'),
-    addToEntry: () => ipcRenderer.invoke('briefing:addToEntry')
+    addToEntry: () => ipcRenderer.invoke('briefing:addToEntry'),
+    addEvent: (text) => ipcRenderer.invoke('briefing:addEvent', text)
   },
   quarter: {
     peek: (date) => ipcRenderer.invoke('quarter:peek', date),

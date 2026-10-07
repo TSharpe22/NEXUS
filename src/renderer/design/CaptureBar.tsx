@@ -3,6 +3,7 @@ import toast from 'react-hot-toast'
 import type { CaptureTarget, Page } from '@shared/types'
 import { useAppStore } from '../store/app-store'
 import { describeFireAt } from '@shared/reminder-time'
+import { describeEvent } from '@shared/event-time'
 import { Panel } from './Panel'
 import { Button } from './Button'
 import { Icon } from './Icon'
@@ -29,6 +30,11 @@ export const CAPTURE_TARGETS: { value: CaptureTarget; label: string; hint: strin
     value: 'remind',
     label: 'Remind',
     hint: 'A phone notification at a time: "1600 armored mma", "tomorrow 4pm call the bank", "30m tea"'
+  },
+  {
+    value: 'event',
+    label: 'Event',
+    hint: 'Into the Exec-Bot calendar, which Proton shows: "nov 14 2000 armored mma", "sat 1900-2100 open mat", "12/5 rally day"'
   }
 ]
 
@@ -37,7 +43,8 @@ export const CAPTURED_MESSAGE: Record<CaptureTarget, string> = {
   journal: "Added to today's entry",
   task: "Added to today's entry",
   inbox: 'Added to the Inbox',
-  remind: 'Reminder set'
+  remind: 'Reminder set',
+  event: 'Added to the calendar'
 }
 
 export function CaptureBar({
@@ -97,6 +104,21 @@ export function CaptureBar({
       }
       return
     }
+    // An event makes no page either: it goes into the Exec-Bot calendar feed.
+    if (target === 'event') {
+      try {
+        const added = await window.api.briefing.addEvent(trimmed)
+        setText('')
+        const where = added.pushed ? 'Added to the calendar' : 'Saved, push failed (goes with the next sync)'
+        toast.success(`${where}: ${describeEvent(added)} · ${added.title}`)
+        onDone?.(false)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message.replace(/^\[[^\]]+\]\s*/, '') : String(e))
+      } finally {
+        setBusy(false)
+      }
+      return
+    }
     try {
       const page = await onCapture(trimmed, target)
       // Cleared before navigating, so a capture-and-open does not leave the
@@ -137,7 +159,13 @@ export function CaptureBar({
         <input
           ref={inputRef}
           className="nx-input nx-home__capture-input"
-          placeholder={target === 'remind' ? 'When, then what: 1600 armored mma…' : 'Capture a thought…'}
+          placeholder={
+            target === 'remind'
+              ? 'When, then what: 1600 armored mma…'
+              : target === 'event'
+                ? 'Day, time, then what: nov 14 2000 armored mma…'
+                : 'Capture a thought…'
+          }
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {

@@ -50,6 +50,10 @@ git(root, 'clone', '-q', remote, work)
 git(work, 'config', 'user.email', 'check@example.com')
 git(work, 'config', 'user.name', 'check')
 writeFileSync(join(work, 'README.md'), 'stand-in\n')
+// The calendar builder, as the real Exec-Bot repo has it (EXECBOT_DIR to override).
+const execBot = process.env.EXECBOT_DIR ?? join(process.env.HOME, 'Desktop', 'exec-bot')
+mkdirSync(join(work, 'tools'), { recursive: true })
+writeFileSync(join(work, 'tools', 'cal.py'), readFileSync(join(execBot, 'tools', 'cal.py')))
 git(work, 'add', '.')
 git(work, 'commit', '-qm', 'init')
 git(work, 'push', '-q', 'origin', 'main')
@@ -201,6 +205,18 @@ const again = JSON.parse((await api(() => window.api.briefing.addToEntry())).con
 check('adding it again replaces the section rather than doubling it',
   again.filter((b) => b.type === 'heading' && b.content[0]?.text === 'Briefing').length === 1)
 
+// ---------------------------------------------------------------- calendar
+console.log('— calendar —')
+const ev = await api((t) => window.api.briefing.addEvent(t), 'nov 14 2000-0000 armored mma nashville')
+check('an event is read from words', ev.start.endsWith('-11-14T20:00') && ev.end.endsWith('-11-15T00:00') && ev.title === 'armored mma nashville', JSON.stringify(ev))
+check('and pushed', ev.pushed === true)
+const feed = git(remote, 'show', 'main:calendar/feed.ics')
+check('the feed on the remote carries it', /SUMMARY:armored mma nashville/.test(feed) && /DTSTART:\d{8}T010000Z/.test(feed), feed.slice(0, 80))
+const dup = await tryApi((t) => window.api.briefing.addEvent(t), 'nov 14 2000 armored mma nashville')
+check('the same event twice is refused', !dup.ok && /already there/.test(dup.error), dup.error)
+const noDay = await tryApi((t) => window.api.briefing.addEvent(t), '2000 no day here')
+check('words with no day are refused, with how to write one', !noDay.ok && /Start with a day/.test(noDay.error), noDay.error)
+
 // ---------------------------------------------------------------- UI
 console.log('— UI —')
 await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
@@ -221,6 +237,11 @@ await sleep(1200)
 check('the capture bar’s Remind sends it', received.length === beforeUi + 1 && received.at(-1).body === 'stretch from the bar')
 check('and the box empties for the next one', (await page.inputValue('.nx-home__capture-input')) === '')
 check('and the widget lists it', /stretch from the bar/.test(await page.evaluate(() => document.querySelector('.nx-brief')?.innerText ?? '')))
+await page.evaluate(() => [...document.querySelectorAll('.nx-home__capture button')].find((b) => b.textContent.trim() === 'Event')?.click())
+await page.fill('.nx-home__capture-input', '12/5 rally day')
+await page.keyboard.press('Enter')
+await sleep(2500)
+check('the capture bar’s Event adds it to the feed', /SUMMARY:rally day/.test(git(remote, 'show', 'main:calendar/feed.ics')))
 await page.screenshot({ path: join(root, 'home.png') })
 
 await app.close()

@@ -378,8 +378,11 @@ Nexus's half of the Exec-Bot (`~/Desktop/exec-bot`, plan in its
   after the briefing arrives, and on demand.
 - `scripts/check-phone.mjs` runs it all against a fake ntfy and a bare repo.
 
-**Not forgotten:** adding events to the Proton calendar by command. Waits for
-the calendar feed (Exec-Bot event finder).
+- **Event** in the capture bar: "nov 14 2000 armored mma", "sat 1900-2100
+  open mat", "12/5 rally day" (no time = all day). Runs the Exec-Bot repo's
+  `tools/cal.py` in the hand-off folder and pushes; a Cloudflare Worker serves
+  `calendar/feed.ics` at a secret link that Proton and Nexus subscribe to.
+  Proton refreshes about every 16 h; Nexus every 10 min. Needs `python3`.
 
 ## Next — queued, in no fixed order
 
