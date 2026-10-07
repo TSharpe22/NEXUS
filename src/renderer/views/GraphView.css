@@ -29,7 +29,10 @@
 .nx-graph__edge {
   stroke: var(--nx-border-2);
   stroke-width: 1;
-  transition: stroke var(--nx-motion), opacity var(--nx-motion);
+  /* No transition on the marks. Hovering re-lights a node's neighbourhood,
+     and a 120ms fade on every edge and dot made the graph answer the pointer
+     a beat late — the "mushy" in "clicks feel mushy". States change, they do
+     not animate in. */
 }
 
 /* Membership, not a link: present, but quieter than anything you wrote. */
@@ -90,7 +93,6 @@
   fill: var(--nx-graph-tone);
   stroke: var(--nx-surface-sunken);
   stroke-width: 2;
-  transition: fill var(--nx-motion), stroke var(--nx-motion);
 }
 
 /* Hubs are outline marks, per the design system: a label glyph is never
@@ -151,7 +153,6 @@
   stroke: var(--nx-surface-sunken);
   stroke-width: calc(3px * var(--nx-graph-label-scale, 1));
   stroke-linejoin: round;
-  transition: fill var(--nx-motion);
 }
 
 .nx-graph__node--tag .nx-graph__node-label,

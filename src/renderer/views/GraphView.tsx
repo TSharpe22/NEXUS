@@ -285,6 +285,9 @@ export function GraphView({
   /** Where a node press started, and whether it has travelled far enough to be a drag. */
   const pressOrigin = useRef<{ x: number; y: number } | null>(null)
   const draggedFar = useRef(false)
+  /** Whether the pointer is over the graph. The idle drift holds still while it is. */
+  const pointerInside = useRef(false)
+  const nodeCountRef = useRef(0)
 
   const [, forceRender] = useState(0)
   const [hovered, setHovered] = useState<string | null>(null)
@@ -439,6 +442,7 @@ export function GraphView({
   // ----------------------------------------------------------------
 
   const hasNodes = nodes.length > 0
+  nodeCountRef.current = nodes.length
 
   /**
    * The SVG fills its panel, whose size depends on the window — so the centre
@@ -694,13 +698,25 @@ export function GraphView({
     if (!hasNodes) return
     let raf: number | null = null
     let last = 0
+    // The drift's own clock, which only runs while the drift does. Pausing on
+    // a wall clock would make every node jump to wherever it would have got to
+    // the moment the pointer left.
+    let clock = 0
+    let prev = performance.now()
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick)
-      if (frame.current !== null || document.hidden) return
-      if (now - last < DRIFT_FRAME_MS) return
+      const elapsed = now - prev
+      prev = now
+      // Still while the pointer is over the graph: a node you are aiming at
+      // should not be moving under the cursor.
+      if (frame.current !== null || document.hidden || pointerInside.current) return
+      clock += elapsed
+      // Every frame on a graph small enough for that to be free; a breath at
+      // ~22fps read as a stutter on the graphs people actually have.
+      if (now - last < (nodeCountRef.current > GRID_ABOVE ? DRIFT_FRAME_MS : 0)) return
       last = now
-      paintRef.current((now / DRIFT_PERIOD_MS) * Math.PI * 2)
+      paintRef.current((clock / DRIFT_PERIOD_MS) * Math.PI * 2)
     }
 
     raf = requestAnimationFrame(tick)
@@ -997,7 +1013,13 @@ export function GraphView({
         onPointerDown={onPointerDownBackground}
         onPointerMove={onPointerMoveBackground}
         onPointerUp={onPointerUpBackground}
-        onPointerLeave={onPointerUpBackground}
+        onPointerEnter={() => {
+          pointerInside.current = true
+        }}
+        onPointerLeave={(e) => {
+          pointerInside.current = false
+          onPointerUpBackground(e)
+        }}
         onDoubleClick={resetView}
       >
         {/* SVG transforms take no percentages, so the origin is centred from

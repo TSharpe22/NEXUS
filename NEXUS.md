@@ -746,6 +746,11 @@ Six sections, each a thin view over the same page/property model:
   something was dragged. The simulation effect now cancels whatever frame is
   pending and starts its own. `scripts/probes/graph-drag.mjs` checks all four,
   including that a settled layout has no two pages on top of each other.
+
+  The marks change state without transitions, and the idle drift holds still
+  while the pointer is over the graph and runs on its own clock, so it picks
+  up where it stopped instead of jumping. Both were the "mushy" in clicking a
+  graph whose nodes faded for 120ms and wandered under the cursor.
 - **Notes** — the page tree and the block editor. A "Today's entry" button at
   the top of the list opens today's journal entry, creating it from the
   Journal type's template if it does not exist yet. Everything it needs — the
