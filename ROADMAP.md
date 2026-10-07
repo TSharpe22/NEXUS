@@ -412,7 +412,9 @@ in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 
 **A note-taking framework.** The rest of item 4: Topic, Concept and Lesson
 types with templates, in which the learn-repo method is written by hand
-(Spanish first). There's no AI teaching unless asked. See `PLAN_Q4_4_5.md`.
+(Spanish first), then a review loop (spaced repetition on each Concept's
+Check). There's no AI teaching unless asked. **Next up:** the plan and
+handoff are in `PLAN_NOTES.md` (design origin: `PLAN_Q4_4_5.md` 4b).
 
 ## Future — an encrypted vault
 
