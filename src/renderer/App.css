@@ -52,10 +52,13 @@ body :active {
   transition-duration: 0s !important;
 }
 
-/* Buttons dip a whole pixel: half a pixel was invisible on a 1x screen. */
+/* Buttons dip a whole pixel: half a pixel was invisible on a 1x screen.
+   `translate`, not `transform`: the individual property composes with a
+   button's own transform, where `transform` replaced it — an open toggle's
+   chevron (rotated 90°) snapped back to closed for as long as it was held. */
 .nx-app button:active:not(:disabled),
 .nx-app [role='button']:active {
-  transform: translateY(1px);
+  translate: 0 1px;
 }
 
 /*
@@ -99,7 +102,8 @@ body .nx-menu__item:active:not(:disabled) {
 
 /*
    Checkboxes and habit squares squeeze while held. The nearest thing a
-   screen has to the give of a switch under a finger.
+   screen has to the give of a switch under a finger. (`scale`, like the
+   dip's `translate`, so nothing's own transform is lost while held.)
 */
 .nx-app input[type='checkbox']:active,
 .nx-home__check:active,
@@ -107,7 +111,7 @@ body .nx-menu__item:active:not(:disabled) {
 .nx-properties__checkbox:active,
 .nx-habits__cell:not(:disabled):active,
 .nx-home__habit-day:not(:disabled):active {
-  transform: scale(0.86);
+  scale: 0.86;
 }
 
 .nx-sidebar {

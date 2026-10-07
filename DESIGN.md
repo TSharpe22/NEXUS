@@ -93,7 +93,7 @@ Near-instant. Transitions ~80–120ms, linear or ease-out. No bounce, no springy
 - **Button:** default (solid accent, dark text) → hover (lighter accent) → pressed (darker accent, 1px dip) → disabled (flat neutral grey, muted text, no accent).
 - **Any clickable row:** hover (bg lift) → pressed (accent tint, the selected fill, so a press reads as taking hold).
 - **Checkbox / habit square:** pressed squeezes to 86%.
-- **Something you can drag** (canvas card, graph node): open hand on hover, closed hand from the press on. Pressed shows the accent edge; carried sits on `--nx-surface-raised` with an accent outline — lifted by fill and edge, since there are no shadows.
+- **Something you can drag** (canvas card, graph node, a block's handle): open hand on hover, closed hand from the press on. Pressed shows the accent edge; carried sits on `--nx-surface-raised` with an accent outline — lifted by fill and edge, since there are no shadows. A carried block wears the selected-row treatment (accent tint, 2px accent edge), and where it will land is a 2px accent line that jumps between slots rather than gliding.
 
 ## Empty & error states
 

@@ -209,8 +209,8 @@
   font-family: var(--nx-font-sans);
 }
 
-/* The drag handle / add-block controls in the left gutter. Kept, but quiet —
-   they only need to be visible on hover of the block they belong to. */
+/* The drag handle / add-block controls in the left gutter. Quiet until the
+   block they belong to is hovered, then a thing you can take hold of. */
 .bn-side-menu {
   color: var(--nx-text-dim);
 }
@@ -225,6 +225,92 @@
 .bn-side-menu .bn-ak-button:hover {
   background: var(--nx-row-hover);
   color: var(--nx-text);
+}
+
+/* The handle is for carrying a block, so it shows an open hand rather than
+   BlockNote's pointing finger, closes on the press, and takes the accent —
+   the same answer a canvas card gives when it is picked up. */
+.bn-side-menu .bn-ak-button[draggable='true'] {
+  cursor: grab;
+}
+
+.bn-side-menu .bn-ak-button:active {
+  background: var(--nx-accent-tint);
+  color: var(--nx-accent);
+}
+
+.bn-side-menu .bn-ak-button[draggable='true']:active {
+  cursor: grabbing;
+}
+
+/* ----------------------------------------------------------------
+   Carrying blocks.
+
+   A block being dragged — and any block picked by its handle — is a
+   ProseMirror node selection. BlockNote draws nothing for it, so the block
+   you were carrying was unmarked in the document while a ghost of it
+   followed the pointer. It now wears the selected-row treatment: the accent
+   tint and a 2px accent edge, children included.
+   ---------------------------------------------------------------- */
+
+.bn-editor .bn-block-outer.ProseMirror-selectednode {
+  outline: none;
+}
+
+.bn-editor .bn-block-outer.ProseMirror-selectednode > .bn-block {
+  background: var(--nx-accent-tint);
+  box-shadow: inset 2px 0 0 var(--nx-accent);
+  border-radius: var(--nx-radius-sm);
+}
+
+/* Where it will land: a hairline in the accent that jumps to each slot,
+   instead of a 5px pale-blue bar that glided there over 150ms on an easing
+   curve. A drop target should be exactly where it says, the moment it says. */
+.prosemirror-dropcursor-block,
+.prosemirror-dropcursor-vertical,
+.prosemirror-dropcursor-inline {
+  background: var(--nx-accent) !important;
+  transition: none !important;
+}
+
+.prosemirror-dropcursor-block {
+  height: 2px !important;
+}
+
+/* Text selected across blocks reads in the app's own colour. */
+.bn-editor ::selection {
+  background: rgba(105, 180, 138, 0.32);
+}
+
+/* BlockNote eases a block's margin when it moves and its font size when its
+   type changes (paragraph → heading animated over 200ms). States change, they
+   don't animate in. */
+.bn-editor .bn-block-outer,
+.bn-editor .bn-block-content {
+  transition: none;
+}
+
+/* ----------------------------------------------------------------
+   Spacing BlockNote 0.55 changed, put back to what the vault was written in:
+   18px above every heading (0.24 had none beyond the block's own 3px), and
+   list markers 10–14px wider, which pushed every list's text off the line
+   of the paragraphs around it.
+   ---------------------------------------------------------------- */
+
+.bn-editor [data-content-type='heading'] {
+  padding-top: 3px;
+}
+
+.bn-editor .bn-block-content[data-content-type='bulletListItem']::before {
+  min-width: 10px;
+}
+
+.bn-editor .bn-block-content[data-content-type='numberedListItem']::before {
+  min-width: 17px;
+}
+
+.bn-editor .bn-block-content[data-content-type='checkListItem'] > div > input {
+  margin-left: 0;
 }
 
 /* ----------------------------------------------------------------
@@ -266,6 +352,10 @@
 
 .nx-toggle__chevron:hover {
   color: var(--nx-text);
+}
+
+.nx-toggle__chevron:active {
+  color: var(--nx-accent);
 }
 
 .nx-toggle[data-open='true'] .nx-toggle__chevron {
