@@ -96,6 +96,9 @@ function blockToMarkdownLines(
     case 'codeBlock':
       lines.push('```', text, '```')
       break
+    case 'divider':
+      lines.push('---')
+      break
     default:
       lines.push(text)
   }

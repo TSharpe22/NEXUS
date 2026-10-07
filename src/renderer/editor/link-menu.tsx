@@ -10,19 +10,21 @@ export interface LinkMenuItem {
 }
 
 /**
- * BlockNote's SuggestionMenuController strips the trigger char ("[") before
- * calling getItems, so `query` is what the user typed AFTER the first "[".
- * Require a second "[" to activate — otherwise single-bracket markdown
- * text would trigger this menu.
+ * The trigger is "[[" itself — BlockNote has taken multi-character triggers
+ * since 0.4x — so a single "[" in ordinary text never opens this, and `query`
+ * is everything typed after the second bracket.
+ *
+ * It used to be a "[" trigger that ignored any query not starting with a
+ * second "[". Under 0.55 that cannot work: a trigger character typed while
+ * its own menu is open opens the menu afresh, so the query never holds the
+ * second bracket and the link menu never appeared at all.
  */
 export function getLinkMenuItems(
   onSelect: (page: Page | null, title: string) => void,
   currentPageId?: string
 ): (query: string) => Promise<LinkMenuItem[]> {
   return async (query: string) => {
-    if (query.length === 0 || query[0] !== '[') return []
-
-    const search = query.slice(1).trim()
+    const search = query.trim()
     const filtered = await window.api.links.searchPages(search, currentPageId)
 
     const items: LinkMenuItem[] = filtered.map((page) => ({

@@ -1,5 +1,5 @@
 import { getDefaultReactSlashMenuItems, type DefaultReactSuggestionItem } from '@blocknote/react'
-import { insertOrUpdateBlock } from '@blocknote/core'
+import { insertOrUpdateBlockForSlashMenu } from '@blocknote/core'
 import type { NexusEditor } from './schema'
 
 /**
@@ -13,14 +13,18 @@ import type { NexusEditor } from './schema'
  * than exiled to a section of their own.
  */
 export function getSlashMenuItems(editor: NexusEditor): DefaultReactSuggestionItem[] {
-  const defaults = getDefaultReactSlashMenuItems(editor)
+  // Toggleable headings are BlockNote's own toggle under another name; see
+  // schema.ts for why Nexus keeps only its `toggle`.
+  const defaults = getDefaultReactSlashMenuItems(editor).filter(
+    (item) => !('key' in item && typeof item.key === 'string' && item.key.startsWith('toggle_'))
+  )
 
   const toggle: DefaultReactSuggestionItem = {
     title: 'Toggle',
     subtext: 'Collapsible section',
     aliases: ['toggle', 'collapse', 'details', 'fold'],
     group: 'Basic blocks',
-    onItemClick: () => insertOrUpdateBlock(editor, { type: 'toggle' } as never)
+    onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: 'toggle' } as never)
   }
 
   const callout: DefaultReactSuggestionItem = {
@@ -28,7 +32,7 @@ export function getSlashMenuItems(editor: NexusEditor): DefaultReactSuggestionIt
     subtext: 'Highlighted note',
     aliases: ['callout', 'note', 'aside', 'info', 'warning'],
     group: 'Basic blocks',
-    onItemClick: () => insertOrUpdateBlock(editor, { type: 'callout', props: { color: 'amber' } } as never)
+    onItemClick: () => insertOrUpdateBlockForSlashMenu(editor, { type: 'callout', props: { color: 'amber' } } as never)
   }
 
   // Slot them in directly after the last Basic-blocks default so the group

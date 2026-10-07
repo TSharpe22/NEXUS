@@ -135,48 +135,11 @@ export function Editor({ page, children, compact = false }: EditorProps) {
     [saveContent, saveTitle]
   )
 
-  /**
-   * `/` and `[[` work inside a callout and a toggle.
-   *
-   * They did not, and this was the "blocks respond poorly" nobody could pin
-   * down. ProseMirror routes a typed character through `handleTextInput` —
-   * which is the only thing BlockNote's suggestion plugin listens to — for the
-   * built-in blocks, and for our two custom React block specs only while they
-   * are still empty. The moment a callout has a word in it, typing `/` inserts
-   * a literal slash and nothing opens: no menu, no error, no way to reach the
-   * block menu or a `[[link]]` from inside the block you are writing in.
-   * `scripts/probes/blocks.mjs` is the reproduction, block type by block type.
-   *
-   * The fix is the editor's own public opener rather than anything reaching
-   * into the plugin: swallow the keystroke and ask for the menu, which inserts
-   * the trigger character itself and deletes it again when an item is picked —
-   * exactly what the "+" button in the side menu does. Scoped to the two block
-   * types that need it, so every other block keeps the path it already has.
-   */
-  useEffect(() => {
-    const root = editorRootRef.current
-    if (!root) return
-
-    const TRIGGERS = new Set(['/', '['])
-    const AFFECTED = new Set(['callout', 'toggle'])
-
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (!TRIGGERS.has(e.key) || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return
-      // Already open — the plugin owns the keystroke from here, including the
-      // second "[" that turns a link query into a real one.
-      if (editor.suggestionMenus.shown) return
-
-      const block = editor.getTextCursorPosition()?.block as { type?: string } | undefined
-      if (!block?.type || !AFFECTED.has(block.type)) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      editor.openSuggestionMenu(e.key, { deleteTriggerCharacter: true })
-    }
-
-    root.addEventListener('keydown', onKeyDown, true)
-    return () => root.removeEventListener('keydown', onKeyDown, true)
-  }, [editor])
+  // `/` and `[[` inside a callout or toggle used to need a keydown shim here:
+  // BlockNote 0.24 never routed text input in a non-empty custom React block
+  // through the suggestion plugin. 0.55 does, and the shim's re-opening of the
+  // menu on each "[" is what then broke `[[` everywhere. `scripts/probes/
+  // blocks.mjs` still asks every block type, empty and with a word in it.
 
   /**
    * Enter inside an open toggle puts the new block INSIDE it.
@@ -308,7 +271,7 @@ export function Editor({ page, children, compact = false }: EditorProps) {
           getItems={async (query) => filterSuggestionItems(getSlashMenuItems(editor), query)}
         />
         <SuggestionMenuController
-          triggerCharacter="["
+          triggerCharacter="[["
           getItems={getLinkMenuItems(handleLinkSelect, page.id)}
           suggestionMenuComponent={LinkMenu}
           onItemClick={(item) => item.onItemClick()}

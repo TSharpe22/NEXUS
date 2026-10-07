@@ -66,15 +66,25 @@ The current app is `src/main` + `src/renderer` with `views/`, `design/` and
   would. Multi-block selection uses BlockNote's native selection, not a
   custom overlay.
 
-  **`@tiptap/*` is pinned to 2.11.5 via `overrides` in `package.json`. Do not
-  remove that pin.** BlockNote 0.24 declares `@tiptap/core: ^2.7.1`, and the
-  caret lets npm resolve 2.27, whose `ReactNodeView` changed when
-  `contentDOMElement` is assigned relative to the React ref firing. The result
-  is silent and easy to misread: custom React block specs (`toggle`, `callout`)
-  still *render*, but their `contentRef` element never receives ProseMirror's
-  content DOM, so the block cannot be typed into and text aimed at it lands in
-  the following block instead. Nothing throws and nothing logs. If toggle or
-  callout ever stop accepting text, check the resolved tiptap version first.
+  **BlockNote is 0.55, on tiptap 3.** Up to 0.24 `@tiptap/*` was pinned to
+  2.11.5 through `overrides`, because 2.27's `ReactNodeView` assigned
+  `contentDOMElement` after the React ref fired and custom React blocks
+  (`toggle`, `callout`) rendered but could not be typed into — text landed in
+  the next block, silently. 0.55 requires tiptap 3 and the pin is gone with
+  it; `blocks.mjs` and `check-app.mjs` type into both blocks, so if either
+  ever stops taking text, those fail first. Three things changed with the
+  upgrade and are not to be undone:
+  - **`[[` is the link menu's trigger**, not `[` plus a query check. Under
+    0.55 a trigger typed while its own menu is open reopens the menu, so a
+    `[` trigger never saw the second bracket and the link menu never opened.
+  - **The keydown shim for `/` and `[` in callouts and toggles is gone.**
+    0.55 routes text input in custom blocks through the suggestion plugin,
+    and the shim's reopening of the menu is what broke `[[`.
+  - **BlockNote's own toggle (`toggleListItem`, toggleable headings) is left
+    out of the schema and the "/" menu.** Every saved toggle is Nexus's
+    `toggle`; two toggles would be two kinds of one thing in a vault. Saved
+    headings now carry `isToggleable: false`, which 0.24 drops on read, so a
+    rollback reads 0.55's documents.
 - **Nav**: five views — Home, Notes, Views, Tracker, Settings. The names in the
   code (`View` in `store/app-store.ts`) match what's on screen. Tables and
   Activity were removed, and what Tables owned was re-homed in three places

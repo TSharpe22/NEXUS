@@ -388,6 +388,7 @@ const KNOWN_BLOCK_TYPES = new Set([
   'checkListItem',
   'quote',
   'codeBlock',
+  'divider',
   'table',
   'image',
   'video',
