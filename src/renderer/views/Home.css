@@ -117,6 +117,7 @@
 /* The capture box is a control, not a readout — it should be exactly as tall
    as it needs to be. */
 .nx-home__slot:has(.nx-home__capture) .nx-panel,
+.nx-home__slot:has(.nx-review-strip) .nx-panel,
 .nx-home__bare-ctl + * {
   min-height: 0;
 }

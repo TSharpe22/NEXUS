@@ -268,6 +268,7 @@ export function Home() {
         briefingToday: () => window.api.briefing.today(),
         briefingStatus: () => window.api.briefing.status(),
         remindersUpcoming: () => window.api.reminders.upcoming(),
+        reviewCounts: (today) => window.api.review.counts(today),
         habitCandidates: () => window.api.habits.candidates(),
         habitDays: (typeId, dateKey, booleanKey, from, to) =>
           window.api.habits.days(typeId, dateKey, booleanKey, from, to)

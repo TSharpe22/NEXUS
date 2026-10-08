@@ -5,6 +5,7 @@ import type {
   BriefingInfo,
   BriefingSyncStatus,
   ReminderInfo,
+  ReviewCount,
   CaptureTarget,
   DatedPage,
   GraphData,
@@ -90,6 +91,8 @@ export interface WidgetContext {
     briefingStatus(): Promise<BriefingSyncStatus>
     /** Phone reminders still to come, soonest first. */
     remindersUpcoming(): Promise<ReminderInfo[]>
+    /** Concepts due for review by `today`, per topic. */
+    reviewCounts(today: string): Promise<ReviewCount[]>
     habitCandidates(): Promise<HabitCandidate[]>
     habitDays(
       typeId: string,

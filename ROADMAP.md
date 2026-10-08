@@ -386,9 +386,10 @@ Nexus's half of the Exec-Bot (`~/Desktop/exec-bot`, plan in its
   `calendar/feed.ics` at a secret link that Proton and Nexus subscribe to.
   Proton refreshes about every 16 h; Nexus every 10 min. Needs `python3`.
 
-## Wave 9 — learning: Topic, Concept, Lesson (step 1 shipped)
+## Wave 9 — learning: Topic, Concept, Lesson, and review (steps 1 and 3 shipped)
 
-Plan in `PLAN_NOTES.md`. Step 1 is built; the review loop is next.
+Plan in `PLAN_NOTES.md`. Steps 1 and 3 are built; step 4 (logging reviews
+to the Lesson, `reviewsDue` in the briefing) is next.
 
 - **Three types, seeded lazily** on the first "New topic" (`repo.ts`,
   "Learning"): **Topic** in Notes / Topics (goal, status), **Concept** in
@@ -404,7 +405,22 @@ Plan in `PLAN_NOTES.md`. Step 1 is built; the review loop is next.
   there is. One Lesson per topic per day.
 - A Concept's `due` is kept out of the Tracker's dated pages. It's a
   schedule, and the Review surface (step 3) shows it.
-- `scripts/check-learning.mjs` (`npm run check:learning`).
+- **Review** (`shared/review.ts` has the rules). A Concept's card is the
+  first toggle under its **Check** heading: the line is the question and the
+  hidden part is the answer. It joins review once the question is no longer
+  the template's "Question?". Good climbs 1 → 3 → 7 → 16 → 35 → 80 days,
+  and Good on 80 marks it solid. Again drops to 1 and marks it shaky. A
+  shaky concept reaching 7 goes back to new. Each grade writes `interval`,
+  `due` and `status` on the page.
+- **Tracker → Review**: one card at a time, Space for the answer, 1 Again,
+  2 (or Space) Good. Topic chips appear when there's more than one topic.
+  A missed card comes back once at the end, as practice, which writes
+  nothing. The sitting ends by listing what was missed.
+- **Home → "Due for review"**: count per topic and a "Review N →" button. The
+  first "New topic" adds it once, as a strip under the capture box. Removing
+  it sticks.
+- `scripts/check-learning.mjs` (`npm run check:learning`). It also checks the
+  ladder and a keyboard sitting.
 
 ## Next — queued, in no fixed order
 
@@ -433,8 +449,9 @@ in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 **A note-taking framework.** The rest of item 4: Topic, Concept and Lesson
 types with templates, in which the learn-repo method is written by hand
 (Spanish first), then a review loop (spaced repetition on each Concept's
-Check). There's no AI teaching unless asked. Step 1 shipped as Wave 9;
-**next up** is step 3, the review surface (`PLAN_NOTES.md`).
+Check). There's no AI teaching unless asked. Steps 1 and 3 shipped as
+Wave 9. **Next up** is step 4: log reviews to the Lesson, and add
+`reviewsDue` to the briefing (`PLAN_NOTES.md`).
 
 ## Future — an encrypted vault
 

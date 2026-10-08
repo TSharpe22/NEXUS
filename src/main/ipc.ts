@@ -180,6 +180,29 @@ export function registerIpcHandlers(): void {
       rethrow('week:open', e)
     }
   })
+  ipcMain.handle('review:queue', (_, today: string, topicId: string | null) => {
+    try {
+      return repo.getReviewQueue(today, topicId ?? null)
+    } catch (e) {
+      rethrow('review:queue', e)
+    }
+  })
+  ipcMain.handle('review:counts', (_, today: string) => {
+    try {
+      return repo.getReviewCounts(today)
+    } catch (e) {
+      rethrow('review:counts', e)
+    }
+  })
+  ipcMain.handle('review:grade', (_, pageId: string, grade: 'again' | 'good', today: string) => {
+    try {
+      const card = repo.gradeConcept(pageId, grade, today)
+      mirror.scheduleSync(pageId)
+      return card
+    } catch (e) {
+      rethrow('review:grade', e)
+    }
+  })
   ipcMain.handle('learning:createTopic', (_, name: string) => {
     try {
       const made = repo.createTopic(name)

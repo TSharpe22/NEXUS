@@ -34,7 +34,7 @@ export const VIEW_ORDER = Object.keys(VIEW_META) as View[]
 export type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
 
 /** Tracker's three modes. Habits is not a date range, which is why it sits alongside one. */
-export type TrackerMode = 'week' | 'quarter' | 'habits'
+export type TrackerMode = 'week' | 'quarter' | 'habits' | 'review'
 
 interface AppState {
   activeView: View

@@ -14,6 +14,8 @@ import {
 import * as lock from './lock'
 import { statSync } from 'fs'
 import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
+import { checkCardOf, nextSchedule, type ReviewGrade } from '@shared/review'
+import { normaliseDashboard } from '@shared/widgets'
 import { canvasAttachmentNames, canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
 import type {
   FilterField,
@@ -27,6 +29,8 @@ import type {
 } from '@shared/views'
 import type {
   NewTopic,
+  ReviewCard,
+  ReviewCount,
   Page,
   Property,
   PropertyType,
@@ -1637,8 +1641,33 @@ export function createTopic(name: string): NewTopic {
   content = fillUnderHeading(content, 'The map', `The canvas "${canvasTitle}" (⌘K to open it).`)
   content = fillUnderHeading(content, 'Concepts', `The view "${viewName}", and the backlinks below.`)
   updatePage(page.id, { title, content })
+  addReviewWidgetToHome()
 
   return { page: getPageById(page.id)!, canvasId: canvas.id, viewId: view.id }
+}
+
+/**
+ * Put "Due for review" on Home, once. A vault that makes a topic means to
+ * review it, and the widget menu is not where anyone would look. Removing
+ * the widget afterwards sticks: a later topic does not add it back.
+ */
+function addReviewWidgetToHome(): void {
+  if (getSetting('learning.reviewWidgetAdded')) return
+  setSetting('learning.reviewWidgetAdded', '1')
+  let raw: unknown = null
+  try {
+    raw = JSON.parse(getDashboard() ?? 'null')
+  } catch {
+    raw = null
+  }
+  const dashboard = normaliseDashboard(raw)
+  if (dashboard.widgets.some((w) => w.kind === 'review')) return
+  const widgets = [...dashboard.widgets]
+  // A full-width strip under the capture box, so it is seen in the morning
+  // without breaking whatever row comes after it.
+  const at = widgets.findIndex((w) => w.kind === 'capture')
+  widgets.splice(at + 1, 0, { id: 'w-review', kind: 'review', config: {}, span: 12 })
+  setDashboard(JSON.stringify({ ...dashboard, widgets }))
 }
 
 /** A new Concept, already pointed at the topic `fromPageId` resolves to (if any). */
@@ -1679,6 +1708,102 @@ export function getOrCreateLesson(
   setProperty(page.id, JOURNAL_DATE_KEY, 'date', date)
   setProperty(page.id, TOPIC_KEY, 'relation', topic.id)
   return getPageById(page.id)!
+}
+
+// ============================================================
+// Review — the schedule on each Concept (shared/review.ts has the rules)
+// ============================================================
+
+/** Every Concept with a written Check, as a card, due or not. */
+function allReviewCards(): ReviewCard[] {
+  const conceptType = typeIdByName(CONCEPT_TYPE_NAME)
+  if (!conceptType) return []
+  const rows = getDb()
+    .prepare(
+      `SELECT p.id, p.title, p.content, p.created_at,
+              tp.id AS topic_id, tp.title AS topic_title,
+              st.value_text AS status, iv.value_number AS interval, du.value_date AS due
+         FROM pages p
+         LEFT JOIN properties tr ON tr.page_id = p.id AND tr.key = ? AND tr.type = 'relation'
+         LEFT JOIN pages tp ON tp.id = tr.value_relation AND tp.is_deleted = 0
+         LEFT JOIN properties st ON st.page_id = p.id AND st.key = 'status'
+         LEFT JOIN properties iv ON iv.page_id = p.id AND iv.key = 'interval'
+         LEFT JOIN properties du ON du.page_id = p.id AND du.key = 'due'
+        WHERE p.type_id = ? AND p.is_deleted = 0 AND p.is_locked = 0
+          AND p.id NOT IN (SELECT template_page_id FROM types WHERE template_page_id IS NOT NULL)
+        ORDER BY p.created_at`
+    )
+    .all(TOPIC_KEY, conceptType) as {
+    id: string
+    title: string
+    content: string | null
+    topic_id: string | null
+    topic_title: string | null
+    status: string | null
+    interval: number | null
+    due: string | null
+  }[]
+
+  return rows.flatMap((r) => {
+    const card = checkCardOf(parseDocument(r.content))
+    if (!card) return []
+    return [
+      {
+        pageId: r.id,
+        title: r.title,
+        topicId: r.topic_id,
+        topicTitle: r.topic_title,
+        question: card.question,
+        answer: card.answer,
+        status: r.status,
+        interval: r.interval,
+        due: r.due || null
+      }
+    ]
+  })
+}
+
+/**
+ * What is due by `today`: anything whose `due` has come, oldest first, then
+ * anything never reviewed, oldest written first. A concept enters review the
+ * moment its Check is written.
+ */
+export function getReviewQueue(today: string, topicId: string | null = null): ReviewCard[] {
+  const due = allReviewCards().filter(
+    (c) => (!c.due || c.due <= today) && (topicId === null || c.topicId === topicId)
+  )
+  const scheduled = due.filter((c) => c.due).sort((a, b) => a.due!.localeCompare(b.due!))
+  return [...scheduled, ...due.filter((c) => !c.due)]
+}
+
+export function getReviewCounts(today: string): ReviewCount[] {
+  const counts = new Map<string, ReviewCount>()
+  for (const c of getReviewQueue(today)) {
+    const key = c.topicId ?? ''
+    const entry = counts.get(key) ?? { topicId: c.topicId, topicTitle: c.topicTitle, due: 0 }
+    entry.due++
+    counts.set(key, entry)
+  }
+  return [...counts.values()].sort((a, b) => (a.topicTitle ?? '~').localeCompare(b.topicTitle ?? '~'))
+}
+
+/** Grade one concept and write its next `due`, `interval` and `status`. */
+export function gradeConcept(pageId: string, grade: ReviewGrade, today: string): ReviewCard | null {
+  if (grade !== 'again' && grade !== 'good') throw new Error(`Unknown grade: ${grade}`)
+  const props = getPropertiesForPage(pageId)
+  const next = nextSchedule(
+    {
+      interval: props.find((p) => p.key === 'interval')?.value_number ?? null,
+      status: props.find((p) => p.key === 'status')?.value_text ?? null
+    },
+    grade,
+    today
+  )
+  setProperty(pageId, 'interval', 'number', next.interval)
+  setProperty(pageId, 'due', 'date', next.due)
+  setProperty(pageId, 'status', 'select', next.status)
+  logActivity(pageId, 'review', `reviewed: ${grade}, next in ${next.interval}d`)
+  return allReviewCards().find((c) => c.pageId === pageId) ?? null
 }
 
 // ============================================================

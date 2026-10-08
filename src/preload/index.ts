@@ -36,6 +36,11 @@ const api: NexusAPI = {
     openPage: () => ipcRenderer.invoke('briefing:openPage'),
     addEvent: (text) => ipcRenderer.invoke('briefing:addEvent', text)
   },
+  review: {
+    queue: (today, topicId) => ipcRenderer.invoke('review:queue', today, topicId ?? null),
+    counts: (today) => ipcRenderer.invoke('review:counts', today),
+    grade: (pageId, grade, today) => ipcRenderer.invoke('review:grade', pageId, grade, today)
+  },
   learning: {
     createTopic: (name) => ipcRenderer.invoke('learning:createTopic', name),
     createConcept: (fromPageId) => ipcRenderer.invoke('learning:createConcept', fromPageId),

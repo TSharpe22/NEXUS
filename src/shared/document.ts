@@ -36,7 +36,7 @@ export function parseDocument(content: string | null): unknown[] {
 }
 
 /** The plain text of one block's inline content, mentions included. */
-function blockText(content: unknown): string {
+export function blockText(content: unknown): string {
   if (!Array.isArray(content)) return ''
   let text = ''
   for (const node of content) {

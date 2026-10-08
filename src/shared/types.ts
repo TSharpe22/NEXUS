@@ -233,6 +233,27 @@ export interface NewTopic {
   viewId: string
 }
 
+/** One Concept due for review, with its Check read out of the body. */
+export interface ReviewCard {
+  pageId: string
+  title: string
+  topicId: string | null
+  topicTitle: string | null
+  question: string
+  answer: string
+  status: string | null
+  interval: number | null
+  /** Null for a concept never reviewed. */
+  due: string | null
+}
+
+/** How many concepts are due, per topic (`topicId` null for none). */
+export interface ReviewCount {
+  topicId: string | null
+  topicTitle: string | null
+  due: number
+}
+
 export interface PropertyDefinition {
   id: string
   type_id: string
@@ -506,6 +527,14 @@ export interface NexusAPI {
      * was saved but the push failed; the next sync sends it.
      */
     addEvent(text: string): Promise<{ start: string; end: string | null; title: string; pushed: boolean }>
+  }
+  review: {
+    /** Concepts with a written Check that are due by `today` (or never reviewed), oldest due first. */
+    queue(today: string, topicId?: string | null): Promise<ReviewCard[]>
+    /** Due counts per topic. */
+    counts(today: string): Promise<ReviewCount[]>
+    /** Grade a concept and write its new `due`, `interval` and `status`. */
+    grade(pageId: string, grade: 'again' | 'good', today: string): Promise<ReviewCard | null>
   }
   learning: {
     /** A Topic hub (pinned), its map canvas and its "Concepts: <name>" view. */

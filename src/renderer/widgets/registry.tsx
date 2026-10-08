@@ -16,6 +16,7 @@ import {
   viewWidgetTitle
 } from './builtins'
 import { BriefingWidget } from './briefing'
+import { ReviewWidget } from './review'
 
 /**
  * Every widget Home knows how to draw.
@@ -120,6 +121,20 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     frame: 'panel',
     actions: () => <span className="nx-type-data">untouched 30d+</span>,
     Component: StaleWidget
+  },
+  {
+    kind: 'review',
+    label: 'Due for review',
+    hint: 'Concepts whose Check is due, per topic',
+    defaultSpan: 12,
+    frame: 'panel',
+    title: () => 'Due for review',
+    actions: (ctx) => (
+      <button className="nx-home__link nx-type-data" onClick={() => ctx.goToTracker('review')}>
+        review →
+      </button>
+    ),
+    Component: ReviewWidget
   },
   {
     kind: 'briefing',

@@ -11,6 +11,7 @@ import { Icon } from '../design/Icon'
 import { DueDate } from '../design/DueDate'
 import { Button } from '../design/Button'
 import { HabitGrid } from './HabitGrid'
+import { ReviewSession } from './Review'
 import { isWeekItem as belongsToWeek, loggedByType } from './week'
 import { logTypes, quarterWeeks, weeksOverlapping, type QuarterWeek } from './quarter'
 import './Tracker.css'
@@ -29,7 +30,8 @@ type Mode = TrackerMode
 const MODE_LABELS: Record<Mode, string> = {
   week: 'Week',
   quarter: 'Quarter',
-  habits: 'Habits'
+  habits: 'Habits',
+  review: 'Review'
 }
 
 interface DayBucket {
@@ -323,7 +325,7 @@ export function Tracker() {
   }, [kind, range.from, range.to])
 
   const load = useCallback(async () => {
-    if (mode === 'habits') {
+    if (mode === 'habits' || mode === 'review') {
       setLoading(false)
       return
     }
@@ -468,7 +470,7 @@ export function Tracker() {
     <div className="nx-tracker">
       <div className="nx-tracker__bar">
         <div className="nx-tracker__modes">
-          {(['week', 'quarter', 'habits'] as Mode[]).map((option) => (
+          {(['week', 'quarter', 'habits', 'review'] as Mode[]).map((option) => (
             <button
               key={option}
               className={`nx-tracker__mode ${mode === option ? 'nx-tracker__mode--active' : ''}`}
@@ -483,10 +485,10 @@ export function Tracker() {
         </div>
         {/* The grid carries its own year stepper — one set of arrows meaning
             two different things would be worse than none. */}
-        {mode !== 'habits' && stepper}
+        {mode !== 'habits' && mode !== 'review' && stepper}
       </div>
 
-      {mode !== 'habits' && (
+      {mode !== 'habits' && mode !== 'review' && (
         <div className="nx-tracker__head">
           <div className="nx-type-heading">{range.label}</div>
           <div className="nx-tracker__counts nx-type-data">
@@ -501,7 +503,9 @@ export function Tracker() {
         </Panel>
       )}
 
-      {mode === 'habits' ? (
+      {mode === 'review' ? (
+        <ReviewSession />
+      ) : mode === 'habits' ? (
         <HabitGrid onOpen={openPage} />
       ) : (
         <>

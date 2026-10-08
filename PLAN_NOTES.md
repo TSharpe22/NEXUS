@@ -1,7 +1,7 @@
 # Plan + handoff: the note-taking framework (Topic, Concept, Lesson, review)
 
-> Written 2026-10-07 as the handoff for the next chat. **Step 1 is built**
-> (ROADMAP Wave 9); the open questions are answered at the end.
+> Written 2026-10-07 as the handoff for the next chat. **Steps 1 and 3 are
+> built** (ROADMAP Wave 9); the open questions are answered at the end.
 > It extends `PLAN_Q4_4_5.md` item 4b (the original design) with an
 > architecture and a review loop. Paste the block below to start.
 
@@ -96,7 +96,7 @@ the toggle's content.
 |---|---|---|
 | 1 | Seed Topic / Concept / Lesson types + templates; "New topic" (hub, canvas, view) — **done** | small–medium |
 | 2 | You write the first Spanish topic by hand: ~10 concepts, roots first | yours |
-| 3 | Review surface + the schedule properties | medium |
+| 3 | Review surface + the schedule properties — **done** | medium |
 | 4 | Review logged to the Lesson; `reviewsDue` in the snapshot and briefing | small |
 | 5 | Later: a "builds on" relation, a check-before-build warning (a derived concept whose roots are still new/shaky) | small each |
 
@@ -140,3 +140,20 @@ entry in ROADMAP.md (it would be Wave 9), `npm run typecheck`, then
 - Not built yet: the review surface and schedule logic (step 3), lesson
   logging and the briefing (step 4). `due` and `interval` exist but are
   only set by hand for now.
+
+### What step 3 built
+
+- A concept is reviewed once its **Check** toggle has a real question in it,
+  meaning the first toggle under the "Check" heading, with "Question?"
+  replaced. Never-reviewed concepts are due straight away.
+- **Tracker → Review** for the sitting. **Home → Due for review** is the way
+  in, added automatically by the first "New topic".
+- Rules beyond the plan, decided while building:
+  - A missed card is shown once more at the end of the sitting as practice,
+    and that repeat doesn't change its schedule.
+  - "Three Goods in a row at 16+" means a Good given at 80 days
+    (16 → 35 → 80 → Good).
+  - A shaky concept goes back to `new` once Goods carry it to 7 days.
+- For step 4: the sitting already knows what was reviewed and missed
+  (`ReviewSession` in `src/renderer/views/Review.tsx`). Logging means a
+  call at the end of the sitting into `getOrCreateLesson` for each topic.

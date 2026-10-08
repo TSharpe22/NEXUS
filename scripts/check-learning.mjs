@@ -164,6 +164,111 @@ const orphan = await api(() => window.api.learning.createConcept(null))
 const oProps = await api((id) => window.api.properties.getForPage(id), orphan.id)
 check('with two topics and nothing open, a concept is left unassigned', !val(oProps, 'topic')?.value_relation)
 
+// ================================================================ step 3: review
+console.log('\n— review —')
+const plusDays = (iso, n) => {
+  const [y, m, d] = iso.split('-').map(Number)
+  const t = new Date(y, m - 1, d + n)
+  const p = (k) => String(k).padStart(2, '0')
+  return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())}`
+}
+check('placeholder checks are not reviewed', (await api((d) => window.api.review.queue(d), today)).length === 0)
+
+/** A concept body with a written Check, in the template's shape. */
+const conceptBody = (claim, question, answer) => {
+  const t = (x) => (x ? [{ type: 'text', text: x, styles: {} }] : [])
+  const b = (type, x, extra = {}) => ({ id: crypto.randomUUID(), type, props: {}, content: t(x), children: [], ...extra })
+  return JSON.stringify([
+    b('heading', 'Claim', { props: { level: 2 } }),
+    b('paragraph', claim),
+    b('heading', 'Check', { props: { level: 2 } }),
+    b('toggle', question, { props: { open: false }, children: [b('paragraph', answer)] })
+  ])
+}
+const c3 = await api((id) => window.api.learning.createConcept(id), s.topic.id)
+const spanish = [
+  [c1.id, 'A verb ending names its subject', "In 'hablo', who is speaking?", 'yo (I): the -o ending marks yo'],
+  [c2.id, 'Every noun has a gender', "Is 'la casa' masculine or feminine?", 'Feminine: la marks it'],
+  [c3.id, 'Adjectives follow the noun', "Put 'red' in 'the house': la casa ___", 'roja (la casa roja)']
+]
+for (const [id, title, q, a] of spanish) {
+  await api(([id, title, content]) => window.api.pages.update(id, { title, content }), [id, title, conceptBody(title, q, a)])
+}
+await api(([id, content]) => window.api.pages.update(id, { title: 'Modus ponens', content }), [
+  logicConcept.id,
+  conceptBody('If P then Q; P; so Q', 'If P→Q and P, what follows?', 'Q')
+])
+
+const queue = await api((d) => window.api.review.queue(d), today)
+check('written checks enter review', queue.length === 4, `${queue.length}`)
+check('a card carries its question and answer', queue.some((c) => c.question === "In 'hablo', who is speaking?" && /-o ending/.test(c.answer)))
+check('the scheduled card comes first', queue[0]?.pageId === c1.id)
+const counts = await api((d) => window.api.review.counts(d), today)
+check('counts per topic', counts.find((c) => c.topicTitle === 'Spanish')?.due === 3 && counts.find((c) => c.topicTitle === 'Logic')?.due === 1, JSON.stringify(counts.map((c) => [c.topicTitle, c.due])))
+const onlyLogic = await api(([d, t]) => window.api.review.queue(d, t), [today, logic.page.id])
+check('the queue filters by topic', onlyLogic.length === 1 && onlyLogic[0].pageId === logicConcept.id)
+
+// The ladder, on the Logic concept: Good climbs 1 3 7 16 35 80, Good at 80 is solid.
+const ladder = []
+let last
+for (let i = 0; i < 7; i++) {
+  last = await api(([id, d]) => window.api.review.grade(id, 'good', d), [logicConcept.id, today])
+  ladder.push(`${last.interval}${last.status === 'solid' ? 's' : ''}`)
+}
+check('Good climbs the ladder, solid on the third Good at 16+', ladder.join(',') === '1,3,7,16,35,80,80s', ladder.join(','))
+check('due is today + interval', last.due === plusDays(today, 80), last.due)
+last = await api(([id, d]) => window.api.review.grade(id, 'again', d), [logicConcept.id, today])
+check('Again drops to 1 and marks shaky', last.interval === 1 && last.status === 'shaky' && last.due === plusDays(today, 1))
+last = await api(([id, d]) => window.api.review.grade(id, 'good', d), [logicConcept.id, today])
+check('shaky holds at 3', last.interval === 3 && last.status === 'shaky')
+last = await api(([id, d]) => window.api.review.grade(id, 'good', d), [logicConcept.id, today])
+check('shaky clears to new at 7', last.interval === 7 && last.status === 'new')
+const loggedProps = await api((id) => window.api.properties.getForPage(id), logicConcept.id)
+check('the schedule is written as visible properties',
+  val(loggedProps, 'interval')?.value_number === 7 && val(loggedProps, 'due')?.value_date === plusDays(today, 7))
+
+// ---------------------------------------------------------------- the review, from Home, by keyboard
+const nav = (label) =>
+  page.evaluate((label) => {
+    const item = [...document.querySelectorAll('.nx-nav-item')].find((el) => el.textContent.trim() === label)
+    item?.click()
+    return !!item
+  }, label)
+await nav('Home')
+await sleep(1200)
+if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.SCREENSHOT_DIR, 'review-home.png') })
+const widgetText = await page.evaluate(() => document.querySelector('.nx-home__grid')?.innerText ?? '')
+check('Home shows "Due for review" (added by the first topic)', /Due for review/i.test(widgetText) && /Spanish · 3 due/.test(widgetText), widgetText.slice(0, 200))
+await page.getByRole('button', { name: /Review 3/ }).click()
+await sleep(800)
+check('the widget opens Tracker → Review', (await page.locator('[data-testid="review-card"]').count()) === 1)
+const cardText = () => page.evaluate(() => document.querySelector('[data-testid="review-card"]')?.innerText ?? '')
+check('the question shows, the answer does not', /hablo/.test(await cardText()) && !/-o ending/.test(await cardText()))
+const key = async (k) => {
+  await page.keyboard.press(k)
+  await sleep(350)
+}
+await key('Space')
+check('Space shows the answer', /-o ending/.test(await cardText()))
+if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.SCREENSHOT_DIR, 'review-card.png') })
+await key('2') // c1: Good
+await key('Space')
+await key('1') // c2: Again
+await key('Space')
+await key('2') // c3: Good
+check('a missed card comes back once, for practice', /for practice/.test(await cardText()) && /la casa/.test(await cardText()))
+await key('Space')
+await key('2')
+const doneText = await page.evaluate(() => document.querySelector('.nx-review')?.innerText ?? '')
+check('the sitting ends with what was missed', /Reviewed 3, missed 1/.test(doneText) && /Every noun has a gender/.test(doneText), doneText.slice(0, 120))
+const p1 = await api((id) => window.api.properties.getForPage(id), c1.id)
+const p2 = await api((id) => window.api.properties.getForPage(id), c2.id)
+check('Good wrote interval 1, due tomorrow', val(p1, 'interval')?.value_number === 1 && val(p1, 'due')?.value_date === plusDays(today, 1))
+check('Again wrote shaky', val(p2, 'status')?.value_text === 'shaky')
+check('the practice repeat wrote nothing more', val(p2, 'interval')?.value_number === 1)
+check('nothing left due today', (await api((d) => window.api.review.queue(d), today)).length === 0)
+check('tomorrow, all three Spanish cards are due', (await api((d) => window.api.review.queue(d), plusDays(today, 1))).length === 3)
+
 check('no renderer errors', errors.length === 0, errors.slice(0, 3).join(' | '))
 
 await app.close()
