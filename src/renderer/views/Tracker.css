@@ -365,8 +365,8 @@
 
 .nx-habits__cell--missed,
 .nx-habits__swatch--missed {
-  background: var(--nx-critical-tint);
-  border-color: var(--nx-critical-line);
+  background: var(--nx-habit-missed-tint);
+  border-color: var(--nx-habit-missed-line);
 }
 
 .nx-habits__cell--done,

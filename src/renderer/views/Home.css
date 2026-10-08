@@ -17,7 +17,7 @@
 
 .nx-home__head {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: var(--nx-space-4);
 }
@@ -97,7 +97,9 @@
   display: grid;
   grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: var(--nx-space-5);
-  align-items: start;
+  /* Panels in one row share a height, so a row reads as a row rather than
+     three boxes ending wherever their content happened to. */
+  align-items: stretch;
   margin-top: var(--nx-space-2);
 }
 
@@ -110,6 +112,7 @@
 /* A readable floor rather than a share of the viewport: with an arbitrary
    number of widgets there is no row height to divide up. */
 .nx-home__slot .nx-panel {
+  flex: 1 1 auto;
   min-height: 240px;
   max-height: 460px;
 }
@@ -609,8 +612,8 @@ button.nx-home__entry:hover {
 /* An entry that says no. The one warm-red mark in the strip, at tint
    strength: a verdict you can see, not an alarm. */
 .nx-home__habit-day--missed {
-  background: var(--nx-critical-tint);
-  border-color: var(--nx-critical-line);
+  background: var(--nx-habit-missed-tint);
+  border-color: var(--nx-habit-missed-line);
 }
 
 .nx-home__habit-day:not(:disabled):hover {
@@ -740,6 +743,9 @@ button.nx-home__entry:hover {
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
   align-items: stretch;
+  /* The days run to the bottom of the panel, which its row may make taller
+     than the busiest day. */
+  flex: 1 1 auto;
 }
 
 .nx-home__cal-day {
@@ -957,6 +963,9 @@ button.nx-home__entry:hover {
 .nx-brief__foot {
   display: flex;
   justify-content: flex-end;
+  gap: var(--nx-space-4);
+  margin-top: auto;
+  padding-top: var(--nx-space-3);
 }
 
 .nx-brief__pings {

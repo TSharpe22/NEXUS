@@ -157,6 +157,12 @@ const LABEL_ALL_BELOW = 90
 /** How many of the highest-degree nodes stay labelled in a large graph. */
 const LABELLED_HUBS = 25
 /**
+ * The same two limits inside a Home panel, a third of the area of the full
+ * view: thirty names there already pile into one grey smear.
+ */
+const PANEL_LABEL_ALL_BELOW = 20
+const PANEL_LABELLED_HUBS = 12
+/**
  * Below this zoom, page labels are hidden until hovered. Labels scale with
  * the transform, and at a third of their size they are a grey smear between
  * the dots rather than names. Tag and folder hubs keep theirs: there are few
@@ -408,16 +414,18 @@ export function GraphView({
    * enough of them that the labels stop being readable — past that the
    * best-connected keep theirs and the rest are named on hover.
    */
+  const inPanel = typeof height === 'number'
   const labelled = useMemo(() => {
-    if (pageCount <= LABEL_ALL_BELOW) return null
+    if (pageCount <= (inPanel ? PANEL_LABEL_ALL_BELOW : LABEL_ALL_BELOW)) return null
     return new Set(
       nodes
         .filter((n) => n.kind === 'page')
-        .sort((a, b) => b.degree - a.degree)
-        .slice(0, LABELLED_HUBS)
+        // Ties (a vault with few links is all ties) go to what was touched last.
+        .sort((a, b) => b.degree - a.degree || (b.updated_at ?? '').localeCompare(a.updated_at ?? ''))
+        .slice(0, inPanel ? PANEL_LABELLED_HUBS : LABELLED_HUBS)
         .map((n) => n.id)
     )
-  }, [nodes, pageCount])
+  }, [nodes, pageCount, inPanel])
 
   /** Adjacency, used to light up everything related to the hovered node. */
   const neighbours = useMemo(() => {

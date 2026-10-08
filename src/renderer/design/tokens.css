@@ -57,6 +57,10 @@
   /* A hairline in a status colour: the edge of a tinted mark (a missed habit
      day, an upcoming event) — present, but not at full strength. */
   --nx-critical-line: rgba(217, 96, 79, 0.45);
+  /* A missed habit day: the critical hue at a whisper. It's a record, not an
+     error, and a strip of them shouldn't read as a row of alarms. */
+  --nx-habit-missed-tint: rgba(217, 96, 79, 0.05);
+  --nx-habit-missed-line: rgba(217, 96, 79, 0.24);
 
   /* Accent — emerald, kept as the identity but spent sparingly: selection,
      links, focus, and the wordmark. Not on every label. oklch(71% 0.098 158),
