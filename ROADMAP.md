@@ -441,6 +441,20 @@ to the Lesson, `reviewsDue` in the briefing) is next.
 
 ## Next — queued, in no fixed order
 
+**Home: rows of unequal content.** Wave 10 made panels in a row share a
+height. Next to a tall widget (the graph at M is 460px), a short one stretches
+to match: the Calendar's seven day columns become long empty bars, and Pinned
+is a box of space under three lines. Equal heights are the right rule; the
+fix is filling the space, not undoing the rule. Options, in order of
+preference:
+- Let a short widget stack: a Home "column" slot, so Calendar and something
+  beneath it (Pinned, Due for review, Stale) share the graph's height.
+- Give the Calendar something worth the height: an hour grid (08–22) so
+  events sit at their times, which only reads at that height anyway.
+- Per-widget "natural height" opt-out (`align-self: start`) for widgets that
+  should never stretch, as a fallback.
+Screenshot from 2026-10-07: graph M + Calendar + Pinned row.
+
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
 a freehand lasso; every card whose centre lies inside is selected, and
 Ctrl/Shift adds to the selection rather than replacing it. Panning stays
