@@ -226,6 +226,13 @@ export interface TypeDef {
   folder_id?: string | null
 }
 
+/** What "New topic" made: the hub page, its map canvas and its concepts view. */
+export interface NewTopic {
+  page: Page
+  canvasId: string
+  viewId: string
+}
+
 export interface PropertyDefinition {
   id: string
   type_id: string
@@ -499,6 +506,14 @@ export interface NexusAPI {
      * was saved but the push failed; the next sync sends it.
      */
     addEvent(text: string): Promise<{ start: string; end: string | null; title: string; pushed: boolean }>
+  }
+  learning: {
+    /** A Topic hub (pinned), its map canvas and its "Concepts: <name>" view. */
+    createTopic(name: string): Promise<NewTopic>
+    /** A Concept, its topic taken from `fromPageId` (or the only topic there is). */
+    createConcept(fromPageId: string | null): Promise<Page>
+    /** Today's Lesson for the topic `fromPageId` resolves to, made if absent. */
+    openLesson(fromPageId: string | null): Promise<Page>
   }
   quarter: {
     /** The page for the quarter holding `date`, or null — creates nothing. */

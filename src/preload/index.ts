@@ -36,6 +36,11 @@ const api: NexusAPI = {
     openPage: () => ipcRenderer.invoke('briefing:openPage'),
     addEvent: (text) => ipcRenderer.invoke('briefing:addEvent', text)
   },
+  learning: {
+    createTopic: (name) => ipcRenderer.invoke('learning:createTopic', name),
+    createConcept: (fromPageId) => ipcRenderer.invoke('learning:createConcept', fromPageId),
+    openLesson: (fromPageId) => ipcRenderer.invoke('learning:openLesson', fromPageId)
+  },
   quarter: {
     peek: (date) => ipcRenderer.invoke('quarter:peek', date),
     open: (date) => ipcRenderer.invoke('quarter:open', date)

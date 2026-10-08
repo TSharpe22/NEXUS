@@ -1,6 +1,7 @@
 # Plan + handoff: the note-taking framework (Topic, Concept, Lesson, review)
 
-> Written 2026-10-07 as the handoff for the next chat. Nothing here is built.
+> Written 2026-10-07 as the handoff for the next chat. **Step 1 is built**
+> (ROADMAP Wave 9); the open questions are answered at the end.
 > It extends `PLAN_Q4_4_5.md` item 4b (the original design) with an
 > architecture and a review loop. Paste the block below to start.
 
@@ -93,7 +94,7 @@ the toggle's content.
 
 | # | Step | Size |
 |---|---|---|
-| 1 | Seed Topic / Concept / Lesson types + templates; "New topic" (hub, canvas, view) | small–medium |
+| 1 | Seed Topic / Concept / Lesson types + templates; "New topic" (hub, canvas, view) — **done** | small–medium |
 | 2 | You write the first Spanish topic by hand: ~10 concepts, roots first | yours |
 | 3 | Review surface + the schedule properties | medium |
 | 4 | Review logged to the Lesson; `reviewsDue` in the snapshot and briefing | small |
@@ -114,3 +115,28 @@ entry in ROADMAP.md (it would be Wave 9), `npm run typecheck`, then
    lesson, or both?
 4. **Review where:** a Home widget, a Tracker mode, or both?
 5. **Grades:** Again / Good only (recommended), or Again / Hard / Good / Easy?
+
+### Answers (2026-10-07)
+
+1. **`learn`:** go without it. Item 4b's summary is the method.
+2. **Subjects:** Spanish should be ready to go, and the framework should
+   work for any subject. So the types are generic, and a topic is made by
+   name ("New topic").
+3. **Lesson:** both. Any study session is a Lesson. A Pimsleur one fills
+   the `source` property (e.g. "Pimsleur 1-07").
+4. **Review where:** both. A Home widget "Due for review (N)" and a Tracker
+   mode, sharing one review component.
+5. **Grades:** Again / Good (the default, not pushed back on).
+
+### What step 1 built (and how to use it)
+
+- ⌘K, type **Spanish**, pick **New topic "Spanish"**. This makes the
+  pinned hub, the canvas "Spanish — map", and the view "Concepts: Spanish".
+- With the hub (or any Spanish concept) open: ⌘K → **New concept** opens a
+  Concept already set to Spanish, status new, kind derived. Change kind to
+  `truth` for roots. ⌘K → **Today's lesson** opens (or makes)
+  "Spanish — <date>".
+- With only one topic in the vault, both work from anywhere.
+- Not built yet: the review surface and schedule logic (step 3), lesson
+  logging and the briefing (step 4). `due` and `interval` exist but are
+  only set by hand for now.

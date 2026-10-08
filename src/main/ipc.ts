@@ -180,6 +180,33 @@ export function registerIpcHandlers(): void {
       rethrow('week:open', e)
     }
   })
+  ipcMain.handle('learning:createTopic', (_, name: string) => {
+    try {
+      const made = repo.createTopic(name)
+      mirror.scheduleSync(made.page.id)
+      return made
+    } catch (e) {
+      rethrow('learning:createTopic', e)
+    }
+  })
+  ipcMain.handle('learning:createConcept', (_, fromPageId: string | null) => {
+    try {
+      const page = repo.createConcept(fromPageId ?? null)
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('learning:createConcept', e)
+    }
+  })
+  ipcMain.handle('learning:openLesson', (_, fromPageId: string | null) => {
+    try {
+      const page = repo.getOrCreateLesson(fromPageId ?? null)
+      mirror.scheduleSync(page.id)
+      return page
+    } catch (e) {
+      rethrow('learning:openLesson', e)
+    }
+  })
   ipcMain.handle('quarter:peek', (_, date: string) => {
     try {
       return repo.getQuarterPage(date)

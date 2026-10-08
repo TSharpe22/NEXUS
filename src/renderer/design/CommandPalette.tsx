@@ -4,6 +4,8 @@ import Fuse from 'fuse.js'
 import { useAppStore, VIEW_META, VIEW_ORDER, type View } from '../store/app-store'
 import { useSearch } from '../hooks/use-search'
 import { SearchHighlight } from './SearchHighlight'
+import toast from 'react-hot-toast'
+import { ipcMessage } from '../ipc-error'
 import './CommandPalette.css'
 
 const VIEWS: { view: View; label: string }[] = VIEW_ORDER.map((view) => ({
@@ -34,6 +36,9 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const createPage = useAppStore((s) => s.createPage)
   const canvases = useAppStore((s) => s.canvases)
   const openCanvas = useAppStore((s) => s.openCanvas)
+  const createTopic = useAppStore((s) => s.createTopic)
+  const createConcept = useAppStore((s) => s.createConcept)
+  const openLesson = useAppStore((s) => s.openLesson)
 
   /**
    * The palette searches what pages *say*, not only what they are called.
@@ -124,6 +129,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     onClose()
   }
 
+  /** The learning actions can refuse (no topic yet, a name taken); say why. */
+  const attempt = (fn: () => Promise<unknown>) =>
+    select(() => void fn().catch((e) => toast(ipcMessage(e))))
+
+  const topicName = query.trim()
+
   return (
     <div className="nx-palette-backdrop" onClick={onClose}>
       <div className="nx-palette" onClick={(e) => e.stopPropagation()}>
@@ -186,6 +197,21 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
               <Command.Item value="action-new" onSelect={() => select(() => createPage())}>
                 New page
                 <span className="nx-palette__hint">⌘N</span>
+              </Command.Item>
+              <Command.Item
+                value="action-new-topic"
+                disabled={!topicName}
+                onSelect={() => attempt(() => createTopic(topicName))}
+              >
+                {topicName ? `New topic "${topicName}"` : 'New topic: type its name above'}
+              </Command.Item>
+              <Command.Item value="action-new-concept" onSelect={() => attempt(createConcept)}>
+                New concept
+                <span className="nx-palette__hint">in the open topic</span>
+              </Command.Item>
+              <Command.Item value="action-lesson" onSelect={() => attempt(openLesson)}>
+                Today's lesson
+                <span className="nx-palette__hint">for the open topic</span>
               </Command.Item>
             </Command.Group>
           </Command.List>

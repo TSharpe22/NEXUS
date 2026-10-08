@@ -26,6 +26,7 @@ import type {
   ViewSort
 } from '@shared/views'
 import type {
+  NewTopic,
   Page,
   Property,
   PropertyType,
@@ -1376,6 +1377,311 @@ export function getOrCreateQuarterPage(date: string): Page {
 }
 
 // ============================================================
+// Learning — Topic, Concept and Lesson (PLAN_NOTES.md)
+//
+// A topic is a dependency graph of small ideas. A Concept is one idea: a
+// truth accepted as given, or derived from the concepts it builds on, with a
+// check to answer before anything is built on it. A Lesson is one study
+// session (your own or a Pimsleur one), dated so it shows in the Tracker.
+// Nothing here is created until the first "New topic".
+// ============================================================
+
+const TOPIC_TYPE_NAME = 'Topic'
+const CONCEPT_TYPE_NAME = 'Concept'
+const LESSON_TYPE_NAME = 'Lesson'
+/** The relation from a Concept or a Lesson to its Topic. */
+const TOPIC_KEY = 'topic'
+
+/** One inline run of text, in the shape BlockNote round-trips. */
+const textRun = (t: string): Record<string, unknown> => ({ type: 'text', text: t, styles: {} })
+
+/** The Check: the question is the toggle's line, the answer hides inside it. */
+function checkToggle(): Record<string, unknown> {
+  const toggle = block('toggle', 'Question?')
+  ;(toggle.props as Record<string, unknown>).open = false
+  toggle.children = [block('paragraph', 'Answer')]
+  return toggle
+}
+
+/** A table with a header row and one empty row, for the Lesson's vocabulary. */
+function vocabularyTable(headers: string[]): Record<string, unknown> {
+  const table = block('table', '')
+  table.props = { textColor: 'default' }
+  table.content = {
+    type: 'tableContent',
+    columnWidths: headers.map(() => undefined),
+    headerRows: 1,
+    rows: [{ cells: headers.map((h) => [textRun(h)]) }, { cells: headers.map(() => []) }]
+  }
+  return table
+}
+
+/**
+ * A learning type made once, filed under `parent / folder`, with its
+ * properties and a template carrying `defaults` as property values. The same
+ * lazy setup as the week's; after it runs everything is the user's to change.
+ */
+function ensureLearningType(
+  name: string,
+  parent: string,
+  folder: string,
+  properties: [string, PropertyType][],
+  body: Record<string, unknown>[],
+  defaults: [string, PropertyType, string][]
+): string {
+  const db = getDb()
+  let type = db.prepare('SELECT * FROM types WHERE name = ?').get(name) as TypeDef | undefined
+  if (!type) {
+    type = createType(name)
+    setTypeFolder(type.id, folderUnder(folder, folderUnder(parent, null).id).id)
+  }
+
+  const have = new Set(getPropertyDefinitions(type.id).map((d) => d.key))
+  for (const [propName, propType] of properties) {
+    if (!have.has(slugify(propName))) defineProperty(type.id, propName, propType)
+  }
+
+  if (!getTypeTemplate(type.id)) {
+    const templates = findFolderByName(TEMPLATES_FOLDER_NAME) ?? createFolder(TEMPLATES_FOLDER_NAME, null)
+    const templateId = uuidv4()
+    const ts = now()
+    db.prepare(
+      `INSERT INTO pages (id, type_id, title, content, folder_id, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(templateId, type.id, `${name} template`, JSON.stringify(body), templates.id, ts, ts)
+    // Defaults ride on the template, so a new Concept starts `new` and a new
+    // Lesson starts not done. The template has no topic and no date, which
+    // keeps it out of every topic's view and out of the Tracker.
+    for (const [key, propType, value] of defaults) setProperty(templateId, key, propType, value)
+    reindexPage(templateId)
+    setTypeTemplate(type.id, templateId)
+  }
+
+  return type.id
+}
+
+function ensureTopicSetup(): string {
+  return ensureLearningType(
+    TOPIC_TYPE_NAME,
+    'Notes',
+    'Topics',
+    [
+      ['Goal', 'text'],
+      ['Status', 'select']
+    ],
+    [
+      block('heading', 'Goal, in your words', 2),
+      block('paragraph', ''),
+      block('heading', 'Roots', 2),
+      block('bulletListItem', ''),
+      block('heading', 'The map', 2),
+      block('paragraph', ''),
+      block('heading', 'Concepts', 2),
+      block('paragraph', ''),
+      block('heading', 'Open questions', 2),
+      block('bulletListItem', '')
+    ],
+    [['status', 'select', 'active']]
+  )
+}
+
+function ensureConceptSetup(): string {
+  return ensureLearningType(
+    CONCEPT_TYPE_NAME,
+    'Notes',
+    'Concepts',
+    [
+      ['Topic', 'relation'],
+      ['Kind', 'select'],
+      ['Status', 'select'],
+      ['Due', 'date'],
+      ['Interval', 'number']
+    ],
+    [
+      block('heading', 'Claim', 2),
+      block('paragraph', ''),
+      block('heading', 'Why it has to be so', 2),
+      block('paragraph', ''),
+      block('heading', 'Builds on', 2),
+      block('paragraph', ''),
+      block('heading', 'Examples', 2),
+      block('bulletListItem', ''),
+      block('heading', 'Check', 2),
+      checkToggle()
+    ],
+    [
+      ['kind', 'select', 'derived'],
+      ['status', 'select', 'new']
+    ]
+  )
+}
+
+function ensureLessonSetup(): string {
+  return ensureLearningType(
+    LESSON_TYPE_NAME,
+    'Logs',
+    'Lessons',
+    [
+      ['Date', 'date'],
+      ['Topic', 'relation'],
+      ['Done', 'boolean'],
+      ['Source', 'text']
+    ],
+    [
+      block('heading', 'Covered', 2),
+      block('bulletListItem', ''),
+      block('heading', 'Missed in checks', 2),
+      block('bulletListItem', ''),
+      block('heading', 'Next', 2),
+      block('bulletListItem', ''),
+      block('heading', 'Vocabulary', 2),
+      vocabularyTable(['Word', 'Meaning', 'Note'])
+    ],
+    [['done', 'boolean', 'false']]
+  )
+}
+
+function typeIdByName(name: string): string | null {
+  const row = getDb().prepare('SELECT id FROM types WHERE name = ?').get(name) as { id: string } | undefined
+  return row?.id ?? null
+}
+
+/** Live pages of a type, templates left out. */
+function livePagesOfType(typeId: string): Page[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM pages
+        WHERE type_id = ? AND is_deleted = 0
+          AND id NOT IN (SELECT template_page_id FROM types WHERE template_page_id IS NOT NULL)
+        ORDER BY title COLLATE NOCASE`
+    )
+    .all(typeId) as Page[]
+}
+
+/**
+ * The topic a new concept or lesson belongs to, read from where you are: the
+ * Topic page itself, or any page whose `topic` names one. With nothing open
+ * and a single topic in the vault, that one, so "New concept" just works
+ * while Spanish is the only subject.
+ */
+export function resolveTopic(fromPageId: string | null): Page | null {
+  const topicType = typeIdByName(TOPIC_TYPE_NAME)
+  if (!topicType) return null
+  if (fromPageId) {
+    const page = getPageById(fromPageId)
+    if (page && !page.is_deleted && page.type_id === topicType) return page
+    const rel = getPropertiesForPage(fromPageId).find((p) => p.key === TOPIC_KEY)?.value_relation
+    const topic = rel ? getPageById(rel) : null
+    if (topic && !topic.is_deleted) return topic
+  }
+  const all = livePagesOfType(topicType)
+  return all.length === 1 ? all[0] : null
+}
+
+/** Write `line` into the first empty paragraph under the heading `heading`. */
+function fillUnderHeading(content: string, heading: string, line: string): string {
+  const blocks = parseDocument(content) as Record<string, unknown>[]
+  const plain = (b: Record<string, unknown>): string =>
+    Array.isArray(b.content) ? (b.content as { text?: string }[]).map((c) => c.text ?? '').join('') : ''
+  const at = blocks.findIndex((b) => b.type === 'heading' && plain(b).trim() === heading)
+  if (at < 0) return content
+  const target = blocks[at + 1]
+  if (!target || target.type !== 'paragraph' || plain(target).trim() !== '') return content
+  target.content = [textRun(line)]
+  return JSON.stringify(blocks)
+}
+
+/**
+ * A new topic: its hub page (pinned), a canvas for its map with the hub on
+ * it, and a saved view of its concepts. The concept and lesson types are set
+ * up at the same time, so the next "New concept" has somewhere to go.
+ */
+export function createTopic(name: string): NewTopic {
+  const title = name.trim()
+  if (!title) throw new Error('A topic needs a name')
+  const topicType = ensureTopicSetup()
+  const conceptType = ensureConceptSetup()
+  ensureLessonSetup()
+
+  const existing = livePagesOfType(topicType).find((p) => p.title.toLowerCase() === title.toLowerCase())
+  if (existing) throw new Error(`There is already a topic called "${existing.title}"`)
+
+  const page = createPage(topicType)
+  setPagePinned(page.id, true)
+
+  const canvasTitle = `${title} — map`
+  const canvas = createCanvas(canvasTitle)
+  updateCanvas(canvas.id, {
+    content: serializeCanvas({
+      version: 1,
+      nodes: [{ id: uuidv4(), type: 'page', pageId: page.id, x: 0, y: 0, width: 320, height: 220, color: 'accent' }],
+      edges: []
+    })
+  })
+
+  const viewName = `Concepts: ${title}`
+  const view = createView({
+    name: viewName,
+    layout: 'table',
+    filter: {
+      op: 'and',
+      of: [
+        { field: { kind: 'type' }, cmp: 'is', value: conceptType },
+        { field: { kind: 'property', key: TOPIC_KEY }, cmp: 'is', value: page.id }
+      ]
+    },
+    sort: [{ field: { kind: 'title' }, direction: 'asc' }]
+  })
+
+  let content = getPageById(page.id)!.content ?? '[]'
+  content = fillUnderHeading(content, 'The map', `The canvas "${canvasTitle}" (⌘K to open it).`)
+  content = fillUnderHeading(content, 'Concepts', `The view "${viewName}", and the backlinks below.`)
+  updatePage(page.id, { title, content })
+
+  return { page: getPageById(page.id)!, canvasId: canvas.id, viewId: view.id }
+}
+
+/** A new Concept, already pointed at the topic `fromPageId` resolves to (if any). */
+export function createConcept(fromPageId: string | null): Page {
+  const conceptType = ensureConceptSetup()
+  const topic = resolveTopic(fromPageId)
+  const page = createPage(conceptType)
+  if (topic) setProperty(page.id, TOPIC_KEY, 'relation', topic.id)
+  return getPageById(page.id)!
+}
+
+/**
+ * The day's Lesson for the topic `fromPageId` resolves to, made from the
+ * Lesson template if absent. One per topic per day: the review loop (step 4)
+ * logs into it, so it has to be findable rather than made twice.
+ */
+export function getOrCreateLesson(
+  fromPageId: string | null,
+  date: string = logicalDateISO(getDayStartHour())
+): Page {
+  const topic = resolveTopic(fromPageId)
+  if (!topic) throw new Error('Open a topic (or one of its concepts) first')
+  const lessonType = ensureLessonSetup()
+
+  const existing = getDb()
+    .prepare(
+      `SELECT p.* FROM pages p
+         JOIN properties d ON d.page_id = p.id AND d.key = ? AND d.value_date = ?
+         JOIN properties t ON t.page_id = p.id AND t.key = ? AND t.value_relation = ?
+        WHERE p.type_id = ? AND p.is_deleted = 0
+        LIMIT 1`
+    )
+    .get(JOURNAL_DATE_KEY, date, TOPIC_KEY, topic.id, lessonType) as Page | undefined
+  if (existing) return existing
+
+  const page = createPage(lessonType)
+  updatePage(page.id, { title: `${topic.title} — ${date}` })
+  setProperty(page.id, JOURNAL_DATE_KEY, 'date', date)
+  setProperty(page.id, TOPIC_KEY, 'relation', topic.id)
+  return getPageById(page.id)!
+}
+
+// ============================================================
 // Settings (key/value) and the vault-mirror manifest
 // ============================================================
 
@@ -1896,6 +2202,9 @@ export function getDatedPagesInRange(from: string, to: string): DatedPage[] {
          LEFT JOIN types t ON t.id = p.type_id
          LEFT JOIN properties d ON d.page_id = p.id AND d.key = 'done' AND d.type = 'boolean'
         WHERE pr.type = 'date' AND pr.value_date BETWEEN ? AND ?
+          -- A Concept's review date is a schedule, not a log: due concepts
+          -- have their own Review surface and would bury the week otherwise.
+          AND NOT (t.name = 'Concept' AND pr.key = 'due')
         ORDER BY pr.value_date, p.title`
     )
     .all(from, to) as {

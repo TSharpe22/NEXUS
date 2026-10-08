@@ -22,6 +22,7 @@
     "check:files": "node scripts/check-files.mjs",
     "check:lock": "node scripts/check-lock.mjs",
     "check:calendar": "node scripts/check-calendar.mjs",
+    "check:learning": "electron-vite build && xvfb-run -a node scripts/check-learning.mjs",
     "check:phone": "electron-vite build && xvfb-run -a node scripts/check-phone.mjs"
   },
   "dependencies": {

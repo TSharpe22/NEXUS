@@ -182,6 +182,14 @@ interface AppState {
   openWeek: (date: string) => Promise<Page>
   /** Open the page for the quarter holding `date`, making it from the Quarter template if needed. */
   openQuarter: (date: string) => Promise<Page>
+  /** Refresh, reveal and open a page main just made — what every "open X" here does. */
+  showMadePage: (page: Page) => Promise<Page>
+  /** Make a Topic hub with its canvas and concepts view, and open it. */
+  createTopic: (name: string) => Promise<Page>
+  /** Make a Concept under the topic of the open page (or the only topic), and open it. */
+  createConcept: () => Promise<Page>
+  /** Open today's Lesson for the topic of the open page (or the only topic). */
+  openLesson: () => Promise<Page>
   duplicatePage: (id: string) => Promise<Page>
   /** Pin a page to Home, or unpin it. */
   setPagePinned: (id: string, pinned: boolean) => Promise<void>
@@ -438,6 +446,34 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   openQuarter: async (date) => {
     const page = await window.api.quarter.open(date)
+    await get().refresh()
+    revealFolder(page.folder_id)
+    set((state) => ({
+      activeView: 'notes',
+      activePageId: page.id,
+      pageContent: { ...state.pageContent, [page.id]: page.content }
+    }))
+    void get().loadPageTags(page.id)
+    return page
+  },
+
+  createTopic: async (name) => {
+    const { page } = await window.api.learning.createTopic(name)
+    await Promise.all([get().refreshViews(), get().refreshCanvases()])
+    return get().showMadePage(page)
+  },
+
+  createConcept: async () => {
+    const page = await window.api.learning.createConcept(get().activePageId)
+    return get().showMadePage(page)
+  },
+
+  openLesson: async () => {
+    const page = await window.api.learning.openLesson(get().activePageId)
+    return get().showMadePage(page)
+  },
+
+  showMadePage: async (page) => {
     await get().refresh()
     revealFolder(page.folder_id)
     set((state) => ({

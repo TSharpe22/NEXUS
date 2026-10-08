@@ -386,6 +386,26 @@ Nexus's half of the Exec-Bot (`~/Desktop/exec-bot`, plan in its
   `calendar/feed.ics` at a secret link that Proton and Nexus subscribe to.
   Proton refreshes about every 16 h; Nexus every 10 min. Needs `python3`.
 
+## Wave 9 — learning: Topic, Concept, Lesson (step 1 shipped)
+
+Plan in `PLAN_NOTES.md`. Step 1 is built; the review loop is next.
+
+- **Three types, seeded lazily** on the first "New topic" (`repo.ts`,
+  "Learning"): **Topic** in Notes / Topics (goal, status), **Concept** in
+  Notes / Concepts (topic → Topic, kind truth/derived, status
+  new/shaky/solid, due, interval), **Lesson** in Logs / Lessons (date,
+  topic, done, source). Each has a template in Templates; a Concept starts
+  `new` / `derived`, a Lesson not done. The Concept's **Check** is a closed
+  toggle, with the answer inside it. The Lesson has a vocabulary table.
+- **⌘K → "New topic "<typed name>""** makes the hub (pinned), a canvas
+  "<name> — map" with the hub on it, and a table view "Concepts: <name>".
+  **"New concept"** and **"Today's lesson"** take the topic from the open
+  page (the hub, or anything whose `topic` names it), or the only topic
+  there is. One Lesson per topic per day.
+- A Concept's `due` is kept out of the Tracker's dated pages. It's a
+  schedule, and the Review surface (step 3) shows it.
+- `scripts/check-learning.mjs` (`npm run check:learning`).
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
@@ -413,8 +433,8 @@ in the v1 migration and leaves them out of `KNOWN_BLOCK_TYPES`; both change.
 **A note-taking framework.** The rest of item 4: Topic, Concept and Lesson
 types with templates, in which the learn-repo method is written by hand
 (Spanish first), then a review loop (spaced repetition on each Concept's
-Check). There's no AI teaching unless asked. **Next up:** the plan and
-handoff are in `PLAN_NOTES.md` (design origin: `PLAN_Q4_4_5.md` 4b).
+Check). There's no AI teaching unless asked. Step 1 shipped as Wave 9;
+**next up** is step 3, the review surface (`PLAN_NOTES.md`).
 
 ## Future — an encrypted vault
 
