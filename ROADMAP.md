@@ -422,6 +422,23 @@ to the Lesson, `reviewsDue` in the briefing) is next.
 - `scripts/check-learning.mjs` (`npm run check:learning`). It also checks the
   ladder and a keyboard sitting.
 
+## Wave 10 — Home tidy and the lock screen (shipped)
+
+- **Home**: panels in a row end at one height; calendar times are 24-hour
+  ("17:00") so a day column stays one line wide and the days fill their
+  panel; the graph panel labels only its 12 most-linked (then most recent)
+  pages; briefing links spaced; missed habit days a softer red
+  (`--nx-habit-missed-*`). `scripts/probes/home-tidy.mjs` shoots Home with
+  the real layout.
+- **Lock screen**: the Cortex mesh (`design/LockBackdrop.tsx`) behind a slim
+  "NEXUS + password" strip at the bottom (Enter unlocks) and the Nietzsche
+  quote bottom left. `scripts/probes/lock-look.mjs` checks it moves at 60 fps.
+- **The gallery** of the other scenes lives in `scripts/probes`
+  (`lock-gallery.html`, `lock-new.html`, `LOCK_SCREEN_NOTES.md`): city maps
+  from real OSM + elevation data (`scripts/city-data.py`), exploded 3D
+  models (downloads stripped by `scripts/strip-glb.py`). **Next**: a scene
+  pool in the app that rotates each lock, from the keep list in the notes.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

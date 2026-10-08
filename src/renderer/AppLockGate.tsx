@@ -3,7 +3,7 @@ import type { AppLockStatus } from '@shared/types'
 import { flushPendingWrites } from './pending-writes'
 import { ipcMessage } from './ipc-error'
 import { useAppStore } from './store/app-store'
-import { Button } from './design/Button'
+import { LockBackdrop } from './design/LockBackdrop'
 import './AppLockGate.css'
 
 /**
@@ -145,6 +145,7 @@ function LockScreen({ status, onUnlocked }: { status: AppLockStatus; onUnlocked:
 
   return (
     <div className="nx-applock">
+      <LockBackdrop />
       <form
         className="nx-applock__panel"
         onSubmit={(e) => {
@@ -153,25 +154,26 @@ function LockScreen({ status, onUnlocked }: { status: AppLockStatus; onUnlocked:
         }}
       >
         <div className="nx-applock__logo">NEXUS</div>
-        <div className="nx-type-label">Locked</div>
         <input
           ref={inputRef}
           className="nx-applock__input"
           type="password"
-          placeholder="Password"
+          placeholder={busy ? 'Unlocking…' : 'Password'}
           aria-label="Password"
           autoComplete="current-password"
           value={password}
           disabled={busy}
           onChange={(e) => setPassword(e.target.value)}
         />
-        <Button type="submit" disabled={!password || busy}>
-          {busy ? 'Unlocking…' : 'Unlock'}
-        </Button>
         <div className={`nx-applock__message nx-type-data ${error ? 'is-error' : ''}`} role="status">
-          {error ?? (status.retryInMs > 0 ? 'Too many attempts. Wait a moment.' : ' ')}
+          {error ?? (status.retryInMs > 0 ? 'Too many attempts. Wait a moment.' : '')}
         </div>
       </form>
+      <blockquote className="nx-applock__quote">
+        You must be ready to burn yourself in your own flame; how could you become new if you have not first become
+        ashes?
+        <cite>Nietzsche · Thus Spoke Zarathustra</cite>
+      </blockquote>
     </div>
   )
 }

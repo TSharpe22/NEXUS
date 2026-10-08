@@ -1,0 +1,950 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lock Screen Gallery</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="models/fnx-45.js"></script>
+<script src="models/mcx.js"></script>
+<script src="cities/buenos-aires.js"></script>
+<script src="cities/medellin.js"></script>
+
+<style>
+  :root {
+    --bg: #0f110f;
+    --surface: rgba(21, 25, 23, 0.78);
+    --accent: #69b48a;
+    --accent-line: rgba(105, 180, 138, 0.55);
+    --text: #e6e8e6;
+    --dim: #717672;
+    --border: #222824;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); overflow: hidden; }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #gl { z-index: 0; }
+  #c { z-index: 1; }
+  .bar {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 5;
+    display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: center;
+    font: 11px "IBM Plex Mono", monospace; max-width: calc(100% - 32px);
+  }
+  .bar button {
+    background: rgba(15, 17, 15, 0.85); color: var(--dim); border: 1px solid var(--border);
+    border-radius: 3px; padding: 5px 10px; cursor: pointer; font: inherit; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .bar button.on { color: var(--text); border-color: var(--accent-line); background: rgba(105, 180, 138, 0.1); }
+  .bar .sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+  /* The unlock box, in each of the layouts on trial. */
+  .panel {
+    position: fixed; z-index: 3; width: 280px; padding: 24px; display: flex; flex-direction: column; gap: 12px; box-sizing: border-box;
+    border: 1px solid var(--accent-line); border-radius: 4px; background: var(--surface);
+    backdrop-filter: blur(8px); box-shadow: 0 0 40px rgba(105, 180, 138, 0.08);
+    transition: all 400ms ease;
+  }
+  .panel .logo { font: 600 15px "IBM Plex Mono", monospace; letter-spacing: 0.18em; color: var(--accent); }
+  .panel .label { font: 600 10.5px "IBM Plex Mono", monospace; letter-spacing: 0.04em; text-transform: uppercase; color: var(--dim); }
+  .panel .input { height: 34px; border: 1px solid #2d342f; border-radius: 2px; background: #0b0c0b; }
+  .panel .btn { height: 28px; border-radius: 2px; background: var(--accent); color: #0b0c0b; font: 13px "Chakra Petch", sans-serif; display: flex; align-items: center; padding-left: 10px; }
+
+  .quote {
+    position: fixed; z-index: 2; max-width: 560px; font: 13.5px/1.65 "IBM Plex Mono", monospace; color: rgba(105, 180, 138, 0.78);
+    animation: quote 32s ease-in-out infinite; transition: all 400ms ease; pointer-events: none;
+  }
+  .quote small { display: block; margin-top: 8px; font-size: 10.5px; letter-spacing: 0.08em; color: rgba(105, 180, 138, 0.45); }
+  @keyframes quote { 0% { opacity: 0 } 7% { opacity: 1 } 85% { opacity: 1 } 95%, 100% { opacity: 0 } }
+
+  /* centre: the box in the middle, the quote low beneath everything. */
+  body[data-layout='center'] .panel { left: 50%; top: 50%; transform: translate(-50%, -50%); }
+  body[data-layout='center'] .quote { left: 50%; bottom: 64px; transform: translateX(-50%); text-align: center; }
+  /* right rail: box and quote stacked on the right, the visual shifted left. */
+  body[data-layout='right'] .panel { right: 7%; top: 50%; transform: translateY(-50%); }
+  body[data-layout='right'] .quote { right: 7%; top: calc(50% + 130px); max-width: 300px; text-align: left; }
+  /* left rail: the mirror image. */
+  body[data-layout='left'] .panel { left: 7%; top: 50%; transform: translateY(-50%); }
+  body[data-layout='left'] .quote { left: 7%; top: calc(50% + 130px); max-width: 300px; text-align: left; }
+  /* low: box near the bottom edge, quote along the top under the HUD. */
+  body[data-layout='low'] .panel { left: 50%; bottom: 72px; transform: translateX(-50%); }
+  body[data-layout='low'] .quote { left: 50%; top: 92px; transform: translateX(-50%); text-align: center; max-width: 720px; }
+  /* corner: a small box bottom right, quote bottom left, the whole screen to the visual. */
+  body[data-layout='corner'] .panel { right: 56px; bottom: 64px; width: 240px; padding: 18px; }
+  body[data-layout='corner'] .quote { left: 56px; bottom: 64px; max-width: 420px; text-align: left; }
+  /* Minimal: one slim strip, the name and the field. Enter unlocks. */
+  body[data-layout^='min'] .panel { width: 320px; padding: 9px 12px; flex-direction: row; align-items: center; gap: 12px; background: rgba(15, 17, 15, 0.7); }
+  body[data-layout^='min'] .panel .logo { font-size: 11px; letter-spacing: 0.22em; }
+  body[data-layout^='min'] .panel .label, body[data-layout^='min'] .panel .btn { display: none; }
+  body[data-layout^='min'] .panel .input { flex: 1; height: 28px; }
+  body[data-layout='min-low'] .panel { left: 50%; bottom: 70px; transform: translateX(-50%); }
+  body[data-layout='min-low'] .quote { left: 56px; bottom: 64px; max-width: 400px; text-align: left; }
+  body[data-layout='min-right'] .panel { right: 64px; top: 50%; transform: translateY(-50%); }
+  body[data-layout='min-right'] .quote { left: 50%; bottom: 64px; transform: translateX(-50%); text-align: center; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body data-layout="min-low">
+<canvas id="gl"></canvas>
+<canvas id="c"></canvas>
+<div class="bar" id="bar"></div>
+<div class="panel" id="panel">
+  <div class="logo">NEXUS</div>
+  <div class="label">Locked</div>
+  <div class="input"></div>
+  <div class="btn">Unlock</div>
+</div>
+<div class="quote hidden" id="quote">
+  You must be ready to burn yourself in your own flame; how could you become new if you have not first become ashes?
+  <small>NIETZSCHE · THUS SPOKE ZARATHUSTRA</small>
+</div>
+<script>
+'use strict'
+const canvas = document.getElementById('c')
+const ctx = canvas.getContext('2d')
+const ACCENT = { r: 105, g: 180, b: 138 }
+const BG = { r: 15, g: 17, b: 15 }
+const rgba = (c, a) => `rgba(${c.r},${c.g},${c.b},${a})`
+const A = (a) => rgba(ACCENT, a)
+const MONO = '"IBM Plex Mono", monospace'
+
+let W = 0, H = 0
+function resize() {
+  const dpr = Math.min(devicePixelRatio || 1, 2)
+  W = innerWidth; H = innerHeight
+  canvas.width = W * dpr; canvas.height = H * dpr
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+  if (gl) gl.resize()
+}
+let gl = null
+addEventListener('resize', resize); resize()
+
+function seeded(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296) }
+const ease = (t) => (t < 0 ? 0 : t > 1 ? 1 : t * t * (3 - 2 * t))
+const clamp01 = (t) => Math.max(0, Math.min(1, t))
+const lerp = (a, b, t) => a + (b - a) * t
+const pad = (n) => String(n).padStart(2, '0')
+
+/* Where the visual should centre, away from the box: set by the layout. */
+let layout = 'min-low'
+const focusX = () => ({ center: 0.5, right: 0.4, left: 0.6, low: 0.5, corner: 0.48, 'min-low': 0.5, 'min-right': 0.44 })[layout] * W
+const focusY = () => ({ center: 0.47, right: 0.48, left: 0.48, low: 0.42, corner: 0.46, 'min-low': 0.44, 'min-right': 0.46 })[layout] * H
+
+/* ---------- value noise ---------- */
+const PERM = (() => { const r = seeded(99); const p = Array.from({ length: 256 }, (_, i) => i); for (let i = 255; i > 0; i--) { const j = Math.floor(r() * (i + 1)); [p[i], p[j]] = [p[j], p[i]] } return p.concat(p) })()
+const GRAD = Array.from({ length: 256 }, (_, i) => [Math.cos((i / 256) * Math.PI * 2), Math.sin((i / 256) * Math.PI * 2)])
+function noise(x, y) {
+  const xi = Math.floor(x), yi = Math.floor(y), xf = x - xi, yf = y - yi
+  const g = (ix, iy, dx, dy) => { const v = GRAD[PERM[(PERM[ix & 255] + iy) & 255]]; return v[0] * dx + v[1] * dy }
+  const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf)
+  return lerp(lerp(g(xi, yi, xf, yf), g(xi + 1, yi, xf - 1, yf), u), lerp(g(xi, yi + 1, xf, yf - 1), g(xi + 1, yi + 1, xf - 1, yf - 1), u), v)
+}
+const fbm = (x, y) => noise(x, y) * 0.6 + noise(x * 2.1, y * 2.1) * 0.28 + noise(x * 4.3, y * 4.3) * 0.12
+
+/* ---------- shared HUD ---------- */
+let credit = ''
+function hud(t, footer) {
+  const inset = 24, arm = 26
+  ctx.strokeStyle = A(0.45); ctx.lineWidth = 1; ctx.beginPath()
+  for (const [cx, cy, sx, sy] of [[inset, inset, 1, 1], [W - inset, inset, -1, 1], [inset, H - inset, 1, -1], [W - inset, H - inset, -1, -1]]) {
+    ctx.moveTo(cx + 0.5, cy + sy * arm); ctx.lineTo(cx + 0.5, cy + 0.5); ctx.lineTo(cx + sx * arm, cy + 0.5)
+  }
+  ctx.stroke()
+  const now = new Date(), status = 'NEXUS // VAULT SEALED'
+  ctx.font = `11px ${MONO}`; ctx.fillStyle = A(0.6); ctx.textBaseline = 'top'
+  ctx.textAlign = 'left'; ctx.fillText(status, inset + 12, inset + 10)
+  if (Math.floor(t / 600) % 2 === 0) ctx.fillRect(inset + 18 + ctx.measureText(status).width, inset + 10, 6, 11)
+  ctx.textAlign = 'right'; ctx.fillText(`${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`, W - inset - 12, inset + 10)
+  ctx.textBaseline = 'bottom'
+  ctx.fillText(now.toLocaleDateString(undefined, { weekday: 'short', day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase(), W - inset - 12, H - inset - 10)
+  ctx.textAlign = 'left'; ctx.fillStyle = A(0.4); ctx.fillText(footer, inset + 12, H - inset - 10)
+  if (credit) { ctx.font = `9.5px ${MONO}`; ctx.textAlign = 'center'; ctx.fillStyle = A(0.3); ctx.fillText(credit.toUpperCase(), W / 2, H - inset - 10) }
+}
+function vignette(strength = 0.7) {
+  const v = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75)
+  v.addColorStop(0, rgba(BG, 0)); v.addColorStop(1, rgba(BG, strength))
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H)
+}
+function grid(size, alpha) {
+  ctx.strokeStyle = A(alpha); ctx.lineWidth = 1; ctx.beginPath()
+  for (let x = 0; x < W; x += size) { ctx.moveTo(Math.round(x) + 0.5, 0); ctx.lineTo(Math.round(x) + 0.5, H) }
+  for (let y = 0; y < H; y += size) { ctx.moveTo(0, y + 0.5); ctx.lineTo(W, y + 0.5) }
+  ctx.stroke()
+}
+
+/* =========================================================
+   EXPLODED 3D: solid parts drawn as their edges (hidden lines
+   removed), turning slowly, separating along their axis, with
+   callouts projected onto the 2D layer.
+   ========================================================= */
+function makeGl() {
+  if (!window.THREE) return null
+  const el = document.getElementById('gl')
+  const renderer = new THREE.WebGLRenderer({ canvas: el, antialias: true })
+  renderer.setClearColor(0x0f110f, 1)
+  const scene = new THREE.Scene()
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 500)
+  const api = {
+    renderer, scene, camera,
+    resize() {
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2))
+      renderer.setSize(innerWidth, innerHeight, false)
+      camera.aspect = innerWidth / innerHeight
+      camera.updateProjectionMatrix()
+    }
+  }
+  api.resize()
+  return api
+}
+gl = makeGl()
+
+const EDGE = new THREE.LineBasicMaterial({ color: 0x69b48a, transparent: true, opacity: 0.9 })
+const EDGE_DIM = new THREE.LineBasicMaterial({ color: 0x69b48a, transparent: true, opacity: 0.35 })
+const FILL = new THREE.MeshBasicMaterial({ color: 0x0f110f, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+
+/**
+ * The silhouette of a curved part, which its creases alone never show: the
+ * back faces pushed out along their normals and drawn in green behind the
+ * dark fill, so only a thin rim shows around the outline.
+ */
+const OUTLINE = new THREE.ShaderMaterial({
+  uniforms: { opacity: { value: 0.9 }, thickness: { value: 0.045 } },
+  vertexShader: 'uniform float thickness; void main() { vec3 p = position + normal * thickness; gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0); }',
+  fragmentShader: 'uniform float opacity; void main() { gl_FragColor = vec4(0.4118, 0.7059, 0.5412, opacity); }',
+  side: THREE.BackSide,
+  transparent: true
+})
+/** A solid drawn as its creases and outline: a dark fill hides what is behind it. */
+const FILL_OPEN = new THREE.MeshBasicMaterial({ color: 0x0f110f, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 })
+function solid(geometry, threshold = 24, open = false) {
+  const g = new THREE.Group()
+  // An open surface (a cutaway) has no outside to outline: both faces are dark.
+  if (!open) g.add(new THREE.Mesh(geometry, OUTLINE))
+  g.add(new THREE.Mesh(geometry, open ? FILL_OPEN : FILL))
+  g.add(new THREE.LineSegments(new THREE.EdgesGeometry(geometry, threshold), EDGE))
+  return g
+}
+/** Lines that are part of the drawing but not a solid: centre lines, ridges, springs. */
+function lines(points, dim = false) {
+  return new THREE.Line(new THREE.BufferGeometry().setFromPoints(points.map((p) => new THREE.Vector3(...p))), dim ? EDGE_DIM : EDGE)
+}
+/** Turn a profile about the X axis (lathe turns about Y). */
+function latheX(profile, segments = 28) {
+  const geo = new THREE.LatheGeometry(profile.map(([x, r]) => new THREE.Vector2(r, x)), segments)
+  geo.rotateZ(-Math.PI / 2)
+  return geo
+}
+
+/* ---------- geometry helpers ---------- */
+/**
+ * A loft along X: one cross-section ring per station, joined into a skin.
+ * `section(st)` returns the ring as [y, z] points; every ring has the same
+ * count. Indexed, so the outline shader gets smooth normals while the edge
+ * pass still finds the ridges (grind lines, a diamond's spine).
+ */
+function loftX(stations, section) {
+  // Always skin from -X to +X, so every loft faces outwards the same way.
+  if (stations.length > 1 && stations[0].x > stations[stations.length - 1].x) stations = stations.slice().reverse()
+  const rings = stations.map((st) => section(st).map(([y, z]) => [st.x, y, z]))
+  const n = rings[0].length
+  const pos = [], idx = []
+  rings.forEach((r) => r.forEach((p) => pos.push(...p)))
+  for (let i = 0; i < rings.length - 1; i++)
+    for (let k = 0; k < n; k++) {
+      const a = i * n + k, b = i * n + ((k + 1) % n), c = (i + 1) * n + k, d = (i + 1) * n + ((k + 1) % n)
+      idx.push(a, b, c, b, d, c)
+    }
+  // Cap both ends with a fan from the ring's centre.
+  for (const [ri, flip] of [[0, true], [rings.length - 1, false]]) {
+    const r = rings[ri], cx = r.reduce((s, p) => s + p[0], 0) / n, cy = r.reduce((s, p) => s + p[1], 0) / n, cz = r.reduce((s, p) => s + p[2], 0) / n
+    const c = pos.length / 3
+    pos.push(cx, cy, cz)
+    for (let k = 0; k < n; k++) {
+      const a = ri * n + k, b = ri * n + ((k + 1) % n)
+      flip ? idx.push(c, a, b) : idx.push(c, b, a)
+    }
+  }
+  const g = new THREE.BufferGeometry()
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3))
+  g.setIndex(idx)
+  g.computeVertexNormals()
+  return g
+}
+const range = (n, f) => Array.from({ length: n }, (_, i) => f(i / (n - 1), i))
+/** A flat profile in XY, extruded to `depth` and centred on z = zc. */
+function slab(shape, depth, zc = 0, bevel = 0) {
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: 2, curveSegments: 20 })
+  g.translate(0, 0, zc - depth / 2)
+  return g
+}
+/** A shape from a closed list of points with optional quadratic control points: [x, y] or [cx, cy, x, y]. */
+function outline(points) {
+  const s = new THREE.Shape()
+  points.forEach((p, i) => {
+    if (i === 0) s.moveTo(p[0], p[1])
+    else if (p.length === 4) s.quadraticCurveTo(p[0], p[1], p[2], p[3])
+    else s.lineTo(p[0], p[1])
+  })
+  return s
+}
+const mirrorY = (pts) => pts.slice().reverse().map((p) => (p.length === 4 ? [p[0], -p[1], p[2], -p[3]] : [p[0], -p[1]]))
+function hole(x, y, r) { const h = new THREE.Path(); h.absarc(x, y, r, 0, Math.PI * 2, true); return h }
+function helix(x0, x1, r, turns, axis = 'x') {
+  const pts = []
+  for (let k = 0; k <= turns * 24; k++) {
+    const a = (k / 24) * Math.PI * 2, u = x0 + ((x1 - x0) * k) / (turns * 24)
+    pts.push(axis === 'x' ? [u, Math.cos(a) * r, Math.sin(a) * r] : axis === 'y' ? [Math.cos(a) * r, u, Math.sin(a) * r] : [Math.cos(a) * r, Math.sin(a) * r, u])
+  }
+  return lines(pts)
+}
+function cylX(r, len, seg = 24, x = 0) { const g = new THREE.CylinderGeometry(r, r, len, seg); g.rotateZ(Math.PI / 2); g.translate(x, 0, 0); return g }
+function cylZ(r, len, seg = 32, z = 0) { const g = new THREE.CylinderGeometry(r, r, len, seg); g.rotateX(Math.PI / 2); g.translate(0, 0, z); return g }
+function box(w, h, d, x = 0, y = 0, z = 0) { const g = new THREE.BoxGeometry(w, h, d); g.translate(x, y, z); return g }
+function group(...objs) { const g = new THREE.Group(); objs.forEach((o) => g.add(o.isBufferGeometry ? solid(o) : o)); return g }
+
+/* ---------- blades ----------
+   Units are centimetres, the blade along +X from the guard at 0, the
+   handle along -X. Dimensions from the makers' published specs. */
+
+/** Diamond section: the edges at ±w/2, the spine at ±t/2. Fairbairn-Sykes. */
+const diamond = (st) => [[st.w / 2, 0], [0, st.t / 2], [-st.w / 2, 0], [0, -st.t / 2]]
+/** Flat-ground dagger: a flat at full thickness, ground to both edges. */
+const flatGround = (st) => {
+  const f = st.w * (st.flat ?? 0.2)
+  return [[st.w / 2, 0], [f, st.t / 2], [-f, st.t / 2], [-st.w / 2, 0], [-f, -st.t / 2], [f, -st.t / 2]]
+}
+
+/* ---------- security hardware: one axis, opened in a straight line ---------- */
+
+/** A flat disc in the YZ plane (a wheel, a cam), from a 2D shape, `t` thick at x. */
+function discX(shape, t, x) { const g = slab(shape, t, 0, 0.04); g.rotateY(Math.PI / 2); g.translate(x, 0, 0); return g }
+/** A circle with a notch cut into its rim at angle `at`: a wheel's gate, a cam's nose. */
+function notched(r, notchW, notchD, at = 0, hole = 0) {
+  const s = new THREE.Shape(), half = Math.asin(notchW / 2 / r)
+  s.absarc(0, 0, r, at + half, at + Math.PI * 2 - half, false)
+  s.lineTo(Math.cos(at) * (r - notchD) + Math.sin(at) * -notchW / 2, Math.sin(at) * (r - notchD) - Math.cos(at) * -notchW / 2)
+  s.lineTo(Math.cos(at) * (r - notchD) - Math.sin(at) * -notchW / 2, Math.sin(at) * (r - notchD) + Math.cos(at) * -notchW / 2)
+  s.lineTo(Math.cos(at + half) * r, Math.sin(at + half) * r)
+  if (hole) s.holes.push(hole0(hole))
+  return s
+}
+const hole0 = (r) => hole(0, 0, r)
+
+function pinCylinder() {
+  // A five-pin rim cylinder. The key enters from +X; pins stack up through
+  // the plug into the bible above. Opened: key out, plug out, pins lifted
+  // in their order, springs above them, the clip and cam off the back.
+  const parts = []
+  const housing = new THREE.Group()
+  housing.add(solid(latheX([[0, 0.72], [0, 1.25], [0.25, 1.4], [0.6, 1.4], [0.6, 1.25], [5.4, 1.25], [5.4, 0.72]], 48)))
+  housing.add(solid(box(4.6, 1.5, 1.1, 3.1, 1.6, 0)))
+  for (let i = 0; i < 5; i++) { const c = new THREE.CylinderGeometry(0.15, 0.15, 1.6, 12); c.translate(1.4 + i * 0.85, 1.55, 0); housing.add(lines(range(17, (u) => [1.4 + i * 0.85 + Math.cos(u * 6.283) * 0.15, 2.36, Math.sin(u * 6.283) * 0.15]), true)) }
+  housing.position.x = -0.6
+  parts.push({ name: 'HOUSING  /  BIBLE', obj: housing, e: [0, 0, 0], at: [2.0, 2.35, 0] })
+  const plug = group(latheX([[0, 0.3], [0, 0.95], [0.3, 0.95], [0.3, 0.7], [5.6, 0.7], [5.6, 0.3]], 40))
+  plug.add(lines([[0.31, 0.45, 0], [0.31, -0.5, 0.06], [0.31, -0.5, -0.1], [0.31, 0.45, -0.04], [0.31, 0.45, 0]]))
+  plug.position.x = 5.0; plug.rotation.y = Math.PI
+  parts.push({ name: 'PLUG  /  KEYWAY', obj: plug, e: [5.5, 0, 0], at: [2.0, 0.7, 0] })
+  const cuts = [0.55, 0.25, 0.7, 0.35, 0.5]
+  const kp = [[6.4, -0.05], [6.4, 0.55]]
+  cuts.forEach((d, i) => { const x = 4.4 - i * 0.85; kp.push([x + 0.25, 0.55], [x, 0.55 - d * 0.6], [x - 0.25, 0.55]) })
+  kp.push([0.2, 0.55], [-0.2, 0.2], [-0.2, -0.05], [6.4, -0.05])
+  const key = group(slab(outline(kp), 0.18, 0, 0.02))
+  const bow = new THREE.Shape(); bow.absarc(8.2, 0.25, 1.4, 0, Math.PI * 2, false); bow.holes.push(hole(8.8, 0.25, 0.32))
+  key.add(solid(slab(bow, 0.22, 0, 0.03)), solid(box(1.2, 0.5, 0.2, 6.9, 0.25, 0)))
+  key.position.set(0.3, -0.25, 0)
+  parts.push({ name: 'KEY  /  5-CUT', obj: key, e: [11, 0, 0], at: [8.2, 1.65, 0] })
+  const pins = new THREE.Group(), drivers = new THREE.Group(), springs = new THREE.Group()
+  cuts.forEach((d, i) => {
+    const x = 0.8 + i * 0.85, kl = 0.45 + d * 0.6
+    const p = new THREE.CylinderGeometry(0.13, 0.13, kl, 14); p.translate(x, 0.75 + kl / 2, 0); pins.add(solid(p))
+    const dp = new THREE.CylinderGeometry(0.13, 0.13, 0.55, 14); dp.translate(x, 1.35 + kl, 0); drivers.add(solid(dp))
+    springs.add(helix(1.7 + kl, 2.3, 0.11, 6, 'y').translateX(x))
+  })
+  parts.push({ name: 'KEY PINS  /  CUT TO BITTING', obj: pins, e: [0, 3.2, 0], at: [4.2, 2.0, 0], inner: true })
+  parts.push({ name: 'DRIVER PINS', obj: drivers, e: [0, 4.4, 0], at: [0.8, 2.6, 0], inner: true })
+  parts.push({ name: 'SPRINGS  ×5', obj: springs, e: [0, 5.6, 0], at: [4.2, 3.0, 0], inner: true })
+  const clip = group(new THREE.TorusGeometry(0.8, 0.07, 8, 32, Math.PI * 1.6))
+  clip.rotation.y = Math.PI / 2; clip.position.x = -0.75
+  parts.push({ name: 'RETAINING CLIP', obj: clip, e: [-2.6, 0, 0], at: [-0.75, 0.8, 0] })
+  const cam = group(discX(outline([[-0.9, -0.9], [0.9, -0.9], [0.9, 0.9], [0.3, 2.1], [-0.3, 2.1], [-0.9, 0.9], [-0.9, -0.9]]), 0.25, -1.1))
+  parts.push({ name: 'CAM  /  TAILPIECE', obj: cam, e: [-4.4, 0, 0], at: [-1.1, 2.1, 0] })
+  return { name: 'PIN-TUMBLER RIM CYLINDER  /  5-PIN', code: 'NX-PT', parts, span: 34, centre: [4, 1.6, 0] }
+}
+
+function buildPadlock() {
+  const parts = []
+  const b = new THREE.Shape()
+  const rr = 0.45
+  b.moveTo(-2.6 + rr, -5.6); b.lineTo(2.6 - rr, -5.6); b.quadraticCurveTo(2.6, -5.6, 2.6, -5.6 + rr); b.lineTo(2.6, -rr); b.quadraticCurveTo(2.6, 0, 2.6 - rr, 0)
+  b.lineTo(-2.6 + rr, 0); b.quadraticCurveTo(-2.6, 0, -2.6, -rr); b.lineTo(-2.6, -5.6 + rr); b.quadraticCurveTo(-2.6, -5.6, -2.6 + rr, -5.6)
+  const holeL = new THREE.Path(); holeL.absarc(-1.6, -0.6, 0.38, 0, Math.PI * 2, false)
+  const holeR = new THREE.Path(); holeR.absarc(1.6, -0.6, 0.38, 0, Math.PI * 2, true)
+  b.holes.push(holeL, holeR)
+  const bodyGeo = new THREE.ExtrudeGeometry(b, { depth: 2.0, bevelEnabled: true, bevelThickness: 0.15, bevelSize: 0.15, bevelSegments: 2, curveSegments: 16 })
+  bodyGeo.translate(0, 0, -1.0)
+  const body = solid(bodyGeo, 20)
+  body.add(lines([[-2.4, -1.1, 1.16], [2.4, -1.1, 1.16]], true), lines([[-2.4, -5.0, 1.16], [2.4, -5.0, 1.16]], true))
+  parts.push({ name: 'BODY  /  HARDENED', obj: body, e: [0, 0, 0], at: [-2.6, -4.2, 0] })
+
+  const shackle = new THREE.Group()
+  const legL = new THREE.CylinderGeometry(0.34, 0.34, 3.4, 20); legL.translate(-1.6, 0.4, 0)
+  const legR = new THREE.CylinderGeometry(0.34, 0.34, 2.0, 20); legR.translate(1.6, 1.1, 0)
+  const arc = new THREE.TorusGeometry(1.6, 0.34, 14, 32, Math.PI); arc.translate(0, 2.1, 0)
+  shackle.add(solid(legL), solid(legR), solid(arc))
+  const notch = new THREE.TorusGeometry(0.36, 0.05, 6, 20); notch.rotateX(Math.PI / 2)
+  const n1 = solid(notch); n1.position.set(-1.6, -0.6, 0); const n2 = solid(notch); n2.position.set(1.6, 0.6, 0)
+  shackle.add(n1, n2)
+  parts.push({ name: 'SHACKLE  /  BORON', obj: shackle, e: [0, 3.2, 0], at: [1.1, 3.4, 0] })
+
+  const plugGeo = new THREE.CylinderGeometry(0.72, 0.72, 2.3, 28); plugGeo.rotateX(Math.PI / 2)
+  const plug = solid(plugGeo); plug.position.set(0, -3.9, 0)
+  plug.add(lines([[-0.08, 0.45, 1.16], [0.08, 0.45, 1.16], [0.08, -0.1, 1.16], [0.22, -0.3, 1.16], [-0.08, -0.45, 1.16], [-0.08, 0.45, 1.16]]))
+  parts.push({ name: 'PLUG  /  KEYWAY', obj: plug, e: [5.2, -0.6, 1.5], at: [0.72, -3.9, 0] })
+
+  const pins = new THREE.Group()
+  for (let i = 0; i < 5; i++) {
+    const kp = new THREE.CylinderGeometry(0.11, 0.11, 0.55 + (i % 3) * 0.12, 10); kp.translate(-0.8 + i * 0.4, -2.85, 0)
+    const dp = new THREE.CylinderGeometry(0.11, 0.11, 0.45, 10); dp.translate(-0.8 + i * 0.4, -2.2, 0)
+    pins.add(solid(kp), solid(dp))
+  }
+  parts.push({ name: 'PIN STACKS  ×5', obj: pins, e: [5.2, 2.2, 0], at: [0.8, -2.2, 0], inner: true })
+
+  const springs = new THREE.Group()
+  for (let i = 0; i < 5; i++) {
+    const pts = []
+    for (let k = 0; k <= 60; k++) { const a = k * 0.6; pts.push([-0.8 + i * 0.4 + Math.cos(a) * 0.1, -1.95 + k * 0.012, Math.sin(a) * 0.1]) }
+    springs.add(lines(pts))
+  }
+  parts.push({ name: 'DRIVER SPRINGS', obj: springs, e: [5.2, 3.6, 0], at: [0.8, -1.3, 0], inner: true })
+
+  const balls = new THREE.Group()
+  for (const x of [-1.0, 1.0]) { const s = solid(new THREE.IcosahedronGeometry(0.3, 1), 10); s.position.set(x, -1.1, 0); balls.add(s) }
+  parts.push({ name: 'LOCKING BALLS', obj: balls, e: [-4.6, 0.6, 0], at: [-1.0, -1.1, 0], inner: true })
+  return { name: 'PIN-TUMBLER PADLOCK', code: 'NX-LK', parts, span: 34, centre: [0.8, -0.6, 0] }
+}
+
+
+/* ---------- downloaded models (CC BY 4.0, credited on screen) ----------
+   Each mesh of the file becomes a part; parts sharing a name keyword are one
+   group. The barrel is turned to +X, the whole scaled to `size` cm. */
+function importModel(cfg) {
+  const model = { name: cfg.name, code: cfg.code, parts: [], span: cfg.span || 46, centre: [0, 0, 0], credit: cfg.credit, loading: true }
+  const b64 = window.MODEL_GLB && window.MODEL_GLB[cfg.id]
+  if (!b64 || !THREE.GLTFLoader) { model.loading = 'missing'; return model }
+  const bin = atob(b64), buf = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i)
+  new THREE.GLTFLoader().parse(buf.buffer, '', (gltf) => {
+    gltf.scene.updateMatrixWorld(true)
+    const meshes = []
+    gltf.scene.traverse((o) => { if (o.isMesh && !(cfg.skip || []).some((k) => o.name.toLowerCase().includes(k))) meshes.push({ name: o.name, geo: o.geometry.clone().applyMatrix4(o.matrixWorld) }) })
+    const all = new THREE.Box3()
+    meshes.forEach((m) => { m.geo.computeBoundingBox(); all.union(m.geo.boundingBox) })
+    const size = all.getSize(new THREE.Vector3()), ctr = all.getCenter(new THREE.Vector3())
+    const rot = new THREE.Matrix4()
+    if (cfg.rotate) rot.makeRotationFromEuler(new THREE.Euler(...cfg.rotate))
+    else if (size.z > size.x && size.z >= size.y) rot.makeRotationY(Math.PI / 2)
+    else if (size.y > size.x && size.y > size.z) rot.makeRotationZ(Math.PI / 2)
+    const k = (cfg.size || 30) / Math.max(size.x, size.y, size.z)
+    const xf = new THREE.Matrix4().makeScale(k, k, k).multiply(rot).multiply(new THREE.Matrix4().makeTranslation(-ctr.x, -ctr.y, -ctr.z))
+    meshes.forEach((m) => { m.geo.applyMatrix4(xf); m.geo.computeBoundingBox() })
+    if (cfg.debug) meshes.forEach((m) => { const b = m.geo.boundingBox, c = b.getCenter(new THREE.Vector3()), z = b.getSize(new THREE.Vector3()); console.log('MESH', cfg.id, m.name, [c.x, c.y, c.z].map((v) => v.toFixed(1)).join(','), [z.x, z.y, z.z].map((v) => v.toFixed(1)).join(',')) })
+    // Group by keyword; anything unmatched is its own part.
+    const groups = new Map()
+    for (const m of meshes) {
+      const token = cfg.fullName ? m.name.toLowerCase() : m.name.split('_')[0].toLowerCase()
+      const key = (cfg.groups || []).find(([kw]) => (cfg.exact ? token === kw : m.name.toLowerCase().includes(kw)))
+      const id = key ? key[1] : (cfg.debug ? m.name : 'PART')
+      if (!groups.has(id)) groups.set(id, [])
+      groups.get(id).push(m)
+    }
+    let biggest = null, bigVol = 0
+    for (const [label, ms] of groups) {
+      const box = new THREE.Box3(); ms.forEach((m) => box.union(m.geo.boundingBox))
+      const sz = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3())
+      const obj = new THREE.Group(); ms.forEach((m) => { if (cfg.outline && !m.geo.attributes.normal) m.geo.computeVertexNormals(); obj.add(solid(m.geo, cfg.crease || 32, !cfg.outline)) })
+      if (cfg.log) console.log('GROUP', cfg.id, label, [c.x, c.y, c.z].map((v) => v.toFixed(1)).join(','))
+      const fixed = (cfg.explode || {})[label]
+      const e = fixed || [c.x * 0.9, c.y * 1.6 + (Math.abs(c.y) < 1 ? 3 : 0), c.z * 2 + (Math.abs(c.z) < 0.5 ? 0 : Math.sign(c.z) * 3)]
+      const part = { name: label, obj, e, at: [c.x, box.max.y, c.z] }
+      if (sz.x * sz.y * sz.z > bigVol) { bigVol = sz.x * sz.y * sz.z; biggest = part }
+      model.parts.push(part)
+    }
+    if (biggest && !(cfg.explode || {})[biggest.name]) biggest.e = [0, 0, 0]
+    if (cfg.labelOnly) for (const p of model.parts) p.nolabel = !cfg.labelOnly.includes(p.name)
+    model.loading = false
+    shown = null
+  }, (err) => { console.error(err); model.loading = 'error' })
+  return model
+}
+const fnx45 = () => importModel({ id: 'fnx-45', name: 'FN FNX-45 TACTICAL  /  .45 ACP', code: 'NX-45', span: 60, credit: 'MODEL "LOW-POLY FNX-45" BY TASTYTONY · CC BY 4.0', exact: true,
+  groups: [
+    ...['cube008', 'cube016', 'cube017', 'cube018', 'cube011', 'cylinder006', 'cube012', 'cylinder007'].map((k) => [k, 'SLIDE  /  OPTICS CUT']),
+    ['cylinder', 'BARREL  /  THREADED'], ['cylinder009', 'BARREL  /  THREADED'], ['cylinder004', 'RECOIL SPRING + GUIDE'],
+    ...['cube', 'cube001', 'cube003', 'cube005', 'cube004', 'cube009'].map((k) => [k, 'FRAME  /  POLYMER']),
+    ['cube019', 'MAGAZINE  /  15 RD'], ['cube002', 'MAGAZINE  /  15 RD'],
+    ...['cylinder005', 'cube010', 'cylinder008'].map((k) => [k, 'HAMMER']),
+    ['cube014', 'SAFETY  /  AMBI'], ['cube015', 'SAFETY  /  AMBI'],
+    ...['cube020', 'cylinder002', 'cylinder003'].map((k) => [k, 'SLIDE STOP + TAKEDOWN']),
+    ...['cube006', 'cube007', 'cylinder001'].map((k) => [k, 'TRIGGER']), ['cube013', 'MAG RELEASE']
+  ],
+  explode: { 'SLIDE  /  OPTICS CUT': [0, 5.5, 0], 'BARREL  /  THREADED': [6, 2.8, 0], 'RECOIL SPRING + GUIDE': [5, 1.4, 0], 'FRAME  /  POLYMER': [0, 0, 0], 'MAGAZINE  /  15 RD': [-1.5, -8.5, 0],
+    'HAMMER': [-6, 3, 0], 'SAFETY  /  AMBI': [0, 0, 7], 'SLIDE STOP + TAKEDOWN': [0, 1, -7], 'TRIGGER': [0, -3, -6], 'MAG RELEASE': [0, -1, 6] },
+  labelOnly: ['SLIDE  /  OPTICS CUT', 'BARREL  /  THREADED', 'RECOIL SPRING + GUIDE', 'FRAME  /  POLYMER', 'MAGAZINE  /  15 RD', 'HAMMER', 'SAFETY  /  AMBI', 'TRIGGER'] })
+const mcx = () => importModel({ id: 'mcx', name: 'SIG MCX RATTLER LT  /  5.56', code: 'NX-MCX', size: 60, span: 92, credit: 'MODEL "MCX RATTLER LT" BY C9Z9 · CC BY 4.0', skip: ['text', 'symbol'],
+  explode: { 'MAGAZINE  /  30 RD': [0, -9, 0], 'OPTIC  /  HOLOSUN 403': [0, 8, 0], 'BUIS  /  IRON SIGHTS': [0, 5, 4], 'BARREL  /  5.5"': [9, 0, 0], 'HANDGUARD  /  M-LOK': [4, 5, 0],
+    'BOLT CARRIER': [-2, 0, 7], 'CHARGING HANDLE': [-5, 5, 0], 'STOCK  /  FOLDING': [-8, 0, 0], 'PISTOL GRIP': [-2, -7, 0], 'MUZZLE DEVICE': [0, 0, -6], 'RECEIVER': [0, 0, 0] },
+  labelOnly: ['MAGAZINE  /  30 RD', 'OPTIC  /  HOLOSUN 403', 'BARREL  /  5.5"', 'HANDGUARD  /  M-LOK', 'BOLT CARRIER', 'CHARGING HANDLE', 'STOCK  /  FOLDING', 'RECEIVER'],
+  groups: [['mag', 'MAGAZINE  /  30 RD'], ['holosun', 'OPTIC  /  HOLOSUN 403'], ['h-190', 'OPTIC  /  HOLOSUN 403'], ['charging', 'CHARGING HANDLE'], ['bolt', 'BOLT CARRIER'],
+    ['barrel', 'BARREL  /  5.5"'], ['circle', 'MUZZLE DEVICE'], ['iron', 'BUIS  /  IRON SIGHTS'], ['assaulter', 'PISTOL GRIP'], ['grip', 'PISTOL GRIP'],
+    ['stock', 'STOCK  /  FOLDING'], ['srock', 'STOCK  /  FOLDING'], ['buffer', 'STOCK  /  FOLDING'], ['spear', 'HANDGUARD  /  M-LOK'], ['text', 'RECEIVER'], ['select', 'RECEIVER'], ['mcx', 'RECEIVER']] })
+
+const MODEL_LIST = [
+  ['FNX-45', fnx45], ['MCX', mcx], ['Padlock', buildPadlock], ['Pin cylinder', pinCylinder]
+]
+const MODELS3D = gl ? MODEL_LIST.map(([, f]) => f()) : []
+let m3 = 0 // which model; -1 cycles
+const CYCLE3 = 22000
+const rig = gl ? new THREE.Group() : null
+if (gl) gl.scene.add(rig)
+let shown = null
+function exploded(t) {
+  if (!gl) { ctx.fillStyle = A(0.7); ctx.font = `13px ${MONO}`; ctx.fillText('three.js did not load (offline?)', 60, 120); return 'NO WEBGL' }
+  const idx = m3 >= 0 ? m3 : Math.floor(t / CYCLE3) % MODELS3D.length
+  const model = MODELS3D[idx]
+  if (model.credit) credit = model.credit
+  if (model.loading) { if (shown !== model) { rig.clear(); shown = model } gl.renderer.render(gl.scene, gl.camera); ctx.fillStyle = A(0.6); ctx.font = `12px ${MONO}`; ctx.fillText(model.loading === true ? 'LOADING MODEL…' : `MODEL ${model.loading.toUpperCase()}`, 60, 140); return 'LOADING' }
+  if (shown !== model) {
+    rig.clear()
+    for (const p of model.parts) { p.home = p.home || p.obj.position.clone(); rig.add(p.obj) }
+    shown = model
+  }
+  const local = t % CYCLE3
+  const appear = ease(local / 1800) * (1 - (m3 < 0 ? ease((local - CYCLE3 + 1200) / 1200) : 0))
+  const explode = ease((local - 3200) / 3200) * (1 - ease((local - 15500) / 3200))
+  EDGE.opacity = 0.85 * appear; EDGE_DIM.opacity = 0.35 * appear; OUTLINE.uniforms.opacity.value = 0.85 * appear
+  // Slow turn, a slight tilt that breathes.
+  if (model.upright) rig.rotation.set(0.62 + Math.sin(t * 0.00011) * 0.05, -0.6 + t * 0.00009, 0)
+  else rig.rotation.set(0.32 + Math.sin(t * 0.00011) * 0.06, -0.55 + t * 0.00009, 0.04)
+  for (const p of model.parts) {
+    p.obj.position.set(p.home.x + p.e[0] * explode, p.home.y + p.e[1] * explode, p.home.z + p.e[2] * explode)
+    // A stack (baffles, lock wheels) opens up: each piece moves further than the last.
+    if (p.spread) {
+      const axis = ['x', 'y', 'z'][p.spreadAxis ?? model.spreadAxis ?? 0], n = p.obj.children.length
+      p.obj.children.forEach((c, i) => {
+        c.userData.home = c.userData.home ?? c.position[axis]
+        c.position[axis] = c.userData.home + (i - (n - 1) / 2) * 1.1 * explode * (axis === 'z' ? -1 : 1)
+      })
+    }
+    if (p.spin) p.obj.children.forEach((c) => { c.rotation.y = t * 0.0012 })
+  }
+  rig.position.set(-model.centre[0], -model.centre[1], 0)
+  // Frame the model in the free part of the screen.
+  const cam = gl.camera
+  const dist = (model.span / 2) / Math.tan((cam.fov * Math.PI) / 360) / Math.min(1, cam.aspect * 0.62)
+  cam.position.set(0, 0, dist * 0.92); cam.lookAt(0, 0, 0)
+  cam.setViewOffset(W, H, W / 2 - focusX(), H / 2 - focusY(), W, H)
+  gl.renderer.render(gl.scene, cam)
+
+  grid(24, 0.025); grid(120, 0.04)
+  // Callouts.
+  const labels = clamp01((local - 5600) / 900) * (1 - clamp01((local - 15000) / 600)) * appear
+  if (labels > 0) {
+    rig.updateMatrixWorld(true)
+    // Callouts in two columns either side of the model, like a drawing
+    // sheet: anchors left of centre go left, the rest right; each column is
+    // sorted by height and spaced so no two labels touch.
+    const box = new THREE.Box3().setFromObject(rig)
+    let minX = Infinity, maxX = -Infinity
+    for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+      const q = new THREE.Vector3(x, y, z).project(cam), sx = (q.x * 0.5 + 0.5) * W
+      minX = Math.min(minX, sx); maxX = Math.max(maxX, sx)
+    }
+    const items = []
+    model.parts.forEach((p, i) => {
+      if (p.nolabel) return
+      const w = new THREE.Vector3(p.at[0] + p.e[0] * explode, p.at[1] + p.e[1] * explode, p.at[2] + p.e[2] * explode).applyMatrix4(rig.matrixWorld).project(cam)
+      items.push({ i, p, ax: (w.x * 0.5 + 0.5) * W, ay: (-w.y * 0.5 + 0.5) * H })
+    })
+    const mid = (minX + maxX) / 2
+    for (const right of [false, true]) {
+      const col = items.filter((it) => (it.ax >= mid) === right).sort((a, b) => a.ay - b.ay)
+      const cx = right ? Math.min(W - 250, maxX + 50) : Math.max(250, minX - 50)
+      let y = -Infinity
+      for (const it of col) { it.ly = Math.max(it.ay, y + 24); y = it.ly }
+      const over = y - (H - 120)
+      if (over > 0) col.forEach((it) => (it.ly -= over))
+      for (const it of col) {
+        ctx.strokeStyle = A(0.45 * labels); ctx.lineWidth = 1
+        ctx.beginPath(); ctx.arc(it.ax, it.ay, 2.5, 0, Math.PI * 2)
+        ctx.moveTo(it.ax, it.ay); ctx.lineTo(cx + (right ? -14 : 14), it.ly); ctx.lineTo(cx, it.ly); ctx.stroke()
+        ctx.font = `10.5px ${MONO}`; ctx.textBaseline = 'middle'; ctx.textAlign = right ? 'left' : 'right'
+        ctx.fillStyle = A(0.85 * labels)
+        ctx.fillText(`${String.fromCharCode(65 + it.i)}·${pad(it.i + 1)}  ${it.p.name}`, cx + (right ? 6 : -6), it.ly)
+      }
+    }
+  }
+  // Title block.
+  const bw = 300, bh = 66, bx = W - 36 - bw, by = 72
+  ctx.strokeStyle = A(0.35 * appear); ctx.lineWidth = 1
+  ctx.strokeRect(bx + 0.5, by + 0.5, bw, bh); ctx.beginPath(); ctx.moveTo(bx, by + 24.5); ctx.lineTo(bx + bw, by + 24.5); ctx.moveTo(bx + 200.5, by + 24); ctx.lineTo(bx + 200.5, by + bh); ctx.stroke()
+  ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = A(0.7 * appear)
+  ctx.fillText(model.name, bx + 10, by + 12)
+  ctx.fillStyle = A(0.45 * appear)
+  ctx.fillText(`DWG ${model.code}`, bx + 10, by + 36); ctx.fillText('EXPLODED ISOMETRIC', bx + 10, by + 52)
+  ctx.fillText(`SHEET ${idx + 1}/${MODELS3D.length}`, bx + 210, by + 36); ctx.fillText('NTS', bx + 210, by + 52)
+  return `PARTS ${pad(model.parts.length)} · ${explode > 0.5 ? 'EXPLODED' : 'ASSEMBLED'} · ROT ${String(Math.round(((t * 0.00009 * 180) / Math.PI) % 360)).padStart(3, '0')}°`
+}
+
+/* =========================================================
+   CITY TOPOGRAPHY: real streets, rivers and buildings
+   (OpenStreetMap) over real contours (Terrain Tiles), from
+   scripts/city-data.py. Drawn once to an offscreen layer;
+   each frame only pans and zooms it, so a city of 50,000
+   buildings costs one drawImage.
+   ========================================================= */
+const CITY_IDS = ['medellin', 'buenos-aires']
+const CITY_LABELS = { 'buenos-aires': 'Buenos Aires', medellin: 'Medellín', rio: 'Rio', 'san-francisco': 'San Francisco' }
+let cityPick = -1 // -1 cycles
+const CITY_CYCLE = 45000
+const cityCache = {}
+
+function niceStep(span) {
+  const raw = span / 22, p = Math.pow(10, Math.floor(Math.log10(raw)))
+  for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * p) return m * p
+  return 10 * p
+}
+function decodeElev(e) {
+  const bin = atob(e.data), out = new Float32Array(e.w * e.h)
+  for (let i = 0; i < out.length; i++) {
+    let v = bin.charCodeAt(i * 2) | (bin.charCodeAt(i * 2 + 1) << 8)
+    if (v & 0x8000) v -= 0x10000
+    out[i] = Math.max(0, v) // the sea, and the odd bad sounding below it, are water
+  }
+  return out
+}
+function prepareCity(id) {
+  if (cityCache[id]) return cityCache[id]
+  const d = window.CITY_DATA && window.CITY_DATA[id]
+  if (!d) return null
+  const [mw, mh] = d.size, LW = 2600, k = LW / mw, LH = Math.round(mh * k)
+  const layer = document.createElement('canvas'); layer.width = LW; layer.height = LH
+  const c = layer.getContext('2d')
+  const gw = d.elev.w, gh = d.elev.h
+  // The elevation is a surface model, so a flat city reads its rooftops as
+  // hills. A box blur takes that noise out; flatter cities get more of it.
+  let elev = decodeElev(d.elev)
+  const relief = d.elev.max - Math.max(0, d.elev.min)
+  for (let pass = 0; pass < (relief < 120 ? 6 : 2); pass++) {
+    const out = new Float32Array(elev.length)
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+      let sum = 0, n = 0
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const jj = j + dj, ii = i + di
+        if (jj >= 0 && jj < gh && ii >= 0 && ii < gw) { sum += elev[jj * gw + ii]; n++ }
+      }
+      // Water stays water: a blur must not smear the coast inland.
+      out[j * gw + i] = elev[j * gw + i] <= 0.5 ? 0 : sum / n
+    }
+    elev = out
+  }
+  let lo = Infinity, hi = -Infinity
+  for (const v of elev) { if (v > 0.5) { lo = Math.min(lo, v); hi = Math.max(hi, v) } }
+  const step = niceStep(hi - lo) * (hi - lo < 120 ? 2 : 1)
+  // Water: every grid cell at sea level, a faint wash with a fine hatch.
+  const cw = LW / gw, ch = LH / gh
+  c.fillStyle = A(0.035)
+  for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) if (elev[j * gw + i] <= 0.5) c.fillRect(i * cw, j * ch, cw + 0.5, ch + 0.5)
+  // Contours, marching squares over the grid; index lines every fifth.
+  const tags = []
+  const levels = [0.5]
+  for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) levels.push(v)
+  for (const level of levels) {
+    const idx5 = level === 0.5 ? 'coast' : Math.round(level / step) % 5 === 0
+    c.strokeStyle = A(idx5 === 'coast' ? 0.42 : idx5 ? 0.26 : 0.11); c.lineWidth = idx5 ? 1.6 : 1.1
+    c.beginPath()
+    let count = 0
+    for (let j = 0; j < gh - 1; j++) for (let i = 0; i < gw - 1; i++) {
+      const a = elev[j * gw + i], b = elev[j * gw + i + 1], cc = elev[(j + 1) * gw + i + 1], dd = elev[(j + 1) * gw + i]
+      const m = (a > level ? 8 : 0) | (b > level ? 4 : 0) | (cc > level ? 2 : 0) | (dd > level ? 1 : 0)
+      if (m === 0 || m === 15) continue
+      const x = (i + 0.5) * cw, y = (j + 0.5) * ch
+      const top = [x + cw * ((level - a) / (b - a)), y], right = [x + cw, y + ch * ((level - b) / (cc - b))]
+      const bottom = [x + cw * ((level - dd) / (cc - dd)), y + ch], left = [x, y + ch * ((level - a) / (dd - a))]
+      const seg = (p, q) => { c.moveTo(p[0], p[1]); c.lineTo(q[0], q[1]) }
+      switch (m) {
+        case 1: case 14: seg(left, bottom); break
+        case 2: case 13: seg(bottom, right); break
+        case 3: case 12: seg(left, right); break
+        case 4: case 11: seg(top, right); break
+        case 5: seg(left, top); seg(bottom, right); break
+        case 6: case 9: seg(top, bottom); break
+        case 7: case 8: seg(left, top); break
+        case 10: seg(left, bottom); seg(top, right); break
+      }
+      if (idx5 === true && ++count % 47 === 0) tags.push([x, y, Math.round(level)])
+    }
+    c.stroke()
+  }
+  // Buildings, then streets by class, then rivers.
+  c.strokeStyle = A(0.12); c.lineWidth = 1
+  c.beginPath()
+  for (const b of d.buildings) {
+    c.moveTo(b[0] * k, b[1] * k)
+    for (let i = 2; i < b.length; i += 2) c.lineTo(b[i] * k, b[i + 1] * k)
+    c.closePath()
+  }
+  c.stroke()
+  const style = [[2.4, 0.5], [2.2, 0.46], [1.9, 0.4], [1.6, 0.34], [1.3, 0.28], [1.0, 0.17], [1.0, 0.15], [0.9, 0.12]]
+  for (let cls = 7; cls >= 0; cls--) {
+    c.lineWidth = style[cls][0]; c.strokeStyle = A(style[cls][1]); c.beginPath()
+    for (const r of d.roads) if (r[0] === cls) { c.moveTo(r[1] * k, r[2] * k); for (let i = 3; i < r.length; i += 2) c.lineTo(r[i] * k, r[i + 1] * k) }
+    c.stroke()
+  }
+  c.strokeStyle = A(0.38); c.lineWidth = 2
+  c.beginPath()
+  for (const r of d.rivers) { c.moveTo(r[0] * k, r[1] * k); for (let i = 2; i < r.length; i += 2) c.lineTo(r[i] * k, r[i + 1] * k) }
+  c.stroke()
+  c.font = `13px ${MONO}`; c.textAlign = 'center'; c.textBaseline = 'middle'
+  for (const [x, y, e] of tags) { c.fillStyle = rgba(BG, 0.92); c.fillRect(x - 20, y - 8, 40, 16); c.fillStyle = A(0.5); c.fillText(`${e}`, x, y) }
+  // A patrol route over the main roads: their vertices, a few, in a loop.
+  const r = seeded(id.length * 7 + 1), main = []
+  for (const rd of d.roads) if (rd[0] <= 3) for (let i = 1; i < rd.length; i += 2) main.push([rd[i], rd[i + 1]])
+  const inner = main.filter(([x, y]) => x > mw * 0.15 && x < mw * 0.85 && y > mh * 0.18 && y < mh * 0.82)
+  const route = []
+  for (let i = 0; i < 7 && inner.length; i++) route.push(inner[Math.floor(r() * inner.length)])
+  // Order them by angle round their centre, so the loop does not cross itself.
+  const mx = route.reduce((s, p) => s + p[0], 0) / route.length, my = route.reduce((s, p) => s + p[1], 0) / route.length
+  route.sort((p, q) => Math.atan2(p[1] - my, p[0] - mx) - Math.atan2(q[1] - my, q[0] - mx))
+  const elevAt = (x, y) => elev[Math.min(gh - 1, Math.floor((y / mh) * gh)) * gw + Math.min(gw - 1, Math.floor((x / mw) * gw))]
+  return (cityCache[id] = { d, layer, k, step, lo, hi, route, elevAt })
+}
+
+function city(t) {
+  const id = cityPick >= 0 ? CITY_IDS[cityPick] : CITY_IDS[Math.floor(t / CITY_CYCLE) % CITY_IDS.length]
+  const cc = prepareCity(id)
+  if (!cc) { ctx.fillStyle = A(0.7); ctx.font = `13px ${MONO}`; ctx.fillText(`no data for ${id} (run scripts/city-data.py)`, 60, 120); return 'NO DATA' }
+  const { d, layer, k } = cc
+  const local = cityPick >= 0 ? t : t % CITY_CYCLE
+  const fade = cityPick >= 0 ? clamp01(local / 1500) : clamp01(local / 1500) * (1 - clamp01((local - CITY_CYCLE + 1500) / 1500))
+  // Slow drift and breathe, never past the edge of the map.
+  const cover = Math.max(W / layer.width, H / layer.height)
+  const s = cover * (1.12 + 0.05 * Math.sin(t * 0.00004))
+  const spareX = layer.width * s - W, spareY = layer.height * s - H
+  const ox = -spareX * (0.5 + 0.45 * Math.sin(t * 0.000021)), oy = -spareY * (0.5 + 0.45 * Math.cos(t * 0.000017))
+  ctx.globalAlpha = fade
+  ctx.drawImage(layer, ox, oy, layer.width * s, layer.height * s)
+  // Map metres to the screen.
+  const toScreen = (x, y) => [ox + x * k * s, oy + y * k * s]
+  const route = cc.route
+  ctx.setLineDash([4, 6]); ctx.strokeStyle = A(0.32); ctx.lineWidth = 1; ctx.beginPath()
+  route.forEach(([x, y], i) => { const [sx, sy] = toScreen(x, y); i ? ctx.lineTo(sx, sy) : ctx.moveTo(sx, sy) }); ctx.closePath(); ctx.stroke(); ctx.setLineDash([])
+  route.forEach(([x, y]) => { const [sx, sy] = toScreen(x, y); ctx.strokeStyle = A(0.4); ctx.strokeRect(sx - 3.5, sy - 3.5, 7, 7) })
+  const seg = (t / 9000) % route.length, i0 = Math.floor(seg), f = ease(seg - i0)
+  const p = route[i0], q = route[(i0 + 1) % route.length]
+  const wx = lerp(p[0], q[0], f), wy = lerp(p[1], q[1], f)
+  const [mx, my] = toScreen(wx, wy)
+  const ring = (t % 3600) / 3600
+  ctx.strokeStyle = A(0.5 * (1 - ring)); ctx.beginPath(); ctx.arc(mx, my, 6 + ring * 46, 0, Math.PI * 2); ctx.stroke()
+  ctx.strokeStyle = A(0.85); ctx.beginPath()
+  ctx.moveTo(mx - 14, my); ctx.lineTo(mx - 4, my); ctx.moveTo(mx + 4, my); ctx.lineTo(mx + 14, my)
+  ctx.moveTo(mx, my - 14); ctx.lineTo(mx, my - 4); ctx.moveTo(mx, my + 4); ctx.lineTo(mx, my + 14); ctx.stroke()
+  const [lat0, lon0] = d.centre, [mw, mh] = d.size
+  const lat = lat0 + (mh / 2 - wy) / 110540, lon = lon0 + (wx - mw / 2) / (111320 * Math.cos((lat0 * Math.PI) / 180))
+  const fmt = (v, pos, neg) => `${Math.abs(v).toFixed(4)}°${v >= 0 ? pos : neg}`
+  ctx.font = `10.5px ${MONO}`; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = A(0.8)
+  ctx.fillText(`${fmt(lat, 'N', 'S')}  ${fmt(lon, 'E', 'W')}`, mx + 20, my - 8)
+  ctx.fillStyle = A(0.5); ctx.fillText(`ELEV ${Math.round(cc.elevAt(wx, wy))}M · WP ${pad(i0 + 1)}/${pad(route.length)}`, mx + 20, my + 8)
+  // City name, large and quiet, top left under the HUD.
+  ctx.font = `600 22px ${MONO}`; ctx.fillStyle = A(0.55); ctx.textBaseline = 'top'
+  ctx.fillText(d.name, 36, 70)
+  ctx.font = `10.5px ${MONO}`; ctx.fillStyle = A(0.4)
+  ctx.fillText(`${fmt(lat0, 'N', 'S')}  ${fmt(lon0, 'E', 'W')}  ·  ${(mw / 1000).toFixed(1)} × ${(mh / 1000).toFixed(1)} KM`, 36, 100)
+  ctx.globalAlpha = 1
+  credit = d.credit
+  return `${d.name} · CONTOUR ${cc.step}M · RELIEF ${Math.round(cc.lo)}–${Math.round(cc.hi)}M · ${d.buildings.length.toLocaleString()} STRUCTURES`
+}
+
+/* =========================================================
+   NEURAL, organic: cortex (calm hemispheres) and ultron (a core).
+   Each node has a depth: far ones are smaller, dimmer, slower.
+   ========================================================= */
+function makeMesh(kind) {
+  const r = seeded(kind === 'ultron' ? 5 : 3)
+  const nodes = []
+  const n = kind === 'ultron' ? 150 : 170
+  for (let i = 0; i < n; i++) {
+    let x, y
+    if (kind === 'ultron') {
+      const a = r() * Math.PI * 2, d = Math.pow(r(), 0.7)
+      x = Math.cos(a) * d * 0.34; y = Math.sin(a) * d * 0.4
+    } else {
+      const side = r() < 0.5 ? -1 : 1
+      const a = r() * Math.PI * 2, d = Math.sqrt(r())
+      x = side * 0.12 + Math.cos(a) * d * 0.15; y = Math.sin(a) * d * 0.27
+      if (Math.abs(x) < 0.012) x += side * 0.02
+    }
+    const z = 0.45 + r() * 0.55
+    nodes.push({ hx: x, hy: y, z, x: 0, y: 0, ph: r() * 10, glow: 0, size: (1.2 + r() * 2.2) * z, tend: Array.from({ length: 2 + Math.floor(r() * 3) }, () => ({ a: r() * Math.PI * 2, l: (8 + r() * 22) * z })) })
+  }
+  return { kind, nodes, signals: [], lastSpawn: 0, lastSurge: 0, surge: -1 }
+}
+const meshes = { cortex: makeMesh('cortex'), ultron: makeMesh('ultron') }
+function neural(t, mesh) {
+  const ultron = mesh.kind === 'ultron'
+  const N = mesh.nodes
+  const R = Math.min(W, H) * (ultron ? 0.105 : 0.085)
+  const cx = focusX(), cy = focusY()
+  const slow = t * 0.00004
+  for (const p of N) {
+    const flow = (ultron ? 10 : 16) * p.z
+    // Depth parallax: the whole mesh sways a little, near nodes more than far.
+    const sway = Math.sin(t * 0.00012) * 14 * (p.z - 0.7)
+    p.x = cx + p.hx * W + noise(p.hx * 3 + slow, p.ph) * flow + sway
+    p.y = cy + p.hy * H + noise(p.ph, p.hy * 3 + slow) * flow
+    p.glow *= ultron ? 0.95 : 0.965
+  }
+  const edges = []
+  for (let i = 0; i < N.length; i++) for (let j = i + 1; j < N.length; j++) {
+    const dx = N[i].x - N[j].x, dy = N[i].y - N[j].y, d = Math.hypot(dx, dy)
+    if (d < R) edges.push([i, j, d])
+  }
+  const adj = N.map(() => [])
+  edges.forEach(([i, j]) => { adj[i].push(j); adj[j].push(i) })
+
+  if (ultron) {
+    if (t - mesh.lastSurge > 12000) { mesh.lastSurge = t; mesh.surge = t }
+    const age = (t - mesh.surge) / 2600
+    if (age >= 0 && age < 1) {
+      const radius = age * Math.max(W, H) * 0.45
+      for (const p of N) if (Math.abs(Math.hypot(p.x - cx, p.y - cy) - radius) < 18) p.glow = Math.max(p.glow, 0.9)
+      ctx.strokeStyle = A(0.09 * (1 - age)); ctx.lineWidth = 1.2; ctx.beginPath(); ctx.arc(cx, cy, radius, 0, Math.PI * 2); ctx.stroke()
+    }
+  }
+  if (t - mesh.lastSpawn > (ultron ? 230 : 240)) {
+    mesh.lastSpawn = t
+    const from = Math.floor(Math.random() * N.length)
+    if (adj[from].length) mesh.signals.push({ from, to: adj[from][Math.floor(Math.random() * adj[from].length)], k: 0, sp: ultron ? 0.018 : 0.014, life: ultron ? 5 : 9 })
+  }
+  const curve = (a, b, i) => {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2, dx = b.x - a.x, dy = b.y - a.y
+    const bow = (ultron ? 0.08 : 0.22) * noise(i * 0.37, t * 0.00018)
+    return [mx - dy * bow, my + dx * bow]
+  }
+  ctx.lineWidth = 1
+  edges.forEach(([i, j, d], k) => {
+    const a = N[i], b = N[j], g = Math.max(a.glow, b.glow), depth = Math.min(a.z, b.z)
+    let alpha = ((1 - d / R) * (ultron ? 0.14 : 0.12) + g * 0.3) * depth
+    if (ultron && Math.random() < 0.0003) alpha = 0.32
+    ctx.strokeStyle = A(alpha)
+    const [qx, qy] = curve(a, b, k)
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.quadraticCurveTo(qx, qy, b.x, b.y); ctx.stroke()
+  })
+  if (ultron) {
+    N.forEach((p, i) => {
+      const d = Math.hypot(p.x - cx, p.y - cy)
+      if (d > Math.min(W, H) * 0.2 || i % 5) return
+      ctx.strokeStyle = A((0.05 + p.glow * 0.25) * p.z)
+      ctx.beginPath(); ctx.moveTo(cx, cy)
+      ctx.quadraticCurveTo(cx + (p.x - cx) * 0.5 + noise(i, t * 0.0003) * 30, cy + (p.y - cy) * 0.5 + noise(t * 0.0003, i) * 30, p.x, p.y); ctx.stroke()
+    })
+  }
+  for (let s = mesh.signals.length - 1; s >= 0; s--) {
+    const sg = mesh.signals[s]
+    sg.k += sg.sp
+    const a = N[sg.from], b = N[sg.to]
+    if (sg.k >= 1) {
+      mesh.signals.splice(s, 1); b.glow = 1
+      const next = adj[sg.to].filter((x) => x !== sg.from)
+      if (next.length && sg.life > 0) mesh.signals.push({ from: sg.to, to: next[Math.floor(Math.random() * next.length)], k: 0, sp: sg.sp, life: sg.life - 1 })
+      continue
+    }
+    const [qx, qy] = curve(a, b, 0)
+    const u = sg.k, x = (1 - u) * (1 - u) * a.x + 2 * (1 - u) * u * qx + u * u * b.x, y = (1 - u) * (1 - u) * a.y + 2 * (1 - u) * u * qy + u * u * b.y
+    const halo = ctx.createRadialGradient(x, y, 0, x, y, 10)
+    halo.addColorStop(0, A(0.7 * Math.min(a.z, b.z))); halo.addColorStop(1, A(0))
+    ctx.fillStyle = halo; ctx.fillRect(x - 10, y - 10, 20, 20)
+  }
+  for (const p of N) {
+    ctx.strokeStyle = A((0.08 + p.glow * 0.3) * p.z)
+    ctx.beginPath()
+    for (const td of p.tend) {
+      const a = td.a + noise(p.ph, t * 0.00025 + td.a) * 0.8
+      const ex = p.x + Math.cos(a) * td.l, ey = p.y + Math.sin(a) * td.l
+      ctx.moveTo(p.x, p.y); ctx.quadraticCurveTo(p.x + Math.cos(a + 0.6) * td.l * 0.5, p.y + Math.sin(a + 0.6) * td.l * 0.5, ex, ey)
+    }
+    ctx.stroke()
+    if (p.glow > 0.05) {
+      const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 16 * p.z)
+      halo.addColorStop(0, A(0.4 * p.glow * p.z)); halo.addColorStop(1, A(0))
+      ctx.fillStyle = halo; ctx.fillRect(p.x - 16, p.y - 16, 32, 32)
+    }
+    ctx.fillStyle = A((0.45 + p.glow * 0.55) * p.z)
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (ultron ? 0.9 : 1), 0, Math.PI * 2); ctx.fill()
+  }
+  if (ultron) {
+    const beat = 0.5 + 0.5 * Math.sin(t * 0.0016)
+    const core = ctx.createRadialGradient(cx, cy, 0, cx, cy, 70)
+    core.addColorStop(0, A(0.35 + beat * 0.2)); core.addColorStop(0.25, A(0.18)); core.addColorStop(1, A(0))
+    ctx.fillStyle = core; ctx.fillRect(cx - 70, cy - 70, 140, 140)
+    ctx.strokeStyle = A(0.6); ctx.lineWidth = 1.2
+    for (const [rr, sp] of [[22, 0.0007], [34, -0.00045], [48, 0.0002]]) {
+      ctx.beginPath(); ctx.arc(cx, cy, rr, t * sp, t * sp + Math.PI * 1.4); ctx.stroke()
+    }
+  }
+  return `${ultron ? 'CORE ONLINE' : 'CORTEX'} · NODES ${N.length} · SYNAPSES ${edges.length} · SIGNALS ${pad(mesh.signals.length)}`
+}
+
+/* ---------- scenes and controls ---------- */
+const SCENES = [
+  { id: 'x3d', label: 'Exploded 3D', draw: exploded, three: true },
+  { id: 'topo', label: 'City topo', draw: city },
+  { id: 'cortex', label: 'Cortex', draw: (t) => neural(t, meshes.cortex) },
+  { id: 'ultron', label: 'Ultron', draw: (t) => neural(t, meshes.ultron) }
+]
+const LAYOUTS = [['corner', 'Corner'], ['min-low', 'Minimal low'], ['min-right', 'Minimal right'], ['right', 'Right rail'], ['center', 'Centre']]
+let scene = SCENES[0], panelOn = true, quoteOn = true
+const bar = document.getElementById('bar')
+function renderBar() {
+  bar.innerHTML = ''
+  const btn = (label, on, fn) => { const b = document.createElement('button'); b.textContent = label; if (on) b.className = 'on'; b.onclick = () => { fn(); renderBar() }; bar.appendChild(b) }
+  const sep = () => { const s = document.createElement('span'); s.className = 'sep'; bar.appendChild(s) }
+  SCENES.forEach((s) => btn(s.label, scene === s, () => { scene = s; start = performance.now() }))
+  if (scene.id === 'x3d') {
+    sep()
+    btn('Cycle', m3 === -1, () => { m3 = -1; start = performance.now() })
+    MODEL_LIST.forEach(([label], i) => btn(label, m3 === i, () => { m3 = i; start = performance.now() }))
+  }
+  if (scene.id === 'topo') {
+    sep()
+    btn('Cycle', cityPick === -1, () => { cityPick = -1; start = performance.now() })
+    CITY_IDS.forEach((id, i) => btn(CITY_LABELS[id], cityPick === i, () => { cityPick = i; start = performance.now() }))
+  }
+  sep()
+  LAYOUTS.forEach(([id, label]) => btn(label, layout === id, () => { layout = id; document.body.dataset.layout = id }))
+  sep()
+  btn(quoteOn ? 'Quote: on' : 'Quote: off', quoteOn, () => { quoteOn = !quoteOn; document.getElementById('quote').classList.toggle('hidden', !quoteOn) })
+  btn(panelOn ? 'Unlock box: on' : 'Unlock box: off', panelOn, () => { panelOn = !panelOn; document.getElementById('panel').classList.toggle('hidden', !panelOn) })
+}
+document.getElementById('quote').classList.toggle('hidden', !quoteOn)
+renderBar()
+
+let start = performance.now(), last = 0
+function frame(now) {
+  requestAnimationFrame(frame)
+  if (now - last < 1000 / 30) return
+  last = now
+  const t = now - start
+  document.getElementById('gl').style.visibility = scene.three ? 'visible' : 'hidden'
+  if (scene.three) ctx.clearRect(0, 0, W, H)
+  else { ctx.fillStyle = rgba(BG, 1); ctx.fillRect(0, 0, W, H) }
+  credit = ''
+  const footer = scene.draw(t)
+  vignette(scene.three ? 0.55 : 0.65)
+  hud(t, footer)
+}
+requestAnimationFrame(frame)
+</script>
+</body>
+</html>
