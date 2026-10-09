@@ -19,6 +19,9 @@
 >   for the reasoning behind the initial direction.
 > - **`ROADMAP.md`** — the near-term order of work: what has to be true before
 >   Phase 1 starts, and the calls made along the way.
+> - **`TRADING.md`** — planning reference for the trading portfolio, the
+>   `trading.db` data layer, the practice sim, and the future read-only
+>   trading view in Nexus. Not a phase; not scheduled.
 
 ---
 
