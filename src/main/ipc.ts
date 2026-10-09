@@ -525,19 +525,35 @@ export function registerIpcHandlers(): void {
       rethrow('prefs:get', e)
     }
   })
-  ipcMain.handle('dashboard:get', () => {
+  ipcMain.handle('dashboard:get', (_, id?: string) => {
     try {
-      return repo.getDashboard()
+      return repo.getDashboard(id ?? undefined)
     } catch (e) {
       rethrow('dashboard:get', e)
     }
   })
 
-  ipcMain.handle('dashboard:set', (_, json: string | null) => {
+  ipcMain.handle('dashboard:set', (_, json: string | null, id?: string) => {
     try {
-      repo.setDashboard(json === null ? null : String(json))
+      repo.setDashboard(json === null ? null : String(json), id ?? undefined)
     } catch (e) {
       rethrow('dashboard:set', e)
+    }
+  })
+
+  ipcMain.handle('commands:get', () => {
+    try {
+      return repo.getCommandPages()
+    } catch (e) {
+      rethrow('commands:get', e)
+    }
+  })
+
+  ipcMain.handle('commands:set', (_, json: string) => {
+    try {
+      repo.setCommandPages(String(json))
+    } catch (e) {
+      rethrow('commands:set', e)
     }
   })
 

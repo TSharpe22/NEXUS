@@ -451,6 +451,28 @@ to the Lesson, `reviewsDue` in the briefing) is next.
   flag and draw each widget in its own column.
 - `scripts/probes/home-tidy.mjs` shoots graph M beside Calendar + Pinned.
 
+## Wave 11 — command pages and Back (shipped)
+
+- **Command pages** (`shared/commands.ts`): named dashboards, the same
+  widgets and Edit as Home. The list is one settings row (`command.pages`);
+  each layout is its own (`dashboard.<id>`, Home keeps `home.dashboard`).
+  First launch moves Home's layout to **Exec** unchanged, makes Home the
+  hub, and seeds **Trading** and **Learning**. Nexus opens on Exec.
+- **Sidebar**: Home, then a "Command" group with + to make one; right-click
+  to rename, move, remove, or "Open Nexus on this page". ⌘K lists them.
+- **Home, the hub**: the quote, capture, **Next task** (oldest late, else
+  first due today), Due for review, and **tiles** — one per command page.
+- **Learning**: Due for review, Pinned, and the topic's "Concepts:" view; a
+  new topic points the empty view widget at its concepts.
+- **Trading**: capture, two view widgets (strategies, firms) and Pinned —
+  the notes TRADING.md keeps in Nexus. The `trading.db` panels wait for it.
+- **Back / Forward** (`store/history.ts`) in the topbar, Alt + ←/→ and the
+  mouse's side buttons. Watches where the store says you are rather than
+  asking every way of moving to record itself.
+- `scripts/check-command.mjs` (`npm run check:command`), including the move
+  of an existing Home to Exec. Older builds show the hub's new widgets as
+  "not installed" placeholders and leave them in place.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

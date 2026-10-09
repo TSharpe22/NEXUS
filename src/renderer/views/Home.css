@@ -130,6 +130,7 @@
    as it needs to be. */
 .nx-home__cell:has(.nx-home__capture) .nx-panel,
 .nx-home__cell:has(.nx-review-strip) .nx-panel,
+.nx-home__cell:has(.nx-next) .nx-panel,
 .nx-home__bare-ctl + * {
   min-height: 0;
 }
@@ -1035,4 +1036,46 @@ button.nx-home__entry:hover {
 
 .nx-brief__ping--failed .nx-brief__ping-time {
   color: var(--nx-critical);
+}
+
+/* ---- Command pages: tiles and the quote ---- */
+
+.nx-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--nx-space-3);
+}
+
+.nx-tile {
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-md);
+  background: var(--nx-surface-raised);
+  color: var(--nx-text);
+  font-family: var(--nx-font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  padding: var(--nx-space-5) var(--nx-space-4);
+  cursor: pointer;
+}
+
+.nx-tile:hover {
+  border-color: var(--nx-accent);
+  color: var(--nx-accent);
+}
+
+.nx-quote {
+  margin: 0;
+  padding: var(--nx-space-1) 0 var(--nx-space-1) var(--nx-space-3);
+  border-left: 2px solid var(--nx-accent);
+  font-style: italic;
+  color: var(--nx-text-muted);
+  line-height: 1.5;
+}
+
+.nx-quote cite {
+  display: block;
+  margin-top: var(--nx-space-1);
+  font-style: normal;
+  color: var(--nx-text-dim);
 }

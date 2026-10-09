@@ -229,7 +229,7 @@ console.log('— UI —')
 await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
   version: 1,
   widgets: [{ id: 'w-cap', kind: 'capture', config: {}, span: 12 }, { id: 'w-brief', kind: 'briefing', config: {}, span: 6 }]
-})))
+}), 'exec'))
 await page.reload()
 await page.waitForSelector('.nx-app', { timeout: 20_000 })
 await sleep(1500)

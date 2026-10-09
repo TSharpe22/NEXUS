@@ -117,8 +117,12 @@ const api: NexusAPI = {
       ipcRenderer.invoke('prefs:setCaptureAccelerator', accelerator)
   },
   dashboard: {
-    get: () => ipcRenderer.invoke('dashboard:get'),
-    set: (json) => ipcRenderer.invoke('dashboard:set', json)
+    get: (id) => ipcRenderer.invoke('dashboard:get', id),
+    set: (json, id) => ipcRenderer.invoke('dashboard:set', json, id)
+  },
+  commands: {
+    get: () => ipcRenderer.invoke('commands:get'),
+    set: (json) => ipcRenderer.invoke('commands:set', json)
   },
   inbox: {
     get: () => ipcRenderer.invoke('inbox:get'),

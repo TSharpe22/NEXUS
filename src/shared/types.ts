@@ -646,12 +646,18 @@ export interface NexusAPI {
   }
   dashboard: {
     /**
-     * Home's stored layout as raw JSON, or null when it has never been
-     * changed. The renderer parses and repairs it — see `normaliseDashboard`.
+     * A command page's stored layout as raw JSON (Home's when `id` is left
+     * out), or null when it has never been changed. The renderer parses and
+     * repairs it — see `normaliseDashboard`.
      */
-    get(): Promise<string | null>
-    /** Passing null forgets the layout, so Home falls back to the default. */
-    set(json: string | null): Promise<void>
+    get(id?: string): Promise<string | null>
+    /** Passing null forgets the layout, so the page falls back to its default. */
+    set(json: string | null, id?: string): Promise<void>
+  }
+  commands: {
+    /** The command pages as raw JSON; made on first call. See `shared/commands.ts`. */
+    get(): Promise<string>
+    set(json: string): Promise<void>
   }
   inbox: {
     /** The inbox page if it exists, without making one. */

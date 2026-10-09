@@ -193,6 +193,32 @@ body .nx-menu__item:active:not(:disabled) {
   padding: 0 var(--nx-space-2) 4px;
 }
 
+.nx-sidebar__command-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.nx-sidebar__add {
+  border: none;
+  background: transparent;
+  color: var(--nx-text-dim);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.nx-sidebar__add:hover {
+  color: var(--nx-accent);
+}
+
+.nx-sidebar__name {
+  width: 100%;
+  font-size: 13px;
+  padding: 3px 8px;
+}
+
 .nx-sidebar__foot {
   margin-top: auto;
   padding: 0 var(--nx-space-2);
@@ -214,6 +240,39 @@ body .nx-menu__item:active:not(:disabled) {
   padding: var(--nx-space-4) var(--nx-space-6);
   border-bottom: 1px solid var(--nx-border);
   flex-shrink: 0;
+}
+
+.nx-topbar__nav {
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-2);
+  min-width: 0;
+}
+
+.nx-topbar__step {
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
+  color: var(--nx-text-muted);
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+  line-height: 1;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.nx-topbar__step:hover:not(:disabled) {
+  border-color: var(--nx-accent);
+  color: var(--nx-accent);
+}
+
+.nx-topbar__step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.nx-topbar__nav .nx-topbar__title {
+  margin-left: var(--nx-space-2);
 }
 
 .nx-topbar__title {

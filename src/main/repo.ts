@@ -16,6 +16,14 @@ import { statSync } from 'fs'
 import { EMPTY_FILTER, isFilterGroup } from '@shared/views'
 import { checkCardOf, nextSchedule, type ReviewGrade } from '@shared/review'
 import { normaliseDashboard } from '@shared/widgets'
+import {
+  DEFAULT_COMMANDS,
+  HOME_ID,
+  HUB_DASHBOARD,
+  LEARNING_DASHBOARD,
+  dashboardKey,
+  isCommandId
+} from '@shared/commands'
 import { canvasAttachmentNames, canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
 import type {
   FilterField,
@@ -1642,6 +1650,7 @@ export function createTopic(name: string): NewTopic {
   content = fillUnderHeading(content, 'Concepts', `The view "${viewName}", and the backlinks below.`)
   updatePage(page.id, { title, content })
   addReviewWidgetToHome()
+  addConceptsViewToLearning(view.id)
 
   return { page: getPageById(page.id)!, canvasId: canvas.id, viewId: view.id }
 }
@@ -1654,12 +1663,17 @@ export function createTopic(name: string): NewTopic {
 function addReviewWidgetToHome(): void {
   if (getSetting('learning.reviewWidgetAdded')) return
   setSetting('learning.reviewWidgetAdded', '1')
+  // Learning has its own page now, which already carries the strip; Home is
+  // the fallback for a vault whose Learning page was removed.
+  ensureCommandPages()
+  const target = hasCommandPage('learning') ? 'learning' : HOME_ID
   let raw: unknown = null
   try {
-    raw = JSON.parse(getDashboard() ?? 'null')
+    raw = JSON.parse(getDashboard(target) ?? 'null')
   } catch {
     raw = null
   }
+  if (raw === null && target === 'learning') return
   const dashboard = normaliseDashboard(raw)
   if (dashboard.widgets.some((w) => w.kind === 'review')) return
   const widgets = [...dashboard.widgets]
@@ -1670,7 +1684,30 @@ function addReviewWidgetToHome(): void {
   let at = widgets.findIndex((w) => w.kind === 'capture')
   while (at >= 0 && widgets[at + 1]?.stack) at++
   widgets.splice(at + 1, 0, { id: 'w-review', kind: 'review', config: {}, span: 12 })
-  setDashboard(JSON.stringify({ ...dashboard, widgets }))
+  setDashboard(JSON.stringify({ ...dashboard, widgets }), target)
+}
+
+/**
+ * A new topic's "Concepts: <name>" view on the Learning page: into the
+ * seeded view widget if it has not been pointed anywhere yet, else as a new
+ * widget at the end.
+ */
+function addConceptsViewToLearning(viewId: string): void {
+  ensureCommandPages()
+  if (!hasCommandPage('learning')) return
+  let raw: unknown = null
+  try {
+    raw = JSON.parse(getDashboard('learning') ?? 'null')
+  } catch {
+    raw = null
+  }
+  const dashboard = normaliseDashboard(raw ?? LEARNING_DASHBOARD)
+  const empty = dashboard.widgets.findIndex((w) => w.kind === 'view' && !w.config.viewId)
+  const widgets =
+    empty >= 0
+      ? dashboard.widgets.map((w, i) => (i === empty ? { ...w, config: { ...w.config, viewId } } : w))
+      : [...dashboard.widgets, { id: `w-view-${viewId}`, kind: 'view', config: { viewId }, span: 12 }]
+  setDashboard(JSON.stringify({ ...dashboard, widgets }), 'learning')
 }
 
 /** A new Concept, already pointed at the topic `fromPageId` resolves to (if any). */
@@ -1839,12 +1876,61 @@ export function setSetting(key: string, value: string | null): void {
  * deliberately does not parse, validate or repair it. An add-on's widget config
  * travelling through here untouched is the point.
  */
-export function getDashboard(): string | null {
-  return getSetting('home.dashboard')
+export function getDashboard(id: string = HOME_ID): string | null {
+  if (!isCommandId(id)) throw new Error(`Not a command page id: ${id}`)
+  return getSetting(dashboardKey(id))
 }
 
-export function setDashboard(json: string | null): void {
-  setSetting('home.dashboard', json)
+export function setDashboard(json: string | null, id: string = HOME_ID): void {
+  if (!isCommandId(id)) throw new Error(`Not a command page id: ${id}`)
+  setSetting(dashboardKey(id), json)
+}
+
+/**
+ * The list of command pages, as raw JSON — the renderer repairs it with
+ * `normaliseCommands`, as it does a dashboard.
+ */
+export function getCommandPages(): string {
+  ensureCommandPages()
+  return getSetting('command.pages')!
+}
+
+export function setCommandPages(json: string): void {
+  setSetting('command.pages', json)
+}
+
+function hasCommandPage(id: string): boolean {
+  try {
+    const parsed = JSON.parse(getSetting('command.pages') ?? 'null') as { pages?: { id?: string }[] }
+    return !!parsed?.pages?.some((p) => p.id === id)
+  } catch {
+    return false
+  }
+}
+
+/**
+ * First run with command pages: Home's layout as it stands becomes Exec —
+ * moved exactly, so nothing on it changes — and Home becomes the hub. Learning
+ * starts with the vault's first "Concepts:" view, if a topic was already made.
+ * Runs once; after that the list is the user's.
+ */
+function ensureCommandPages(): void {
+  if (getSetting('command.pages') !== null) return
+  getDb().transaction(() => {
+    const home = getSetting('home.dashboard')
+    // A null Home meant "the default layout", which is Exec's default too.
+    setSetting(dashboardKey('exec'), home)
+    setSetting(dashboardKey(HOME_ID), JSON.stringify(HUB_DASHBOARD))
+    const concepts = listViews().find((v) => v.name.startsWith('Concepts: '))
+    const learning = {
+      ...LEARNING_DASHBOARD,
+      widgets: LEARNING_DASHBOARD.widgets.map((w) =>
+        w.kind === 'view' && concepts ? { ...w, config: { viewId: concepts.id } } : w
+      )
+    }
+    setSetting(dashboardKey('learning'), JSON.stringify(learning))
+    setSetting('command.pages', JSON.stringify(DEFAULT_COMMANDS))
+  })()
 }
 
 /** Page id to the relative path the mirror last wrote for it. */

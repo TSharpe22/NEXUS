@@ -17,6 +17,8 @@ import { Views } from './views/Views'
 import { Tracker } from './views/Tracker'
 import { Settings } from './views/Settings'
 import { CanvasScreen } from './canvas/CanvasScreen'
+import { CommandNav } from './views/CommandNav'
+import { goBack, goForward, startHistory } from './store/history'
 import './App.css'
 
 const VIEW_COMPONENT: Record<View, () => JSX.Element> = {
@@ -54,7 +56,16 @@ export function App() {
   const activeViewId = useAppStore((s) => s.activeViewId)
   const setActiveViewId = useAppStore((s) => s.setActiveViewId)
   const refreshUnlocked = useAppStore((s) => s.refreshUnlocked)
+  const loadCommands = useAppStore((s) => s.loadCommands)
+  const commands = useAppStore((s) => s.commands)
+  const activeCommandId = useAppStore((s) => s.activeCommandId)
+  const canGoBack = useAppStore((s) => s.canGoBack)
+  const canGoForward = useAppStore((s) => s.canGoForward)
   const ActiveComponent = VIEW_COMPONENT[activeView]
+  const title =
+    activeView === 'home'
+      ? commands?.pages.find((p) => p.id === activeCommandId)?.name ?? VIEW_META.home.label
+      : VIEW_META[activeView].label
 
   /**
    * Saved views the user has pinned, under the five fixed destinations.
@@ -75,6 +86,42 @@ export function App() {
   useEffect(() => {
     refresh()
   }, [refresh])
+
+  // The command pages: the sidebar lists them, and Nexus opens on one.
+  useEffect(() => {
+    void loadCommands()
+  }, [loadCommands])
+
+  useEffect(() => startHistory(), [])
+
+  // Back and Forward from the keyboard (Alt + ←/→) and the mouse's side
+  // buttons, as in a browser. Alt + arrow inside a text field is left alone.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return
+      const el = e.target as HTMLElement | null
+      if (el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')) return
+      e.preventDefault()
+      if (e.key === 'ArrowLeft') goBack()
+      else goForward()
+    }
+    const onMouseUp = (e: MouseEvent) => {
+      if (e.button === 3) {
+        e.preventDefault()
+        goBack()
+      } else if (e.button === 4) {
+        e.preventDefault()
+        goForward()
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [])
 
   // The sidebar draws pinned views, so the list has to be loaded before the
   // Views screen has ever been opened.
@@ -160,15 +207,19 @@ export function App() {
           </button>
         </div>
         <nav className="nx-sidebar__nav">
-          {VIEW_ORDER.map((view) => (
-            <NavItem
-              key={view}
-              label={VIEW_META[view].label}
-              title={VIEW_META[view].hint}
-              selected={activeView === view}
-              onClick={() => setActiveView(view)}
-            />
-          ))}
+          <CommandNav />
+
+          <div className="nx-sidebar__pins">
+            {VIEW_ORDER.filter((view) => view !== 'home').map((view) => (
+              <NavItem
+                key={view}
+                label={VIEW_META[view].label}
+                title={VIEW_META[view].hint}
+                selected={activeView === view}
+                onClick={() => setActiveView(view)}
+              />
+            ))}
+          </div>
 
           {pinnedViews.length > 0 && (
             <div className="nx-sidebar__pins">
@@ -204,7 +255,27 @@ export function App() {
 
       <div className="nx-main">
         <header className="nx-topbar">
-          <div className="nx-topbar__title">{VIEW_META[activeView].label}</div>
+          <div className="nx-topbar__nav">
+            <button
+              className="nx-topbar__step"
+              onClick={goBack}
+              disabled={!canGoBack}
+              title="Back (Alt + ←)"
+              aria-label="Back"
+            >
+              ←
+            </button>
+            <button
+              className="nx-topbar__step"
+              onClick={goForward}
+              disabled={!canGoForward}
+              title="Forward (Alt + →)"
+              aria-label="Forward"
+            >
+              →
+            </button>
+            <div className="nx-topbar__title">{title}</div>
+          </div>
           <SaveIndicator />
         </header>
         <main className="nx-content">

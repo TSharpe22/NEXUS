@@ -5,6 +5,8 @@ import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWi
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 import { localDateISO } from '@shared/journal-date'
 import { flushPendingWrites } from '../pending-writes'
+import type { CommandIndex } from '@shared/commands'
+import { HOME_ID, normaliseCommands } from '@shared/commands'
 
 export type View = 'home' | 'notes' | 'views' | 'tracker' | 'canvas' | 'settings'
 
@@ -21,7 +23,7 @@ export type View = 'home' | 'notes' | 'views' | 'tracker' | 'canvas' | 'settings
  * is the key order — insertion order, which JS guarantees for string keys.
  */
 export const VIEW_META: Record<View, { label: string; hint: string }> = {
-  home: { label: 'Home', hint: 'Overview and graph' },
+  home: { label: 'Home', hint: 'Command pages: Home and the dashboards beside it' },
   notes: { label: 'Notes', hint: 'Write and edit pages' },
   views: { label: 'Views', hint: 'Saved questions about the vault' },
   tracker: { label: 'Tracker', hint: "What's due, week by week" },
@@ -259,6 +261,21 @@ interface AppState {
   setActiveCanvasId: (id: string | null) => void
   /** Jump to a canvas from anywhere: switches to Canvas and selects it. */
   openCanvas: (id: string) => void
+
+  /**
+   * The command pages (Home, Exec, Trading, Learning, …) and which one the
+   * `home` view is showing. Null until the list has loaded; it then starts on
+   * the list's start page.
+   */
+  commands: CommandIndex | null
+  activeCommandId: string | null
+  loadCommands: () => Promise<void>
+  saveCommands: (next: CommandIndex) => Promise<void>
+  openCommand: (id: string) => void
+
+  /** Whether Back / Forward have anywhere to go. The entries live in `history.ts`. */
+  canGoBack: boolean
+  canGoForward: boolean
 }
 
 /** How long "saved" stays on screen before the indicator goes quiet again. */
@@ -854,7 +871,45 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   setActiveCanvasId: (id) => set({ activeCanvasId: id }),
 
-  openCanvas: (id) => set({ activeView: 'canvas', activeCanvasId: id })
+  openCanvas: (id) => set({ activeView: 'canvas', activeCanvasId: id }),
+
+  commands: null,
+  activeCommandId: null,
+
+  loadCommands: async () => {
+    let commands: CommandIndex
+    try {
+      commands = normaliseCommands(JSON.parse(await window.api.commands.get()))
+    } catch (e) {
+      console.error('[nexus] could not read the command pages', e)
+      commands = normaliseCommands(null)
+    }
+    set((state) => ({
+      commands,
+      // First load picks the start page; a reload keeps where you are unless
+      // that page has gone.
+      activeCommandId:
+        state.activeCommandId && commands.pages.some((p) => p.id === state.activeCommandId)
+          ? state.activeCommandId
+          : commands.start
+    }))
+  },
+
+  saveCommands: async (next) => {
+    const commands = normaliseCommands(next)
+    set((state) => ({
+      commands,
+      activeCommandId: commands.pages.some((p) => p.id === state.activeCommandId)
+        ? state.activeCommandId
+        : HOME_ID
+    }))
+    await window.api.commands.set(JSON.stringify(commands))
+  },
+
+  openCommand: (id) => set({ activeView: 'home', activeCommandId: id }),
+
+  canGoBack: false,
+  canGoForward: false
 }))
 
 /**

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Dashboard, WidgetInstance, WidgetSpan } from '@shared/widgets'
-import { DEFAULT_DASHBOARD, WIDGET_SPANS, normaliseDashboard, widgetColumns } from '@shared/widgets'
+import { WIDGET_SPANS, normaliseDashboard, widgetColumns } from '@shared/widgets'
+import { defaultDashboardFor } from '@shared/commands'
 import { dayOfYear, fromISO, isoWeek } from '@shared/date-range'
 import { dayStartLabel } from '@shared/day'
 import { useAppStore, useToday, useWallToday } from '../store/app-store'
@@ -186,7 +187,18 @@ function WidgetCell({
 // Home
 // ------------------------------------------------------------------
 
+/**
+ * The `home` view: whichever command page is open. Keyed by its id, so moving
+ * between Home, Exec and the rest starts each from its own layout rather than
+ * flashing the last one's.
+ */
 export function Home() {
+  const id = useAppStore((s) => s.activeCommandId)
+  if (id === null) return <div className="nx-type-data">Loading…</div>
+  return <CommandPage key={id} id={id} />
+}
+
+function CommandPage({ id }: { id: string }) {
   const openPage = useAppStore((s) => s.openPage)
   const createPage = useAppStore((s) => s.createPage)
   const openTodayEntry = useAppStore((s) => s.openTodayEntry)
@@ -202,6 +214,8 @@ export function Home() {
   const types = useAppStore((s) => s.types)
   const canvases = useAppStore((s) => s.canvases)
   const views = useAppStore((s) => s.views)
+  const commands = useAppStore((s) => s.commands)
+  const openCommand = useAppStore((s) => s.openCommand)
 
   const [dashboard, setDashboard] = useState<Dashboard | null>(null)
   const [editing, setEditing] = useState(false)
@@ -219,17 +233,17 @@ export function Home() {
 
   const loadDashboard = useCallback(async () => {
     try {
-      const raw = await window.api.dashboard.get()
+      const raw = await window.api.dashboard.get(id)
       // Never trust the blob: it may have been written by another build, by an
       // add-on, or by hand. `normaliseDashboard` repairs what it can.
-      setDashboard(raw ? normaliseDashboard(JSON.parse(raw)) : DEFAULT_DASHBOARD)
+      setDashboard(raw ? normaliseDashboard(JSON.parse(raw)) : defaultDashboardFor(id))
       setError(null)
     } catch (e) {
       // A dashboard that will not parse is not a reason to lose Home.
       console.error('[nexus] could not read the saved dashboard', e)
-      setDashboard(DEFAULT_DASHBOARD)
+      setDashboard(defaultDashboardFor(id))
     }
-  }, [])
+  }, [id])
 
   useEffect(() => {
     void loadDashboard()
@@ -239,12 +253,12 @@ export function Home() {
   const persist = useCallback(async (next: Dashboard) => {
     setDashboard(next)
     try {
-      await window.api.dashboard.set(JSON.stringify(next))
+      await window.api.dashboard.set(JSON.stringify(next), id)
     } catch (e) {
       console.error('[nexus] could not save the dashboard', e)
       toast.error('Could not save the layout')
     }
-  }, [])
+  }, [id])
 
   /**
    * The narrowed surface every widget is given. Built once and memoised on
@@ -258,6 +272,9 @@ export function Home() {
       types,
       views,
       canvases,
+      commandPages: commands?.pages ?? [],
+      commandId: id,
+      openCommand,
       openPage,
       goToTracker: (mode) => {
         setTrackerMode(mode)
@@ -329,6 +346,9 @@ export function Home() {
       types,
       views,
       canvases,
+      commands,
+      id,
+      openCommand,
       openPage,
       openTodayEntry,
       openWeek,
@@ -437,7 +457,7 @@ export function Home() {
     })
   }
 
-  const resetLayout = () => void persist(DEFAULT_DASHBOARD)
+  const resetLayout = () => void persist(defaultDashboardFor(id))
 
   if (error) {
     return <ErrorState label="Could not load Home" detail={error} onRetry={() => void loadDashboard()} />
@@ -445,6 +465,7 @@ export function Home() {
 
   if (dashboard === null) return <div className="nx-type-data">Loading…</div>
 
+  // An empty vault gets the way in on whichever command page it opens on.
   if (pages.length === 0) {
     return (
       <EmptyState
@@ -484,7 +505,7 @@ export function Home() {
               setAdding(false)
             }}
           >
-            {editing ? 'Done' : 'Edit Home'}
+            {editing ? 'Done' : 'Edit'}
           </Button>
         </div>
       </div>
@@ -526,8 +547,8 @@ export function Home() {
 
         {widgets.length === 0 && (
           <div className="nx-home__hint nx-type-data" style={{ gridColumn: 'span 12' }}>
-            Home is empty. Hit <strong>Edit Home</strong> and add a widget, or reset to the default
-            layout.
+            Nothing on this page yet. Hit <strong>Edit</strong> and add a widget, or reset to the
+            default layout.
           </div>
         )}
       </div>

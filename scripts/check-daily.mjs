@@ -187,8 +187,7 @@ await page.evaluate(async (ids) => {
         { id: 'w3', kind: 'habits', span: 4 },
         { id: 'w4', kind: 'view', span: 3, config: { viewId: ids.projects } }
       ]
-    })
-  )
+    }), 'exec')
   const view = await window.api.views.get(ids.open)
   await window.api.views.update(ids.open, { ...view, is_pinned: 1 })
 }, seeded.views)

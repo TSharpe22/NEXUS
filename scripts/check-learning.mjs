@@ -227,18 +227,19 @@ const loggedProps = await api((id) => window.api.properties.getForPage(id), logi
 check('the schedule is written as visible properties',
   val(loggedProps, 'interval')?.value_number === 7 && val(loggedProps, 'due')?.value_date === plusDays(today, 7))
 
-// ---------------------------------------------------------------- the review, from Home, by keyboard
+// ---------------------------------------------------------------- the review, from Learning, by keyboard
 const nav = (label) =>
   page.evaluate((label) => {
     const item = [...document.querySelectorAll('.nx-nav-item')].find((el) => el.textContent.trim() === label)
     item?.click()
     return !!item
   }, label)
-await nav('Home')
+await nav('Learning')
 await sleep(1200)
 if (process.env.SCREENSHOT_DIR) await page.screenshot({ path: join(process.env.SCREENSHOT_DIR, 'review-home.png') })
 const widgetText = await page.evaluate(() => document.querySelector('.nx-home__grid')?.innerText ?? '')
-check('Home shows "Due for review" (added by the first topic)', /Due for review/i.test(widgetText) && /Spanish · 3 due/.test(widgetText), widgetText.slice(0, 200))
+check('Learning shows "Due for review"', /Due for review/i.test(widgetText) && /Spanish · 3 due/.test(widgetText), widgetText.slice(0, 200))
+check('and the topic\'s concepts view, put there by "New topic"', /Concepts: Spanish/i.test(widgetText), widgetText.slice(0, 300))
 await page.getByRole('button', { name: /Review 3/ }).click()
 await sleep(800)
 check('the widget opens Tracker → Review', (await page.locator('[data-testid="review-card"]').count()) === 1)

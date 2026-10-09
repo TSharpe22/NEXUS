@@ -19,6 +19,7 @@ import type {
   ViewRow
 } from '@shared/types'
 import type { TrackerMode } from '../store/app-store'
+import type { CommandPage } from '@shared/commands'
 
 /**
  * Everything a widget is allowed to do.
@@ -50,8 +51,13 @@ export interface WidgetContext {
   views: ViewDef[]
   /** Canvases without their documents. A save changes `updated_at`, which is what a widget refetches on. */
   canvases: CanvasListItem[]
+  /** Every command page, in sidebar order, and the one this widget is on. */
+  commandPages: CommandPage[]
+  commandId: string
 
   openPage(id: string): void
+  /** Show another command page. */
+  openCommand(id: string): void
   goToTracker(mode: TrackerMode): void
   /** The Notes list, filtered to one tag. */
   openTag(tagId: string): void

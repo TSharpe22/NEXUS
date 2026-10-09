@@ -131,7 +131,7 @@ await page.evaluate(async (port) => {
     // Calendar with Pinned stacked under it, sharing the graph's height.
     { id: 'w-calendar', kind: 'calendar', config: {}, span: 6 },
     { id: 'w-pinned', kind: 'pinned', config: {}, span: 6, stack: true }
-  ] }))
+  ] }), 'exec')
 }, port)
 
 await page.reload()
@@ -143,6 +143,10 @@ await page.evaluate(() => { const m = document.querySelector('.nx-home')?.parent
 await sleep(400)
 await page.screenshot({ path: `${SHOT}/tidy-home-bottom.png` })
 console.log('home height', tall)
+// Home, the hub.
+await page.evaluate(() => window.nexus.store.getState().openCommand('home'))
+await sleep(1500)
+await page.screenshot({ path: `${SHOT}/tidy-hub.png` })
 console.log(`shots in ${SHOT}`)
 await app.close()
 server.close()

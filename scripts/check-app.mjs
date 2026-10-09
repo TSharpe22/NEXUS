@@ -948,7 +948,7 @@ check('an unchanged completed_at is carried across the reprojection',
 
 // The relation bug looked like it worked until you left the page and came
 // back: assert the reopen, and against the database, not the DOM alone.
-await nav('Home')
+await nav('Exec')
 await sleep(600)
 await nav('Notes')
 await sleep(600)
@@ -1195,7 +1195,7 @@ check('and it names the properties that qualified it',
   JSON.stringify(candidates[0]))
 
 // Re-enter the view so it picks the new type up.
-await nav('Home')
+await nav('Exec')
 await sleep(400)
 await nav('Tracker')
 await sleep(500)
@@ -1286,7 +1286,7 @@ await sleep(500)
 
 // ---------------------------------------------------------------- graph
 log('\n— graph —')
-await nav('Home')
+await nav('Exec')
 await sleep(1800)
 check('graph renders nodes', (await page.evaluate(() => document.querySelectorAll('.nx-graph__node').length)) > 0)
 // The graph is taller than it was and can sit below the fold of an 820px
@@ -1788,17 +1788,17 @@ await page.evaluate(() => window.nexus.store.getState().setTrackerMode('week'))
 
 // The same week on Home. A saved layout still naming the retired Vault panel
 // loses it quietly rather than drawing a "not installed" placeholder.
-const savedLayout = await page.evaluate(() => window.api.dashboard.get())
+const savedLayout = await page.evaluate(() => window.api.dashboard.get('exec'))
 await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
   version: 1,
   widgets: [
     { id: 'w-week', kind: 'week', config: {}, span: 7 },
     { id: 'w-stats', kind: 'stats', config: {}, span: 3 }
   ]
-})))
+}), 'exec'))
 await nav('Notes')
 await sleep(300)
-await nav('Home')
+await nav('Exec')
 await sleep(1200)
 const homeWeek = await page.evaluate(() => {
   const strip = document.querySelector('.nx-home__week-strip')
@@ -1819,7 +1819,7 @@ check('headed with the week it is', homeWeek.text.includes('WEEK') || /Week ·/i
 check('a retired Vault panel is dropped, not drawn as missing',
   !/not installed|unknown widget/i.test(homeWeek.home) && !/size on disk|on disk/i.test(homeWeek.home))
 await page.screenshot({ path: SHOT + '/11c-home-week.png' })
-await page.evaluate((raw) => window.api.dashboard.set(raw), savedLayout)
+await page.evaluate((raw) => window.api.dashboard.set(raw, 'exec'), savedLayout)
 
 await page.evaluate(async ([fx, log]) => {
   const api = window.api
@@ -1897,10 +1897,10 @@ check('and a dead feed is named in the errors, not fatal',
 
 await page.evaluate(() => window.api.dashboard.set(JSON.stringify({
   version: 1, widgets: [{ id: 'w-cal', kind: 'calendar', config: {}, span: 12 }]
-})))
+}), 'exec'))
 await nav('Notes')
 await sleep(300)
-await nav('Home')
+await nav('Exec')
 await sleep(1500)
 const homeCal = await page.evaluate((today) => {
   const days = [...document.querySelectorAll('.nx-home__cal-day')]
@@ -1928,7 +1928,7 @@ check('Tracker → Week shows the events on their days',
 
 await page.evaluate(async (raw) => {
   for (const f of await window.api.calendar.feeds()) await window.api.calendar.removeFeed(f.id)
-  await window.api.dashboard.set(raw)
+  await window.api.dashboard.set(raw, 'exec')
 }, savedLayout)
 check('removing the feeds leaves none', (await page.evaluate(() => window.api.calendar.feeds())).length === 0)
 calServer.close()
@@ -2064,7 +2064,7 @@ check('with every target Home offers',
   (await page.evaluate(() =>
     [...document.querySelectorAll('.nx-capture-overlay .nx-home__capture-row')[1].querySelectorAll('button')]
       .map((b) => b.textContent.trim())
-  )).join('|') === "New page|Today's entry|Task|Inbox|Remind")
+  )).join('|') === "New page|Today's entry|Task|Inbox|Remind|Event")
 
 await page.evaluate(() => {
   const input = document.querySelector('.nx-capture-overlay .nx-home__capture-input')
@@ -2649,7 +2649,7 @@ check('a renamed entry is still found for today',
 
 // ---------------------------------------------------------------- home
 log('\n— home: capture —')
-await nav('Home')
+await nav('Exec')
 await sleep(1000)
 
 const homeText = () => page.evaluate(() => document.querySelector('.nx-home')?.innerText ?? '')
@@ -2850,7 +2850,7 @@ check('and moves back when the clock does', (await todayLabel()) === dayBefore,
   `${JSON.stringify(await todayLabel())} vs ${JSON.stringify(dayBefore)}`)
 
 // Back where this section found the app: everything below captures from Home.
-await nav('Home')
+await nav('Exec')
 await sleep(600)
 
 // ---------------------------------------------------------------- inbox
@@ -2900,7 +2900,7 @@ check('clearing the date removes the token', clearedTask?.dueDate === null, JSON
 check('and still leaves the text intact', clearedTask?.text === 'look into the thing with the tapes',
   JSON.stringify(clearedTask?.text))
 
-await nav('Home')
+await nav('Exec')
 await sleep(500)
 await captureAs("Today's entry")
 
@@ -2943,7 +2943,7 @@ check('the write went into the block, not just the projected row',
 // until now.
 await nav('Notes')
 await sleep(700)
-await nav('Home')
+await nav('Exec')
 await sleep(1100)
 const afterReturn = await page.evaluate((id) => window.api.tasks.forPage(id), entryId)
 check('and it is still done after leaving Home and returning',
@@ -2985,7 +2985,7 @@ check('the row now offers to unpin', await page.evaluate((title) => {
   return [...(row?.querySelectorAll('button') ?? [])].some((b) => b.textContent.trim() === 'Unpin')
 }, 'Ideas for the mirror format'))
 
-await nav('Home')
+await nav('Exec')
 await sleep(1000)
 check('a pinned page shows on Home',
   /Ideas for the mirror format/.test(await panelText('Pinned')))
@@ -3019,7 +3019,7 @@ const homeHabit = await page.evaluate(async (today) => {
 }, dayFromToday(0))
 await nav('Notes')
 await sleep(500)
-await nav('Home')
+await nav('Exec')
 await sleep(1400)
 
 check('a habit draws a two-week strip',
@@ -3119,11 +3119,11 @@ check('no widget slot is left unregistered',
 // — rearranging Home, and that it sticks —
 await page.evaluate(() => {
   const btn = [...document.querySelectorAll('.nx-home__head-actions .nx-button')].find(
-    (b) => b.textContent.trim() === 'Edit Home')
+    (b) => b.textContent.trim() === 'Edit')
   btn?.click()
 })
 await sleep(150)
-check('Edit Home reveals the per-widget controls',
+check('Edit reveals the per-widget controls',
   await page.evaluate(() => document.querySelectorAll('.nx-home__wctl').length) > 0)
 
 // Remove the last widget, which the default layout says is Graph.
@@ -3135,7 +3135,7 @@ await sleep(400)
 check('removing a widget takes it off Home',
   await page.evaluate(() => document.querySelectorAll('.nx-home__slot').length) === 7)
 
-const savedDashboard = await page.evaluate(() => window.api.dashboard.get())
+const savedDashboard = await page.evaluate(() => window.api.dashboard.get('exec'))
 check('the arrangement was written to the vault, not just to the screen',
   typeof savedDashboard === 'string' && JSON.parse(savedDashboard).widgets.length === 7,
   savedDashboard ? `${JSON.parse(savedDashboard).widgets.length} widgets` : 'nothing stored')
@@ -3148,21 +3148,21 @@ check('the arrangement was written to the vault, not just to the screen',
  * cannot create one.
  */
 await page.evaluate(async () => {
-  const current = JSON.parse(await window.api.dashboard.get())
+  const current = JSON.parse(await window.api.dashboard.get('exec'))
   current.widgets.push({ id: 'w-alien', kind: 'someaddon.chart', config: { a: 1 }, span: 6 })
-  await window.api.dashboard.set(JSON.stringify(current))
+  await window.api.dashboard.set(JSON.stringify(current), 'exec')
 })
 await page.reload()
 await sleep(1200)
 check('an unknown widget kind is shown rather than dropped',
   /No widget registered/.test(await page.evaluate(() => document.querySelector('.nx-home').innerText)))
 
-const afterReload = JSON.parse(await page.evaluate(() => window.api.dashboard.get()))
+const afterReload = JSON.parse(await page.evaluate(() => window.api.dashboard.get('exec')))
 check('and it is still in the stored dashboard, with its config intact',
   afterReload.widgets.some((w) => w.kind === 'someaddon.chart' && w.config.a === 1))
 
 // Put Home back the way the rest of this script expects to find it.
-await page.evaluate(() => window.api.dashboard.set(null))
+await page.evaluate(() => window.api.dashboard.set(null, 'exec'))
 await page.reload()
 await sleep(1200)
 check('clearing the stored dashboard restores the default layout',

@@ -42,7 +42,7 @@ const EMPTY_PINS: GraphPins = {}
 // Shared pieces
 // ------------------------------------------------------------------
 
-function TaskRow({ task, onToggle, onReschedule, onOpen, inPlan = false }: {
+export function TaskRow({ task, onToggle, onReschedule, onOpen, inPlan = false }: {
   task: TrackerTask
   onToggle: (task: TrackerTask) => void
   onReschedule: (task: TrackerTask, due: string | null) => Promise<void>

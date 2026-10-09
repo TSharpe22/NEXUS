@@ -17,6 +17,7 @@ import {
 } from './builtins'
 import { BriefingWidget } from './briefing'
 import { ReviewWidget } from './review'
+import { NextTaskWidget, QuoteWidget, TilesWidget } from './command'
 
 /**
  * Every widget Home knows how to draw.
@@ -171,6 +172,39 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     Component: WeekWidget
   }
 ]
+
+WIDGET_DEFINITIONS.push(
+  {
+    kind: 'tiles',
+    label: 'Command pages',
+    hint: 'A tile for each of the other command pages',
+    defaultSpan: 12,
+    frame: 'bare',
+    Component: TilesWidget
+  },
+  {
+    kind: 'quote',
+    label: 'Quote',
+    hint: 'A line to start from',
+    defaultSpan: 12,
+    frame: 'bare',
+    Component: QuoteWidget
+  },
+  {
+    kind: 'next-task',
+    label: 'Next task',
+    hint: 'The oldest late task, else the first due today',
+    defaultSpan: 6,
+    frame: 'panel',
+    title: () => 'Next task',
+    actions: (ctx) => (
+      <button className="nx-home__link nx-type-data" onClick={() => ctx.goToTracker('week')}>
+        tracker →
+      </button>
+    ),
+    Component: NextTaskWidget
+  }
+)
 
 const BY_KIND = new Map(WIDGET_DEFINITIONS.map((d) => [d.kind, d]))
 

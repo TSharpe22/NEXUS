@@ -33,6 +33,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const pages = useAppStore((s) => s.pages)
   const openPage = useAppStore((s) => s.openPage)
   const setActiveView = useAppStore((s) => s.setActiveView)
+  const commands = useAppStore((s) => s.commands)
+  const openCommand = useAppStore((s) => s.openCommand)
   const createPage = useAppStore((s) => s.createPage)
   const canvases = useAppStore((s) => s.canvases)
   const openCanvas = useAppStore((s) => s.openCanvas)
@@ -186,7 +188,12 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
             )}
 
             <Command.Group heading="Go to">
-              {VIEWS.map(({ view, label }) => (
+              {(commands?.pages ?? []).map((p) => (
+                <Command.Item key={p.id} value={`command-${p.id} ${p.name}`} onSelect={() => select(() => openCommand(p.id))}>
+                  {p.name}
+                </Command.Item>
+              ))}
+              {VIEWS.filter(({ view }) => view !== 'home').map(({ view, label }) => (
                 <Command.Item key={view} value={`view-${view}`} onSelect={() => select(() => setActiveView(view))}>
                   {label}
                 </Command.Item>
