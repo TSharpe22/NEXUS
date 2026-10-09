@@ -475,6 +475,30 @@ to the Lesson, `reviewsDue` in the briefing) is next.
   of an existing Home to Exec. Older builds show the hub's new widgets as
   "not installed" placeholders and leave them in place.
 
+## Wave 12 — Trading, on a simulated ledger (shipped)
+
+- **The panels TRADING.md asks for** (`widgets/trading.tsx`, kinds
+  `trading.*`): ledger freshness and execution; accounts with status and
+  drawdown buffer; strategies live vs projected with kill flags and regimes;
+  portfolio equity, drawdown and correlation; income to the threshold;
+  capital (eval spend vs payouts); strategy tester; pipeline; practice.
+- **One read-only snapshot** (`shared/trading.ts`, IPC `trading:snapshot`).
+  `simulateTrading` stands in for `trading.db`: seeded, with EOD trailing
+  drawdown locking at the start balance, evals passing at target, payouts.
+  Every panel says MOCK or REAL. Swapping in `trading.db` is a main-process
+  change only.
+- **The KAIROS strategy-tester run is real** (TradingView Key stats, 9 Oct,
+  entered by hand; the curve traced by eye). Strat 4 is a mock strategy in
+  development.
+- **⌘K → "Set up trading notes"** (`setupTradingNotes`): Strategy and Firm
+  types with templates (Notes / Strategies, Notes / Firms), the views
+  Strategies, Strategy pipeline (board by stage) and Firms, KAIROS and Strat
+  2, "Trading — operating rules", and Trading's two view widgets pointed at
+  Strategies and Firms. Safe to run again. Evals stay accounts, not notes.
+- **Next for trading**: `trading.db` itself is KAIROS-side (Python). The
+  practice sim (TRADING.md) is a Python replay engine over the Databento
+  data — built in the KAIROS repo, on this machine.
+
 ## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws

@@ -194,8 +194,9 @@ function WidgetCell({
  */
 export function Home() {
   const id = useAppStore((s) => s.activeCommandId)
+  const version = useAppStore((s) => s.layoutVersion)
   if (id === null) return <div className="nx-type-data">Loading…</div>
-  return <CommandPage key={id} id={id} />
+  return <CommandPage key={`${id}:${version}`} id={id} />
 }
 
 function CommandPage({ id }: { id: string }) {

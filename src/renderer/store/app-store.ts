@@ -272,6 +272,10 @@ interface AppState {
   loadCommands: () => Promise<void>
   saveCommands: (next: CommandIndex) => Promise<void>
   openCommand: (id: string) => void
+  /** Strategy and Firm notes and their views, then the Trading page. */
+  setupTradingNotes: () => Promise<void>
+  /** Bumped when a layout is changed from outside its page, so the page re-reads it. */
+  layoutVersion: number
 
   /** Whether Back / Forward have anywhere to go. The entries live in `history.ts`. */
   canGoBack: boolean
@@ -907,6 +911,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   openCommand: (id) => set({ activeView: 'home', activeCommandId: id }),
+
+  setupTradingNotes: async () => {
+    await window.api.trading.setupNotes()
+    await Promise.all([get().refresh(), get().refreshViews()])
+    set((state) => ({ activeView: 'home', activeCommandId: 'trading', layoutVersion: state.layoutVersion + 1 }))
+  },
+  layoutVersion: 0,
 
   canGoBack: false,
   canGoForward: false

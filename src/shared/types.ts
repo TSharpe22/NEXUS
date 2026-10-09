@@ -658,6 +658,12 @@ export interface NexusAPI {
   trading: {
     /** The trading ledger as of `today`: `trading.db` once it exists, the simulation until then. */
     snapshot(today: string): Promise<TradingSnapshot>
+    /**
+     * Make the Strategy and Firm types, their views and the operating-rules
+     * page, and point the Trading page's empty view widgets at them. Only adds
+     * what is missing.
+     */
+    setupNotes(): Promise<{ strategiesViewId: string; firmsViewId: string; pipelineViewId: string }>
   }
   commands: {
     /** The command pages as raw JSON; made on first call. See `shared/commands.ts`. */

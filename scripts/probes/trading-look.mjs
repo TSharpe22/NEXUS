@@ -1,5 +1,6 @@
 /**
- * The Trading command page on the simulated ledger, for looking at.
+ * The Trading command page on the simulated ledger, with the trading notes
+ * set up, for looking at.
  * W and H set the window size (default 1920 x 1100).
  *
  *   npm run build && node scripts/probes/trading-look.mjs
@@ -31,6 +32,8 @@ await page.evaluate(async () => {
   await window.api.pages.create()
   await window.nexus.store.getState().refresh()
   window.nexus.store.getState().openCommand('trading')
+  // "Set up trading notes", as ⌘K runs it.
+  await window.nexus.store.getState().setupTradingNotes()
 })
 await sleep(2000)
 await page.screenshot({ path: `${SHOT}/trading.png` })

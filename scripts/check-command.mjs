@@ -130,6 +130,44 @@ check('a command page takes a colour, in the sidebar',
 check('and it is stored with the page',
   await page.evaluate(async () => JSON.parse(await window.api.commands.get()).pages.find((p) => p.id === 'trading').color === 'info'))
 
+// ---------------------------------------------------------------- trading
+await nav('Trading')
+await sleep(1500)
+const panels = await page.evaluate(() => [...document.querySelectorAll('.nx-panel__title')].map((t) => t.textContent.trim()))
+check('Trading draws the ledger panels', ['Accounts · drawdown buffer', 'Portfolio', 'Strategy tester', 'Pipeline'].every((t) => panels.includes(t)), panels.join(' | '))
+check('and marks what is mock and what is real', await page.evaluate(() =>
+  document.querySelectorAll('.nx-tr-source').length > 3 && !!document.querySelector('.nx-tr-source.is-real')))
+await page.keyboard.press('Control+k')
+await page.waitForSelector('.nx-palette')
+await page.locator('[cmdk-item][data-value="action-trading-notes"]').click()
+await sleep(1500)
+const tradingNotes = await page.evaluate(async () => {
+  const s = window.nexus.store.getState()
+  const views = s.views.map((v) => v.name)
+  const types = s.types.map((t) => t.name)
+  const layout = JSON.parse(await window.api.dashboard.get('trading'))
+  const viewIds = layout.widgets.filter((w) => w.kind === 'view').map((w) => w.config.viewId)
+  return {
+    views, types,
+    pointed: viewIds.length === 2 && viewIds.every((id) => s.views.some((v) => v.id === id)),
+    titles: s.pages.map((p) => p.title),
+    grid: document.querySelector('.nx-home__grid')?.innerText ?? ''
+  }
+})
+check('"Set up trading notes" makes the Strategy and Firm types',
+  ['Strategy', 'Firm'].every((t) => tradingNotes.types.includes(t)), tradingNotes.types.join(','))
+check('and the Strategies, Strategy pipeline and Firms views',
+  ['Strategies', 'Strategy pipeline', 'Firms'].every((v) => tradingNotes.views.includes(v)), tradingNotes.views.join(','))
+check('and KAIROS, Strat 2 and the operating rules',
+  ['KAIROS', 'Strat 2', 'Trading — operating rules'].every((t) => tradingNotes.titles.includes(t)))
+check("and points Trading's two view widgets at them", tradingNotes.pointed)
+check('which show on the page straight away', /KAIROS/.test(tradingNotes.grid))
+check('without the templates in them', !/Strategy template|Firm template/.test(tradingNotes.grid))
+await page.evaluate(() => window.api.trading.setupNotes())
+const again = await page.evaluate(() => window.nexus.store.getState().refresh().then(() =>
+  window.nexus.store.getState().pages.filter((p) => p.title === 'KAIROS').length))
+check('running it again adds nothing twice', again === 1, `${again} KAIROS`)
+
 // ---------------------------------------------------------------- make, rename, lay out, remove
 await page.locator('.nx-sidebar__add').click()
 await page.keyboard.type('Fight camp')

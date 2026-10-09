@@ -35,6 +35,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const setActiveView = useAppStore((s) => s.setActiveView)
   const commands = useAppStore((s) => s.commands)
   const openCommand = useAppStore((s) => s.openCommand)
+  const setupTradingNotes = useAppStore((s) => s.setupTradingNotes)
   const createPage = useAppStore((s) => s.createPage)
   const canvases = useAppStore((s) => s.canvases)
   const openCanvas = useAppStore((s) => s.openCanvas)
@@ -211,6 +212,10 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
                 onSelect={() => attempt(() => createTopic(topicName))}
               >
                 {topicName ? `New topic "${topicName}"` : 'New topic: type its name above'}
+              </Command.Item>
+              <Command.Item value="action-trading-notes" onSelect={() => attempt(setupTradingNotes)}>
+                Set up trading notes
+                <span className="nx-palette__hint">strategies, firms, their views</span>
               </Command.Item>
               <Command.Item value="action-new-concept" onSelect={() => attempt(createConcept)}>
                 New concept

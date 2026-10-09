@@ -21,6 +21,7 @@ import {
   HOME_ID,
   HUB_DASHBOARD,
   LEARNING_DASHBOARD,
+  TRADING_DASHBOARD,
   dashboardKey,
   isCommandId
 } from '@shared/commands'
@@ -4222,4 +4223,183 @@ export function getCanvasesForPage(pageId: string): CanvasListItem[] {
        ORDER BY c.updated_at DESC`
     )
     .all(pageId) as CanvasListItem[]
+}
+
+// ============================================================
+// Trading notes (TRADING.md, "Notes that live in Nexus as ordinary objects")
+//
+// A Strategy per strategy (rules, expected stats, kill criteria) and a Firm
+// per prop firm (rules, payouts, automation and copy-trade policy), with the
+// views the Trading page shows them through. Evals are not notes: they are
+// accounts in `trading.db`, with status eval / funded / blown. Made on
+// request from ⌘K, and safe to run again — it only adds what is missing.
+// ============================================================
+
+const STRATEGY_TYPE_NAME = 'Strategy'
+const FIRM_TYPE_NAME = 'Firm'
+const OPERATING_RULES_TITLE = 'Trading — operating rules'
+
+function ensureStrategyType(): string {
+  return ensureLearningType(
+    STRATEGY_TYPE_NAME,
+    'Notes',
+    'Strategies',
+    [
+      ['Stage', 'select'],
+      ['Instrument', 'text'],
+      ['Expected per day', 'number'],
+      ['Expected win rate', 'number'],
+      ['MC95 drawdown', 'number'],
+      ['Live ratio', 'number'],
+      ['Spec', 'url']
+    ],
+    [
+      block('heading', 'Rules', 2),
+      block('bulletListItem', 'Entry: '),
+      block('bulletListItem', 'Exit: '),
+      block('bulletListItem', 'Size: '),
+      block('heading', 'Expected (backtest, walk-forward, Monte Carlo)', 2),
+      block('paragraph', ''),
+      block('heading', 'Kill criteria', 2),
+      block('bulletListItem', 'Live drawdown beyond the Monte Carlo 95th percentile → pause and review'),
+      block('bulletListItem', 'Win rate more than 2σ below expected over 30 trades → pause and review'),
+      block('heading', 'Where it earns (regimes)', 2),
+      block('paragraph', ''),
+      block('heading', 'Changes', 2),
+      block('bulletListItem', '')
+    ],
+    [['stage', 'select', 'idea']]
+  )
+}
+
+function ensureFirmType(): string {
+  return ensureLearningType(
+    FIRM_TYPE_NAME,
+    'Notes',
+    'Firms',
+    [
+      ['Drawdown type', 'select'],
+      ['Drawdown', 'number'],
+      ['Lock level', 'number'],
+      ['Consistency cap', 'number'],
+      ['Profit target', 'number'],
+      ['Commission per contract', 'number'],
+      ['Automation allowed', 'boolean'],
+      ['Copy trading', 'select'],
+      ['Rules checked', 'date'],
+      ['Site', 'url']
+    ],
+    [
+      block('heading', 'Rules', 2),
+      block('bulletListItem', 'Drawdown: '),
+      block('bulletListItem', 'Trails on: close / peak · locks at: '),
+      block('bulletListItem', 'Consistency: '),
+      block('bulletListItem', 'Minimum days: '),
+      block('heading', 'Payouts', 2),
+      block('paragraph', ''),
+      block('heading', 'Automation and copy trading', 2),
+      block('paragraph', ''),
+      block('heading', 'Accounts here', 2),
+      block('paragraph', 'Evals and funded accounts live in trading.db; list them here by name.'),
+      block('heading', 'Gotchas', 2),
+      block('bulletListItem', '')
+    ],
+    [['drawdown_type', 'select', 'EOD trailing']]
+  )
+}
+
+function viewNamed(name: string): ViewDef | undefined {
+  return listViews().find((v) => v.name === name)
+}
+
+export function setupTradingNotes(): { strategiesViewId: string; firmsViewId: string; pipelineViewId: string } {
+  const strategyType = ensureStrategyType()
+  const firmType = ensureFirmType()
+  // A type's template is a page of that type; it is not one of them.
+  const ofType = (typeId: string, name: string) => ({
+    op: 'and' as const,
+    of: [
+      { field: { kind: 'type' as const }, cmp: 'is' as const, value: typeId },
+      { field: { kind: 'title' as const }, cmp: 'not' as const, value: `${name} template` }
+    ]
+  })
+
+  const strategies =
+    viewNamed('Strategies') ??
+    createView({ name: 'Strategies', layout: 'table', filter: ofType(strategyType, STRATEGY_TYPE_NAME), sort: [{ field: { kind: 'title' }, direction: 'asc' }] })
+  const pipeline =
+    viewNamed('Strategy pipeline') ??
+    createView({
+      name: 'Strategy pipeline',
+      layout: 'board',
+      filter: ofType(strategyType, STRATEGY_TYPE_NAME),
+      grouping: { kind: 'property', key: 'stage' },
+      sort: [{ field: { kind: 'title' }, direction: 'asc' }]
+    })
+  const firms =
+    viewNamed('Firms') ??
+    createView({ name: 'Firms', layout: 'table', filter: ofType(firmType, FIRM_TYPE_NAME), sort: [{ field: { kind: 'title' }, direction: 'asc' }] })
+
+  // The two strategies TRADING.md names, once, so the views start with something real.
+  const db = getDb()
+  const haveStrategies = (db.prepare('SELECT COUNT(*) AS n FROM pages WHERE type_id = ? AND is_deleted = 0').get(strategyType) as { n: number }).n
+  const template = getTypeTemplate(strategyType)
+  if (haveStrategies <= (template ? 1 : 0)) {
+    for (const [title, note] of [
+      ['KAIROS', 'NQ mean reversion. Live at 78–93% of its backtest projection, mostly the execution layer (TradingView → PickMyTrade → Tradovate).'],
+      ['Strat 2', 'Working; expected live at a similar ratio to its projection.']
+    ]) {
+      const page = createPage(strategyType)
+      updatePage(page.id, { title, content: fillUnderHeading(getPageById(page.id)!.content ?? '[]', 'Expected (backtest, walk-forward, Monte Carlo)', note) })
+      setProperty(page.id, 'stage', 'select', 'live')
+      setProperty(page.id, 'instrument', 'text', 'NQ')
+      reindexPage(page.id)
+    }
+  }
+
+  // The operating rules TRADING.md says to write before the money.
+  const rulesExists = db.prepare('SELECT 1 FROM pages WHERE title = ? AND is_deleted = 0').get(OPERATING_RULES_TITLE)
+  if (!rulesExists) {
+    const page = createPage('note', folderUnder('Trading', folderUnder('Notes', null).id).id)
+    updatePage(page.id, {
+      title: OPERATING_RULES_TITLE,
+      content: JSON.stringify([
+        block('heading', 'Payout allocation', 2),
+        block('bulletListItem', 'Buffer: '),
+        block('bulletListItem', 'New evals: '),
+        block('bulletListItem', 'Taxes: 25–30% (confirm with a tax pro)'),
+        block('bulletListItem', 'Manual trading: 10%'),
+        block('heading', 'Scaling sequence', 2),
+        block('bulletListItem', 'Accounts before contracts.'),
+        block('bulletListItem', "Size so the strategy's MC 95th-percentile drawdown uses ≤ ~50% of the buffer."),
+        block('heading', 'Sizing rule', 2),
+        block('paragraph', 'Contracts = floor(buffer ÷ $2,000), recalculated daily. Step down with micros, not by halving.'),
+        block('heading', 'Firm rules audit', 2),
+        block('bulletListItem', 'Automation · copy trading · max accounts · hedging — recheck; they change.'),
+        block('heading', 'Manual trading', 2),
+        block('bulletListItem', 'Risk enforced by Tradovate settings, never willpower: daily loss limit, max contracts, stop always placed, hard stop time.'),
+        block('bulletListItem', 'Caps never relax on a good month.')
+      ])
+    })
+    reindexPage(page.id)
+  }
+
+  // Point the Trading page's empty view widgets at strategies, then firms.
+  ensureCommandPages()
+  if (hasCommandPage('trading')) {
+    let raw: unknown = null
+    try {
+      raw = JSON.parse(getDashboard('trading') ?? 'null')
+    } catch {
+      raw = null
+    }
+    const dashboard = normaliseDashboard(raw ?? TRADING_DASHBOARD)
+    const wanted = [strategies.id, firms.id].filter((id) => !dashboard.widgets.some((w) => w.config.viewId === id))
+    const widgets = dashboard.widgets.map((w) =>
+      w.kind === 'view' && !w.config.viewId && wanted.length ? { ...w, config: { ...w.config, viewId: wanted.shift() } } : w
+    )
+    setDashboard(JSON.stringify({ ...dashboard, widgets }), 'trading')
+  }
+
+  return { strategiesViewId: strategies.id, firmsViewId: firms.id, pipelineViewId: pipeline.id }
 }

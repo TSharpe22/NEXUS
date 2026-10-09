@@ -552,6 +552,14 @@ export function registerIpcHandlers(): void {
     }
   })
 
+  ipcMain.handle('trading:setupNotes', () => {
+    try {
+      return repo.setupTradingNotes()
+    } catch (e) {
+      rethrow('trading:setupNotes', e)
+    }
+  })
+
   ipcMain.handle('commands:get', () => {
     try {
       return repo.getCommandPages()
