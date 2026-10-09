@@ -20,6 +20,7 @@ import type {
 } from '@shared/types'
 import type { TrackerMode } from '../store/app-store'
 import type { CommandPage } from '@shared/commands'
+import type { TradingSnapshot } from '@shared/trading'
 
 /**
  * Everything a widget is allowed to do.
@@ -99,6 +100,8 @@ export interface WidgetContext {
     remindersUpcoming(): Promise<ReminderInfo[]>
     /** Concepts due for review by `today`, per topic. */
     reviewCounts(today: string): Promise<ReviewCount[]>
+    /** The trading ledger, read-only. Simulated until `trading.db` exists. */
+    tradingSnapshot(today: string): Promise<TradingSnapshot>
     habitCandidates(): Promise<HabitCandidate[]>
     habitDays(
       typeId: string,

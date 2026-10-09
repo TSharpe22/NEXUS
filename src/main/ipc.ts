@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell, BrowserWindow, clipboard } from 'electron'
+import { simulateTrading } from '@shared/trading'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import * as repo from './repo'
@@ -538,6 +539,16 @@ export function registerIpcHandlers(): void {
       repo.setDashboard(json === null ? null : String(json), id ?? undefined)
     } catch (e) {
       rethrow('dashboard:set', e)
+    }
+  })
+
+  // The trading ledger, read-only. `trading.db` does not exist yet, so this
+  // is the simulation in its place (TRADING.md); the widgets cannot tell.
+  ipcMain.handle('trading:snapshot', (_, today: string) => {
+    try {
+      return simulateTrading(String(today))
+    } catch (e) {
+      rethrow('trading:snapshot', e)
     }
   })
 

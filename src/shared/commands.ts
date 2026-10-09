@@ -119,18 +119,24 @@ export const LEARNING_DASHBOARD: Dashboard = {
 }
 
 /**
- * Trading before `trading.db` exists (see TRADING.md): the notes that live in
- * Nexus — strategies, firms, operating rules — through saved views picked on
- * the page. The panels that read the ledger come when the ledger does.
+ * Trading (TRADING.md): the ledger's panels — simulated until `trading.db`
+ * exists — and, under them, the notes that live in Nexus (strategies, firms)
+ * through saved views picked on the page.
  */
 export const TRADING_DASHBOARD: Dashboard = {
   version: 1,
   widgets: [
-    { id: 'w-capture', kind: 'capture', config: {}, span: 12 },
-    { id: 'w-strategies', kind: 'view', config: {}, span: 6 },
-    { id: 'w-firms', kind: 'view', config: {}, span: 6 },
-    { id: 'w-pinned', kind: 'pinned', config: {}, span: 6 },
-    { id: 'w-today', kind: 'today', config: {}, span: 6 }
+    { id: 'w-ops', kind: 'trading.ops', config: {}, span: 12 },
+    { id: 'w-accounts', kind: 'trading.accounts', config: {}, span: 7 },
+    { id: 'w-strategies', kind: 'trading.strategies', config: {}, span: 5 },
+    { id: 'w-portfolio', kind: 'trading.portfolio', config: {}, span: 8 },
+    { id: 'w-income', kind: 'trading.income', config: {}, span: 4 },
+    { id: 'w-capital', kind: 'trading.capital', config: {}, span: 4, stack: true },
+    { id: 'w-tester', kind: 'trading.tester', config: {}, span: 7 },
+    { id: 'w-pipeline', kind: 'trading.pipeline', config: {}, span: 5 },
+    { id: 'w-practice', kind: 'trading.practice', config: {}, span: 5, stack: true },
+    { id: 'w-strategy-notes', kind: 'view', config: {}, span: 6 },
+    { id: 'w-firm-notes', kind: 'view', config: {}, span: 6 }
   ]
 }
 

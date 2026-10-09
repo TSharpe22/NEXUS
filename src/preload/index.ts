@@ -120,6 +120,9 @@ const api: NexusAPI = {
     get: (id) => ipcRenderer.invoke('dashboard:get', id),
     set: (json, id) => ipcRenderer.invoke('dashboard:set', json, id)
   },
+  trading: {
+    snapshot: (today) => ipcRenderer.invoke('trading:snapshot', today)
+  },
   commands: {
     get: () => ipcRenderer.invoke('commands:get'),
     set: (json) => ipcRenderer.invoke('commands:set', json)

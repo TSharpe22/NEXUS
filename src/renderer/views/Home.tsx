@@ -305,6 +305,7 @@ function CommandPage({ id }: { id: string }) {
         briefingStatus: () => window.api.briefing.status(),
         remindersUpcoming: () => window.api.reminders.upcoming(),
         reviewCounts: (today) => window.api.review.counts(today),
+        tradingSnapshot: (today) => window.api.trading.snapshot(today),
         habitCandidates: () => window.api.habits.candidates(),
         habitDays: (typeId, dateKey, booleanKey, from, to) =>
           window.api.habits.days(typeId, dateKey, booleanKey, from, to)

@@ -1,3 +1,4 @@
+import type { TradingSnapshot } from './trading'
 import type { AggregateFn, ViewAggregate, ViewDef, ViewDraft } from './views'
 import type { Canvas, CanvasListItem } from './canvas'
 import type { CalendarFeedInfo, CalendarResult } from './calendar'
@@ -653,6 +654,10 @@ export interface NexusAPI {
     get(id?: string): Promise<string | null>
     /** Passing null forgets the layout, so the page falls back to its default. */
     set(json: string | null, id?: string): Promise<void>
+  }
+  trading: {
+    /** The trading ledger as of `today`: `trading.db` once it exists, the simulation until then. */
+    snapshot(today: string): Promise<TradingSnapshot>
   }
   commands: {
     /** The command pages as raw JSON; made on first call. See `shared/commands.ts`. */

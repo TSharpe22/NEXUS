@@ -18,6 +18,18 @@ import {
 import { BriefingWidget } from './briefing'
 import { ReviewWidget } from './review'
 import { NextTaskWidget, QuoteWidget, TilesWidget } from './command'
+import {
+  TradingAccountsWidget,
+  TradingCapitalWidget,
+  TradingIncomeWidget,
+  TradingOpsWidget,
+  TradingPipelineWidget,
+  TradingPortfolioWidget,
+  TradingPracticeWidget,
+  TradingSource,
+  TradingStrategiesWidget,
+  TradingTesterWidget
+} from './trading'
 
 /**
  * Every widget Home knows how to draw.
@@ -145,7 +157,9 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
     frame: 'panel',
     title: () => 'Briefing',
     actions: (ctx) => (
-      <span className="nx-type-data">{fromISO(ctx.today).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+      <span className="nx-type-data">
+        {fromISO(ctx.today).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}
+      </span>
     ),
     Component: BriefingWidget
   },
@@ -204,6 +218,103 @@ WIDGET_DEFINITIONS.push(
       </button>
     ),
     Component: NextTaskWidget
+  }
+)
+
+/**
+ * The Trading page (TRADING.md). Namespaced `trading.` as the contract in
+ * `widgets.ts` asks of a family of kinds. Each header says whether what is
+ * under it is the simulation or real.
+ */
+const mock = () => <TradingSource />
+WIDGET_DEFINITIONS.push(
+  {
+    kind: 'trading.ops',
+    label: 'Trading: data and execution',
+    hint: 'Last import, fill rate, slippage',
+    defaultSpan: 12,
+    frame: 'panel',
+    title: () => 'Ledger',
+    Component: TradingOpsWidget
+  },
+  {
+    kind: 'trading.accounts',
+    label: 'Trading: accounts',
+    hint: 'Status and drawdown buffer per account',
+    defaultSpan: 7,
+    frame: 'panel',
+    title: () => 'Accounts · drawdown buffer',
+    actions: mock,
+    Component: TradingAccountsWidget
+  },
+  {
+    kind: 'trading.strategies',
+    label: 'Trading: strategies',
+    hint: 'Live vs projected, kill flag, where each earns',
+    defaultSpan: 5,
+    frame: 'panel',
+    title: () => 'Strategies · live vs projected',
+    actions: mock,
+    Component: TradingStrategiesWidget
+  },
+  {
+    kind: 'trading.portfolio',
+    label: 'Trading: portfolio',
+    hint: 'Combined equity, drawdown, correlation',
+    defaultSpan: 8,
+    frame: 'panel',
+    title: () => 'Portfolio',
+    actions: mock,
+    Component: TradingPortfolioWidget
+  },
+  {
+    kind: 'trading.income',
+    label: 'Trading: income',
+    hint: 'Take-home against the threshold',
+    defaultSpan: 4,
+    frame: 'panel',
+    title: () => 'To the threshold',
+    actions: mock,
+    Component: TradingIncomeWidget
+  },
+  {
+    kind: 'trading.capital',
+    label: 'Trading: capital',
+    hint: 'Eval spend against payouts',
+    defaultSpan: 4,
+    frame: 'panel',
+    title: () => 'Capital',
+    actions: mock,
+    Component: TradingCapitalWidget
+  },
+  {
+    kind: 'trading.tester',
+    label: 'Trading: strategy tester',
+    hint: "TradingView's strategy tester runs",
+    defaultSpan: 7,
+    frame: 'panel',
+    title: () => 'Strategy tester',
+    Component: TradingTesterWidget
+  },
+  {
+    kind: 'trading.pipeline',
+    label: 'Trading: pipeline',
+    hint: 'Idea → backtest → walk-forward → eval → live',
+    defaultSpan: 5,
+    frame: 'panel',
+    title: () => 'Pipeline',
+    actions: mock,
+    Component: TradingPipelineWidget
+  },
+  {
+    kind: 'trading.practice',
+    label: 'Trading: practice',
+    hint: 'Belt, reps, expectancy by setup',
+    defaultSpan: 6,
+    frame: 'panel',
+    title: () => 'Practice',
+    actions: mock,
+    Component: TradingPracticeWidget
   }
 )
 
