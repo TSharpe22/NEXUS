@@ -451,3 +451,126 @@
   gap: var(--nx-space-2);
   color: var(--nx-text-muted);
 }
+
+/* ---- Practice sessions ---- */
+
+.nx-tr-session {
+  border: 1px solid var(--nx-border);
+  border-radius: var(--nx-radius-sm);
+  background: var(--nx-surface-sunken);
+}
+
+.nx-tr-session.is-open {
+  border-color: var(--nx-border-2);
+}
+
+.nx-tr-session__row {
+  display: flex;
+  align-items: stretch;
+}
+
+.nx-tr-session__main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr) 28px 84px 38px;
+  gap: var(--nx-space-2);
+  align-items: center;
+  padding: 6px 8px;
+  background: none;
+  border: 0;
+  color: var(--nx-text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.nx-tr-session__main:hover {
+  background: var(--nx-row-hover);
+}
+
+.nx-tr-session__title {
+  font-family: var(--nx-font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-tr-session__mode {
+  color: var(--nx-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nx-tr-session__mode.is-graded {
+  color: var(--nx-warning);
+}
+
+.nx-tr-session__note {
+  flex: 0 0 auto;
+  padding: 0 10px;
+  background: none;
+  border: 0;
+  border-left: 1px solid var(--nx-border);
+  color: var(--nx-accent);
+  font-family: var(--nx-font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.nx-tr-session__note:hover {
+  background: var(--nx-accent-tint-soft);
+}
+
+.nx-tr-session__note.has-note {
+  color: var(--nx-text-muted);
+}
+
+.nx-tr-report {
+  border-top: 1px solid var(--nx-border);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-2);
+}
+
+.nx-tr-report__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--nx-space-2);
+}
+
+.nx-tr-report__grid > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.nx-tr-report__trades {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-x: auto;
+}
+
+.nx-tr-report__trade {
+  display: grid;
+  grid-template-columns: 24px 56px 64px 136px 52px 74px 44px 70px minmax(110px, 1fr);
+  gap: var(--nx-space-2);
+  white-space: nowrap;
+}
+
+.nx-tr-report__trade .is-ok {
+  color: var(--nx-accent);
+}
+
+.nx-tr-report__trade .is-bad {
+  color: var(--nx-critical);
+}
+
+.nx-tr-report__tag {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--nx-text-muted);
+}

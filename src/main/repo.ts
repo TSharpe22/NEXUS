@@ -26,6 +26,7 @@ import {
   isCommandId
 } from '@shared/commands'
 import { canvasAttachmentNames, canvasPageRefs, parseCanvas, serializeCanvas, type Canvas, type CanvasListItem } from '@shared/canvas'
+import { DRILL_NAMES, type PracticeSessionReport } from '@shared/trading'
 import type {
   FilterField,
   FilterLeaf,
@@ -4315,6 +4316,7 @@ function viewNamed(name: string): ViewDef | undefined {
 export function setupTradingNotes(): { strategiesViewId: string; firmsViewId: string; pipelineViewId: string } {
   const strategyType = ensureStrategyType()
   const firmType = ensureFirmType()
+  const practiceType = ensurePracticeSessionType()
   // A type's template is a page of that type; it is not one of them.
   const ofType = (typeId: string, name: string) => ({
     op: 'and' as const,
@@ -4339,6 +4341,14 @@ export function setupTradingNotes(): { strategiesViewId: string; firmsViewId: st
   const firms =
     viewNamed('Firms') ??
     createView({ name: 'Firms', layout: 'table', filter: ofType(firmType, FIRM_TYPE_NAME), sort: [{ field: { kind: 'title' }, direction: 'asc' }] })
+  if (!viewNamed('Practice notes')) {
+    createView({
+      name: 'Practice notes',
+      layout: 'table',
+      filter: ofType(practiceType, PRACTICE_TYPE_NAME),
+      sort: [{ field: { kind: 'property', key: 'session' }, direction: 'desc' }]
+    })
+  }
 
   // The two strategies TRADING.md names, once, so the views start with something real.
   const db = getDb()
@@ -4398,8 +4408,146 @@ export function setupTradingNotes(): { strategiesViewId: string; firmsViewId: st
     const widgets = dashboard.widgets.map((w) =>
       w.kind === 'view' && !w.config.viewId && wanted.length ? { ...w, config: { ...w.config, viewId: wanted.shift() } } : w
     )
+    // A layout saved before the sessions panel existed gets it, after Practice.
+    if (!widgets.some((w) => w.kind === 'trading.sessions')) {
+      const at = widgets.findIndex((w) => w.kind === 'trading.practice')
+      widgets.splice(at < 0 ? widgets.length : at + 1, 0, { id: 'w-sessions', kind: 'trading.sessions', config: {}, span: 7 })
+    }
     setDashboard(JSON.stringify({ ...dashboard, widgets }), 'trading')
   }
 
   return { strategiesViewId: strategies.id, firmsViewId: firms.id, pipelineViewId: pipeline.id }
+}
+
+// ============================================================
+// Practice-session notes (the Kairos sim lab, SIM.md)
+//
+// A session's numbers live in trading.db, written by Kairos. A note about a
+// session is an ordinary Nexus page of type Practice session, made only when
+// asked for ("Write note"), carrying the session's id and headline numbers as
+// properties and a copy of its report above your own headings. One note per
+// session: asking again opens the one that exists.
+// ============================================================
+
+const PRACTICE_TYPE_NAME = 'Practice session'
+
+function ensurePracticeSessionType(): string {
+  return ensureLearningType(
+    PRACTICE_TYPE_NAME,
+    'Notes',
+    'Practice',
+    [
+      ['Session', 'number'],
+      ['Replayed', 'date'],
+      ['Practised', 'date'],
+      ['Mode', 'select'],
+      ['Drill', 'text'],
+      ['Contract', 'text'],
+      ['Trades', 'number'],
+      ['Net', 'number'],
+      ['Adherence %', 'number']
+    ],
+    [
+      block('heading', 'What I saw', 2),
+      block('paragraph', ''),
+      block('heading', 'What I did well', 2),
+      block('bulletListItem', ''),
+      block('heading', 'What to fix', 2),
+      block('bulletListItem', ''),
+      block('heading', 'Next session', 2),
+      block('paragraph', '')
+    ],
+    [['mode', 'select', 'practice']]
+  )
+}
+
+/** Session id → the note written about it, for the ids given. */
+export function practiceNoteIds(sessionIds: number[]): Map<number, string> {
+  const out = new Map<number, string>()
+  if (!sessionIds.length) return out
+  const type = getDb().prepare('SELECT id FROM types WHERE name = ?').get(PRACTICE_TYPE_NAME) as { id: string } | undefined
+  if (!type) return out
+  const rows = getDb()
+    .prepare(
+      `SELECT pr.value_number AS session, p.id AS page_id FROM properties pr
+       JOIN pages p ON p.id = pr.page_id
+       WHERE pr.key = 'session' AND p.type_id = ? AND p.is_deleted = 0
+         AND pr.value_number IN (${sessionIds.map(() => '?').join(',')})
+       ORDER BY p.created_at`
+    )
+    .all(type.id, ...sessionIds) as { session: number; page_id: string }[]
+  for (const r of rows) if (!out.has(r.session)) out.set(r.session, r.page_id)
+  return out
+}
+
+const money = (n: number | null | undefined) =>
+  n === null || n === undefined ? '—' : `${n < 0 ? '−' : n > 0 ? '+' : ''}$${Math.abs(n).toFixed(2)}`
+const share = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${Math.round(n * 100)}%`)
+const num = (n: number | null | undefined, digits = 1, unit = '') =>
+  n === null || n === undefined ? '—' : `${n.toFixed(digits)}${unit}`
+const clock = (t: string) => t.slice(0, 5)
+
+/** The report part of a session note: what Kairos measured, as blocks. */
+function practiceReportBlocks(r: PracticeSessionReport): Record<string, unknown>[] {
+  const c = r.scorecard
+  const day = new Date(`${r.sessionDate}T12:00:00`).toLocaleDateString('en-GB', {
+    weekday: 'short',
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric'
+  })
+  const ended = { time: 'time ran out', lockout: 'locked out at the loss limit', early: 'ended early' }[r.ended]
+  const lines = [
+    `Replayed ${day} (${r.symbol}), ${clock(r.startTime)}–${clock(r.stoppedAt)}${r.regime ? `, ${r.regime}` : ''}; ${ended}.`,
+    `${r.mode === 'graded' ? 'Graded' : 'Practice'}${r.drill ? ` · drill: ${DRILL_NAMES[r.drill] ?? r.drill}` : ''} · ${r.contract}${r.dll ? ` · loss limit $${r.dll}` : ''}`,
+    `${c.trades} trades (${c.wins} won, ${c.losses} lost) · net ${money(c.net)} · fees $${c.fees.toFixed(2)} · expectancy ${money(c.expectancy)}`,
+    `Adherence ${share(c.adherence)} · adds to a loser ${c.adds_to_loser} · chases ${c.chases}`,
+    `Hold: winners ${num(c.hold_win_s, 1, 's')}, losers ${num(c.hold_loss_s, 1, 's')} · heat ${num(c.mae_ticks, 1, 't')} · move kept ${share(c.mfe_capture)}`,
+    `Entries passive ${share(c.passive_share)} · slip in ${num(c.entry_slip, 1, 't')}, out ${num(c.exit_slip, 1, 't')} (+ is worse than the screen)`
+  ]
+  if (c.drill) {
+    const v = c.drill.value
+    const shown = v === null ? '—' : c.drill.label.includes('rate') || c.drill.label === 'adherence' ? share(v) : String(v)
+    lines.push(`Drill score: ${c.drill.label} ${shown} (${c.drill.note})`)
+  }
+  const trades = r.tradeList.map((t) => {
+    const tag = [t.setup, t.grade ? `grade ${t.grade}` : null].filter(Boolean).join(', ')
+    return (
+      `#${t.n} ${t.side > 0 ? 'long' : 'short'} ${t.qty} at ${clock(t.entryTime)}: ${t.avgEntry.toFixed(2)} → ${t.avgExit.toFixed(2)}, ` +
+      `${t.ticks > 0 ? '+' : ''}${t.ticks.toFixed(1)}t, ${money(t.netPnl)}, ${(t.holdMs / 1000).toFixed(1)}s, ${t.entryKind}` +
+      `${tag ? ` · ${tag}` : ''}${t.violations ? ` · ⚠ ${t.violations}` : ''}`
+    )
+  })
+  return [
+    block('heading', 'Session', 2),
+    ...lines.map((l) => block('bulletListItem', l)),
+    block('heading', 'Trades', 2),
+    ...(trades.length ? trades.map((l) => block('bulletListItem', l)) : [block('paragraph', 'No trades.')])
+  ]
+}
+
+/**
+ * The note about a practice session: the existing one, or a new one with
+ * the report filled in. Returns its page id.
+ */
+export function practiceNote(r: PracticeSessionReport): string {
+  const existing = practiceNoteIds([r.id]).get(r.id)
+  if (existing) return existing
+  const typeId = ensurePracticeSessionType()
+  const page = createPage(typeId)
+  const mine = JSON.parse(getPageById(page.id)?.content ?? '[]') as Record<string, unknown>[]
+  const day = new Date(`${r.sessionDate}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+  const title = `Practice #${r.id} · ${r.drill ? DRILL_NAMES[r.drill] ?? r.drill : r.mode === 'graded' ? 'graded' : 'free'} · ${day} replay`
+  updatePage(page.id, { title, content: JSON.stringify([...practiceReportBlocks(r), ...mine]) })
+  setProperty(page.id, 'session', 'number', r.id)
+  setProperty(page.id, 'replayed', 'date', r.sessionDate)
+  setProperty(page.id, 'practised', 'date', localDateISO(new Date(r.startedAt)))
+  setProperty(page.id, 'mode', 'select', r.mode)
+  setProperty(page.id, 'drill', 'text', r.drill ? DRILL_NAMES[r.drill] ?? r.drill : '')
+  setProperty(page.id, 'contract', 'text', r.contract)
+  setProperty(page.id, 'trades', 'number', r.trades)
+  setProperty(page.id, 'net', 'number', Math.round(r.netPnl * 100) / 100)
+  if (r.adherence !== null) setProperty(page.id, 'adherence', 'number', Math.round(r.adherence * 100))
+  reindexPage(page.id)
+  return page.id
 }

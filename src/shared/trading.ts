@@ -90,6 +90,12 @@ export interface TesterRun {
 
 export interface TradingSnapshot {
   source: 'mock' | 'trading.db'
+  /**
+   * Panels whose numbers came from the real `trading.db` while the rest of
+   * the snapshot is still the simulation. Filled in one panel at a time as
+   * Kairos starts writing each part of the ledger.
+   */
+  real?: { practice?: boolean }
   asOf: string
   /** Days since the last import; past 2 it is drawn as stale. */
   importAgeDays: number
@@ -138,6 +144,94 @@ export interface TradingSnapshot {
     /** Average slippage in points on filled limit entries. */
     slippage: number
   }
+}
+
+// ------------------------------------------------------------------
+// Practice sessions (the Kairos sim lab, SIM.md), read from trading.db
+// ------------------------------------------------------------------
+
+/** One saved sim-lab session, as `sim_session_report` gives it. */
+export interface PracticeSessionSummary {
+  id: number
+  /** When it was practised (UTC ISO). */
+  startedAt: string
+  /** The replayed market day, YYYY-MM-DD. */
+  sessionDate: string
+  symbol: string
+  mode: 'practice' | 'graded'
+  drill: string | null
+  /** How it ended: time ran out, a loss-limit lockout, or ended early. */
+  ended: 'time' | 'lockout' | 'early'
+  contract: string
+  startTime: string
+  stoppedAt: string
+  regime: string | null
+  trades: number
+  netPnl: number
+  expectancy: number | null
+  winRate: number | null
+  adherence: number | null
+  /** The Nexus note written about it, if there is one. */
+  noteId: string | null
+}
+
+export interface PracticeTrade {
+  n: number
+  side: 1 | -1
+  qty: number
+  entryTime: string
+  exitTime: string
+  avgEntry: number
+  avgExit: number
+  ticks: number
+  netPnl: number
+  fees: number
+  holdMs: number
+  maeTicks: number
+  mfeTicks: number
+  entryKind: 'passive' | 'aggressive'
+  entrySlip: number | null
+  exitSlip: number | null
+  exitLabel: string
+  violations: string
+  setup: string | null
+  grade: number | null
+}
+
+/** A session's full report: the scorecard Kairos computed, and every trade. */
+export interface PracticeSessionReport extends PracticeSessionSummary {
+  dll: number | null
+  scorecard: {
+    trades: number
+    wins: number
+    losses: number
+    win_rate: number | null
+    net: number
+    fees: number
+    expectancy: number | null
+    avg_win_ticks: number | null
+    avg_loss_ticks: number | null
+    hold_win_s: number | null
+    hold_loss_s: number | null
+    passive_share: number | null
+    entry_slip: number | null
+    exit_slip: number | null
+    mae_ticks: number | null
+    mfe_capture: number | null
+    adds_to_loser: number
+    adherence: number | null
+    chases: number
+    drill: { label: string; value: number | null; note: string; detail: string } | null
+  }
+  tradeList: PracticeTrade[]
+}
+
+/** The sim lab's drills by id (kairos/sim/drills.py). */
+export const DRILL_NAMES: Record<string, string> = {
+  open: 'The open',
+  cut: 'Cut it',
+  passive: 'Passive only',
+  levels: 'Levels'
 }
 
 // ------------------------------------------------------------------

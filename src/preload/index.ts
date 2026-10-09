@@ -122,6 +122,9 @@ const api: NexusAPI = {
   },
   trading: {
     snapshot: (today) => ipcRenderer.invoke('trading:snapshot', today),
+    sessions: (limit) => ipcRenderer.invoke('trading:sessions', limit),
+    session: (id) => ipcRenderer.invoke('trading:session', id),
+    sessionNote: (id) => ipcRenderer.invoke('trading:sessionNote', id),
     setupNotes: () => ipcRenderer.invoke('trading:setupNotes')
   },
   commands: {

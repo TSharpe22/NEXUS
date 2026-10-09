@@ -135,6 +135,7 @@ export const TRADING_DASHBOARD: Dashboard = {
     { id: 'w-tester', kind: 'trading.tester', config: {}, span: 7 },
     { id: 'w-pipeline', kind: 'trading.pipeline', config: {}, span: 5 },
     { id: 'w-practice', kind: 'trading.practice', config: {}, span: 5, stack: true },
+    { id: 'w-sessions', kind: 'trading.sessions', config: {}, span: 7 },
     { id: 'w-strategy-notes', kind: 'view', config: {}, span: 6 },
     { id: 'w-firm-notes', kind: 'view', config: {}, span: 6 }
   ]

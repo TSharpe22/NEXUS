@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { PipelineStage, TesterRun, TradingSnapshot } from '@shared/trading'
+import { DRILL_NAMES, type PipelineStage, type PracticeSessionReport, type PracticeSessionSummary, type TesterRun, type TradingSnapshot } from '@shared/trading'
 import type { WidgetContext, WidgetProps } from './context'
 import './trading.css'
 
@@ -375,9 +375,13 @@ export function TradingPracticeWidget({ ctx }: WidgetProps) {
           <span className="nx-tr-big">
             {p.trades}/{p.tradesToPromote}
           </span>
-          <span className={`nx-type-data ${p.adherence >= 0.95 ? '' : 'nx-tr-warn'}`}>
-            rules kept {pct(p.adherence)} (needs 95%)
-          </span>
+          {p.trades === 0 ? (
+            <span className="nx-type-data">no graded trades yet</span>
+          ) : (
+            <span className={`nx-type-data ${p.adherence >= 0.95 ? '' : 'nx-tr-warn'}`}>
+              rules kept {pct(p.adherence)} (needs 95%)
+            </span>
+          )}
         </div>
         <div>
           <span className="nx-type-label">This week</span>
@@ -400,6 +404,159 @@ export function TradingPracticeWidget({ ctx }: WidgetProps) {
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+/** The practice panel's real/mock tag: real once Kairos has written practice stats. */
+export function TradingPracticeSource({ ctx }: { ctx: WidgetContext }) {
+  const s = useSnapshot(ctx)
+  return <TradingSource real={!!s?.real?.practice} />
+}
+
+// ------------------------------------------------------------------
+// Practice sessions: each saved sim-lab session, its report, and its note.
+
+const money = (n: number | null | undefined) =>
+  n === null || n === undefined ? '—' : `${n < 0 ? '−' : n > 0 ? '+' : ''}$${Math.abs(n).toFixed(2)}`
+const share = (n: number | null | undefined) => (n === null || n === undefined ? '—' : pct(n))
+const fixed = (n: number | null | undefined, d = 1, unit = '') => (n === null || n === undefined ? '—' : `${n.toFixed(d)}${unit}`)
+const replayDay = (iso: string) => new Date(`${iso}T12:00:00`).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+const tone = (n: number | null | undefined) => (n === null || n === undefined || n === 0 ? '' : n > 0 ? 'is-ok' : 'is-bad')
+
+function SessionReport({ ctx, id }: { ctx: WidgetContext; id: number }) {
+  const [r, setR] = useState<PracticeSessionReport | null | undefined>(undefined)
+  useEffect(() => {
+    let cancelled = false
+    void ctx.read.practiceSession(id).then((x) => !cancelled && setR(x))
+    return () => {
+      cancelled = true
+    }
+  }, [ctx.read, id])
+  if (r === undefined) return <Waiting />
+  if (r === null) return <div className="nx-home__hint nx-type-data">This session is no longer in trading.db.</div>
+  const c = r.scorecard
+  const stat = (label: string, value: string, cls = '') => (
+    <div>
+      <span className="nx-type-label">{label}</span>
+      <span className={`nx-tr-num ${cls}`}>{value}</span>
+    </div>
+  )
+  return (
+    <div className="nx-tr-report">
+      <div className="nx-tr-report__grid">
+        {c.drill &&
+          stat(
+            c.drill.label,
+            c.drill.value === null
+              ? '—'
+              : c.drill.label.includes('rate') || c.drill.label === 'adherence'
+                ? pct(c.drill.value)
+                : String(c.drill.value)
+          )}
+        {stat('adherence', share(c.adherence), (c.adherence ?? 1) < 0.95 ? 'is-warn' : '')}
+        {stat('hold win / loss', `${fixed(c.hold_win_s, 1, 's')} / ${fixed(c.hold_loss_s, 1, 's')}`)}
+        {stat('passive entries', share(c.passive_share))}
+        {stat('slip in / out', `${fixed(c.entry_slip, 1, 't')} / ${fixed(c.exit_slip, 1, 't')}`)}
+        {stat('chases', String(c.chases))}
+        {stat('heat (MAE)', fixed(c.mae_ticks, 1, 't'))}
+        {stat('move kept', share(c.mfe_capture))}
+        {stat('fees', `$${c.fees.toFixed(2)}`)}
+      </div>
+      {r.tradeList.length > 0 && (
+        <div className="nx-tr-report__trades nx-type-data">
+          {r.tradeList.map((t) => (
+            <div key={t.n} className="nx-tr-report__trade">
+              <span>#{t.n}</span>
+              <span className={t.side > 0 ? 'is-ok' : 'is-bad'}>{t.side > 0 ? 'long' : 'short'} {t.qty}</span>
+              <span>{t.entryTime.slice(0, 8)}</span>
+              <span>
+                {t.avgEntry.toFixed(2)} → {t.avgExit.toFixed(2)}
+              </span>
+              <span className={tone(t.ticks)}>
+                {t.ticks > 0 ? '+' : ''}
+                {t.ticks.toFixed(1)}t
+              </span>
+              <span className={tone(t.netPnl)}>{money(t.netPnl)}</span>
+              <span>{(t.holdMs / 1000).toFixed(1)}s</span>
+              <span>{t.entryKind}</span>
+              <span className="nx-tr-report__tag">
+                {[t.setup, t.grade ? `g${t.grade}` : null].filter(Boolean).join(' · ')}
+                {t.violations ? <span className="nx-tr-warn"> ⚠ {t.violations}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Saved sim-lab sessions, newest first: open the report, write or open the note. */
+export function TradingSessionsWidget({ ctx }: WidgetProps) {
+  const [rows, setRows] = useState<PracticeSessionSummary[] | null>(null)
+  const [open, setOpen] = useState<number | null>(null)
+  const [busy, setBusy] = useState<number | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void ctx.read.practiceSessions(12).then((x) => !cancelled && setRows(x))
+    return () => {
+      cancelled = true
+    }
+  }, [ctx.read])
+  if (!rows) return <Waiting />
+  if (!rows.length)
+    return (
+      <div className="nx-home__hint nx-type-data">
+        No practice sessions yet. Sessions you finish in the Kairos sim lab appear here, ready for a note.
+      </div>
+    )
+  const note = async (id: number) => {
+    setBusy(id)
+    try {
+      await ctx.write.openPracticeNote(id)
+    } finally {
+      setBusy(null)
+    }
+  }
+  return (
+    <div className="nx-tr-rows nx-tr-rows--tight nx-tr-sessions">
+      {rows.map((s) => (
+        <div key={s.id} className={`nx-tr-session ${open === s.id ? 'is-open' : ''}`}>
+          <div className="nx-tr-session__row">
+            <button
+              type="button"
+              className="nx-tr-session__main"
+              onClick={() => setOpen(open === s.id ? null : s.id)}
+              aria-expanded={open === s.id}
+              title="Show the report"
+            >
+              <span className="nx-tr-session__title" title={`Session ${s.id}: ${s.sessionDate} replayed from ${s.startTime.slice(0, 5)}`}>
+                #{s.id} · {replayDay(s.sessionDate)}
+              </span>
+              <span
+                className={`nx-tr-session__mode nx-type-data ${s.mode === 'graded' ? 'is-graded' : ''}`}
+                title={`${s.mode}${s.drill ? `, ${DRILL_NAMES[s.drill] ?? s.drill}` : ', free session'}`}
+              >
+                {s.mode === 'graded' ? 'graded · ' : ''}
+                {s.drill ? (DRILL_NAMES[s.drill] ?? s.drill) : 'free'}
+              </span>
+              <span className="nx-type-data" title="trades">{s.trades}×</span>
+              <span className={`nx-tr-num ${tone(s.netPnl)}`}>{money(s.netPnl)}</span>
+              <span className={`nx-type-data ${(s.adherence ?? 1) < 0.95 ? 'nx-tr-warn' : ''}`}>{share(s.adherence)}</span>
+            </button>
+            <button
+              type="button"
+              className={`nx-tr-session__note ${s.noteId ? 'has-note' : ''}`}
+              disabled={busy === s.id}
+              onClick={() => void note(s.id)}
+            >
+              {s.noteId ? 'Open note' : 'Write note'}
+            </button>
+          </div>
+          {open === s.id && <SessionReport ctx={ctx} id={s.id} />}
+        </div>
+      ))}
     </div>
   )
 }

@@ -24,7 +24,8 @@
     "check:calendar": "node scripts/check-calendar.mjs",
     "check:learning": "electron-vite build && xvfb-run -a node scripts/check-learning.mjs",
     "check:command": "electron-vite build && xvfb-run -a node scripts/check-command.mjs",
-    "check:phone": "electron-vite build && xvfb-run -a node scripts/check-phone.mjs"
+    "check:phone": "electron-vite build && xvfb-run -a node scripts/check-phone.mjs",
+    "check:practice": "electron-vite build && xvfb-run -a node scripts/check-practice.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.55.0",

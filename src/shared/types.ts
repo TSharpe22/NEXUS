@@ -1,4 +1,4 @@
-import type { TradingSnapshot } from './trading'
+import type { PracticeSessionReport, PracticeSessionSummary, TradingSnapshot } from './trading'
 import type { AggregateFn, ViewAggregate, ViewDef, ViewDraft } from './views'
 import type { Canvas, CanvasListItem } from './canvas'
 import type { CalendarFeedInfo, CalendarResult } from './calendar'
@@ -658,6 +658,12 @@ export interface NexusAPI {
   trading: {
     /** The trading ledger as of `today`: `trading.db` once it exists, the simulation until then. */
     snapshot(today: string): Promise<TradingSnapshot>
+    /** Saved sim-lab sessions from trading.db, newest first; empty without a ledger. */
+    sessions(limit?: number): Promise<PracticeSessionSummary[]>
+    /** One session's full report, or null. */
+    session(id: number): Promise<PracticeSessionReport | null>
+    /** The note about a session, made (with its report) if it doesn't exist yet. */
+    sessionNote(id: number): Promise<Page>
     /**
      * Make the Strategy and Firm types, their views and the operating-rules
      * page, and point the Trading page's empty view widgets at them. Only adds
