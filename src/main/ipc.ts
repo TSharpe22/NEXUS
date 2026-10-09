@@ -517,6 +517,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('prefs:get', () => {
     try {
       return {
+        theme: repo.getTheme(),
         dayStartHour: repo.getDayStartHour(),
         taskSection: repo.getTaskSection(),
         captureTarget: repo.getCaptureTarget(),
@@ -623,6 +624,14 @@ export function registerIpcHandlers(): void {
       return repo.setTaskSection(String(name))
     } catch (e) {
       rethrow('prefs:setTaskSection', e)
+    }
+  })
+
+  ipcMain.handle('prefs:setTheme', (_, theme: string) => {
+    try {
+      return repo.setTheme(String(theme))
+    } catch (e) {
+      rethrow('prefs:setTheme', e)
     }
   })
 

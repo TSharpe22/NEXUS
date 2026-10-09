@@ -5,6 +5,8 @@ import { AppLockGate } from './AppLockGate'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useAppStore } from './store/app-store'
 import './design/tokens.css'
+import './design/theme-miami.css'
+import { applyTheme, cachedTheme } from './theme'
 
 /**
  * A handle on the store, for the devtools console and for the smoke test.
@@ -20,6 +22,11 @@ declare global {
   }
 }
 window.nexus = { store: useAppStore }
+
+// The theme is a setting in the vault, which loads after the first paint;
+// the copy kept in this window's storage is applied now so the app doesn't
+// flash the default look on the way in.
+applyTheme(cachedTheme())
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -57,6 +57,7 @@ import type {
   GraphNode,
   GraphEdge,
   TypeDef,
+  Theme,
   PropertyDefinition,
   Folder,
   Tag,
@@ -915,6 +916,18 @@ export function setTaskSection(name: string): string {
 export const DEFAULT_TASK_SECTION = 'Tasks'
 
 const SETTING_CAPTURE_TARGET = 'capture.target'
+const SETTING_THEME = 'appearance.theme'
+
+export function getTheme(): Theme {
+  return getSetting(SETTING_THEME) === 'miami' ? 'miami' : 'default'
+}
+
+/** Anything unrecognised is the default look, not an error. */
+export function setTheme(theme: string): Theme {
+  const clean: Theme = theme === 'miami' ? 'miami' : 'default'
+  setSetting(SETTING_THEME, clean)
+  return clean
+}
 
 /**
  * Where the capture box files a line when you have not said otherwise.

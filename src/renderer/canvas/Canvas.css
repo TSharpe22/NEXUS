@@ -200,7 +200,7 @@
   --xy-selection-background-color-default: var(--nx-accent-tint-soft);
   --xy-selection-border-default: 1px solid var(--nx-accent);
   --xy-minimap-background-color-default: var(--nx-surface-sunken);
-  --xy-minimap-mask-background-color-default: rgba(15, 17, 15, 0.7);
+  --xy-minimap-mask-background-color-default: color-mix(in srgb, var(--nx-bg) 70%, transparent);
   --xy-minimap-mask-stroke-color-default: var(--nx-border-2);
   background: var(--nx-bg);
 }

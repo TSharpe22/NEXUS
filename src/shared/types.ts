@@ -317,7 +317,12 @@ export interface AppLockStatus {
   retryInMs: number
 }
 
+/** The app's look. `default` is the original; see renderer/design/theme-miami.css. */
+export type Theme = 'default' | 'miami'
+
 export interface Preferences {
+  /** The look: the original, or Miami. */
+  theme: Theme
   /** Hour 0–23 at which a new day begins. See `shared/day.ts`. */
   dayStartHour: number
   /** Heading in the journal entry that captured tasks are filed under. */
@@ -638,6 +643,7 @@ export interface NexusAPI {
      * default rather than failing — this is a preference, not a command.
      */
     setCaptureTarget(target: CaptureTarget): Promise<CaptureTarget>
+    setTheme(theme: Theme): Promise<Theme>
     /**
      * Set the system-wide capture key; '' turns it off. Resolves with what was
      * stored and whether the key actually registered — another application may

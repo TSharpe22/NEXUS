@@ -28,9 +28,9 @@
   padding: 9px 12px;
   border: 1px solid var(--nx-accent-line);
   border-radius: var(--nx-radius-sm);
-  background: rgba(15, 17, 15, 0.7);
+  background: color-mix(in srgb, var(--nx-bg) 70%, transparent);
   backdrop-filter: blur(8px);
-  box-shadow: 0 0 40px rgba(105, 180, 138, 0.08);
+  box-shadow: 0 0 40px color-mix(in srgb, var(--nx-accent) 8%, transparent);
 }
 
 /* LockBackdrop.tsx: the canvas the strip floats on. */
@@ -91,7 +91,7 @@
   font-family: var(--nx-font-mono);
   font-size: 13.5px;
   line-height: 1.65;
-  color: rgba(105, 180, 138, 0.78);
+  color: color-mix(in srgb, var(--nx-accent) 78%, transparent);
   pointer-events: none;
   animation: nx-applock-quote 32s ease-in-out infinite;
 }
@@ -103,7 +103,7 @@
   font-style: normal;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(105, 180, 138, 0.45);
+  color: color-mix(in srgb, var(--nx-accent) 45%, transparent);
 }
 
 @keyframes nx-applock-quote {
