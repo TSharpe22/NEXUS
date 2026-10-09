@@ -460,8 +460,10 @@ to the Lesson, `reviewsDue` in the briefing) is next.
   hub, and seeds **Trading** and **Learning**. Nexus opens on Exec.
 - **Sidebar**: Home, then a "Command" group with + to make one; right-click
   to rename, move, remove, or "Open Nexus on this page". ⌘K lists them.
-- **Home, the hub**: the quote, capture, **Next task** (oldest late, else
-  first due today), Due for review, and **tiles** — one per command page.
+- **Home, the hub**: the quote, capture, **Command navigation** (a boxed
+  list of the other command pages, kind `tiles`), **Next task** (oldest
+  late, else first due today) and Due for review. A command page can carry
+  a colour (right-click in the sidebar), shown as its mark in both places.
 - **Learning**: Due for review, Pinned, and the topic's "Concepts:" view; a
   new topic points the empty view widget at its concepts.
 - **Trading**: capture, two view widgets (strategies, firms) and Pinned —

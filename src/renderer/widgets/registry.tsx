@@ -176,10 +176,11 @@ export const WIDGET_DEFINITIONS: WidgetDefinition[] = [
 WIDGET_DEFINITIONS.push(
   {
     kind: 'tiles',
-    label: 'Command pages',
-    hint: 'A tile for each of the other command pages',
-    defaultSpan: 12,
-    frame: 'bare',
+    label: 'Command navigation',
+    hint: 'A list of the other command pages',
+    defaultSpan: 4,
+    frame: 'panel',
+    title: () => 'Command navigation',
     Component: TilesWidget
   },
   {

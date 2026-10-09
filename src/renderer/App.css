@@ -213,6 +213,15 @@ body .nx-menu__item:active:not(:disabled) {
   color: var(--nx-accent);
 }
 
+.nx-sidebar__mark {
+  --mark: var(--nx-border-2);
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--mark);
+  flex-shrink: 0;
+}
+
 .nx-sidebar__name {
   width: 100%;
   font-size: 13px;

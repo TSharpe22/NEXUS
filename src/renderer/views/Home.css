@@ -1038,30 +1038,75 @@ button.nx-home__entry:hover {
   color: var(--nx-critical);
 }
 
-/* ---- Command pages: tiles and the quote ---- */
+/* ---- Command navigation and the quote ---- */
 
-.nx-tiles {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--nx-space-3);
+/* A list like Pinned, but each page keeps a box: these are places, not
+   pages, and the box is what says so. The mark takes the page's colour. */
+.nx-cmdnav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--nx-space-2);
 }
 
-.nx-tile {
+.nx-cmdnav__row {
+  --mark: var(--nx-text-dim);
+  display: flex;
+  align-items: center;
+  gap: var(--nx-space-3);
   border: 1px solid var(--nx-border);
-  border-radius: var(--nx-radius-md);
-  background: var(--nx-surface-raised);
+  border-radius: var(--nx-radius-sm);
+  background: transparent;
   color: var(--nx-text);
   font-family: var(--nx-font-sans);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
   text-align: left;
-  padding: var(--nx-space-5) var(--nx-space-4);
+  padding: 7px 10px;
   cursor: pointer;
 }
 
-.nx-tile:hover {
-  border-color: var(--nx-accent);
-  color: var(--nx-accent);
+.nx-cmdnav__row--accent,
+.nx-sidebar__mark--accent {
+  --mark: var(--nx-accent);
+}
+
+.nx-cmdnav__row--info,
+.nx-sidebar__mark--info {
+  --mark: var(--nx-info);
+}
+
+.nx-cmdnav__row--success,
+.nx-sidebar__mark--success {
+  --mark: var(--nx-success);
+}
+
+.nx-cmdnav__row--critical,
+.nx-sidebar__mark--critical {
+  --mark: var(--nx-critical);
+}
+
+.nx-cmdnav__row:hover {
+  border-color: var(--mark);
+}
+
+.nx-cmdnav__mark {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: var(--mark);
+  flex-shrink: 0;
+}
+
+.nx-cmdnav__name {
+  flex: 1;
+  min-width: 0;
+}
+
+.nx-cmdnav__go {
+  color: var(--nx-text-dim);
+}
+
+.nx-home__cell:has(.nx-cmdnav) .nx-panel {
+  min-height: 0;
 }
 
 .nx-quote {

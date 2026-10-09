@@ -17,10 +17,16 @@ import { DEFAULT_DASHBOARD } from './widgets'
 /** Home's id. Home is always first, cannot be removed, and keeps its old storage key. */
 export const HOME_ID = 'home'
 
+/** The colours a command page can carry — the same four a tag can. */
+export const COMMAND_COLORS = ['accent', 'info', 'success', 'critical'] as const
+export type CommandColor = (typeof COMMAND_COLORS)[number]
+
 export interface CommandPage {
   /** Lowercase letters, digits and dashes — it is part of a settings key. */
   id: string
   name: string
+  /** Its marker in the sidebar and in Command navigation. Optional; none is neutral. */
+  color?: CommandColor
 }
 
 export interface CommandIndex {
@@ -71,9 +77,13 @@ export function normaliseCommands(raw: unknown): CommandIndex {
   const pages: CommandPage[] = [{ id: HOME_ID, name: 'Home' }]
   for (const entry of candidate.pages) {
     if (!entry || typeof entry !== 'object') continue
-    const { id, name } = entry as Partial<CommandPage>
+    const { id, name, color } = entry as Partial<CommandPage>
     if (!isCommandId(id) || id === HOME_ID || pages.some((p) => p.id === id)) continue
-    pages.push({ id, name: typeof name === 'string' && name.trim() ? name.trim() : id })
+    pages.push({
+      id,
+      name: typeof name === 'string' && name.trim() ? name.trim() : id,
+      ...(COMMAND_COLORS.includes(color as CommandColor) ? { color } : {})
+    })
   }
   const start = pages.some((p) => p.id === candidate.start) ? (candidate.start as string) : HOME_ID
   return { version: 1, pages, start }
@@ -85,17 +95,17 @@ export function dashboardKey(id: string): string {
 }
 
 /**
- * Home as the hub: the capture box, the next thing to do, and a tile for
- * every other command page. The day lives on Exec.
+ * Home as the hub: the capture box, the list of command pages, and the next
+ * thing to do. The day lives on Exec.
  */
 export const HUB_DASHBOARD: Dashboard = {
   version: 1,
   widgets: [
     { id: 'w-quote', kind: 'quote', config: {}, span: 12 },
     { id: 'w-capture', kind: 'capture', config: {}, span: 12 },
-    { id: 'w-next', kind: 'next-task', config: {}, span: 6 },
-    { id: 'w-review', kind: 'review', config: {}, span: 6 },
-    { id: 'w-tiles', kind: 'tiles', config: {}, span: 12 }
+    { id: 'w-tiles', kind: 'tiles', config: {}, span: 4 },
+    { id: 'w-next', kind: 'next-task', config: {}, span: 4 },
+    { id: 'w-review', kind: 'review', config: {}, span: 4 }
   ]
 }
 

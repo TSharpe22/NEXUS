@@ -1,9 +1,17 @@
 import { useState } from 'react'
 import toast from 'react-hot-toast'
-import { HOME_ID, commandIdFor } from '@shared/commands'
+import { COMMAND_COLORS, HOME_ID, commandIdFor, type CommandColor } from '@shared/commands'
 import { useAppStore } from '../store/app-store'
 import { NavItem } from '../design/NavItem'
 import { openMenu } from '../design/menu-host'
+import { MENU_SEPARATOR } from '../design/ContextMenu'
+
+const COLOR_NAMES: Record<CommandColor, string> = {
+  accent: 'green',
+  info: 'blue',
+  success: 'moss',
+  critical: 'red'
+}
 import { confirmDialog } from '../design/Confirm'
 
 /**
@@ -81,6 +89,12 @@ export function CommandNav() {
     />
   )
 
+  const setColor = (id: string, color: CommandColor | undefined) =>
+    void saveCommands({
+      ...commands,
+      pages: commands.pages.map((p) => (p.id === id ? { ...p, color } : p))
+    })
+
   const startLabel = (id: string) => (commands.start === id ? ' · opens first' : '')
 
   return (
@@ -131,6 +145,13 @@ export function CommandNav() {
                       )
                     }
                   },
+                  MENU_SEPARATOR,
+                  ...COMMAND_COLORS.map((color) => ({
+                    label: `${p.color === color ? '● ' : ''}Colour: ${COLOR_NAMES[color]}`,
+                    onSelect: () => setColor(p.id, color)
+                  })),
+                  ...(p.color ? [{ label: 'No colour', onSelect: () => setColor(p.id, undefined) }] : []),
+                  MENU_SEPARATOR,
                   { label: 'Move up', onSelect: () => move(p.id, -1) },
                   { label: 'Move down', onSelect: () => move(p.id, 1) },
                   { label: 'Remove', danger: true, onSelect: () => void remove(p.id, p.name) }
@@ -138,7 +159,15 @@ export function CommandNav() {
               }}
             >
               <NavItem
-                label={p.name}
+                label={
+                  <span className="nx-sidebar__pin-label">
+                    <span
+                      className={`nx-sidebar__mark ${p.color ? `nx-sidebar__mark--${p.color}` : ''}`}
+                      aria-hidden
+                    />
+                    {p.name}
+                  </span>
+                }
                 title={`${p.name}${startLabel(p.id)} — right-click to rename or remove`}
                 selected={activeView === 'home' && activeCommandId === p.id}
                 onClick={() => openCommand(p.id)}

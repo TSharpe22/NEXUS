@@ -82,16 +82,16 @@ check('Exec is the old Home layout, all eight widgets',
 await nav('Home')
 await sleep(800)
 check('Home is the hub', (await title()) === 'Home')
-const tiles = await page.evaluate(() => [...document.querySelectorAll('.nx-tile')].map((t) => t.textContent.trim()))
-check('with a tile for each other command page', tiles.join(',') === 'Exec,Trading,Learning', tiles.join(','))
+const tiles = await page.evaluate(() => [...document.querySelectorAll('.nx-cmdnav__name')].map((t) => t.textContent.trim()))
+check('with Command navigation listing each other command page', tiles.join(',') === 'Exec,Trading,Learning', tiles.join(','))
 check('and the quote and next task', await page.evaluate(() => !!document.querySelector('.nx-quote') &&
   /Next task/i.test(document.querySelector('.nx-home__grid').innerText)))
 check('Home stores the hub, not the old layout', (await kinds())?.includes('tiles'))
 
 // ---------------------------------------------------------------- tiles, Back, Forward
-await page.locator('.nx-tile', { hasText: 'Trading' }).click()
+await page.locator('.nx-cmdnav__row', { hasText: 'Trading' }).click()
 await sleep(600)
-check('a tile opens its command page', (await title()) === 'Trading')
+check('a row opens its command page', (await title()) === 'Trading')
 
 await page.evaluate(() => window.nexus.store.getState().openPage(
   window.nexus.store.getState().pages.find((p) => p.title === 'Back target').id))
@@ -119,6 +119,16 @@ check('Forward is offered, and going somewhere new drops it', await page.evaluat
 await nav('Tracker')
 await sleep(500)
 check('…dropped', !(await page.evaluate(() => window.nexus.store.getState().canGoForward)))
+
+// ---------------------------------------------------------------- colour
+await page.locator('.nx-nav-item', { hasText: 'Trading' }).click({ button: 'right' })
+await sleep(200)
+await page.getByText('Colour: blue', { exact: true }).click()
+await sleep(500)
+check('a command page takes a colour, in the sidebar',
+  await page.evaluate(() => !!document.querySelector('.nx-sidebar__mark--info')))
+check('and it is stored with the page',
+  await page.evaluate(async () => JSON.parse(await window.api.commands.get()).pages.find((p) => p.id === 'trading').color === 'info'))
 
 // ---------------------------------------------------------------- make, rename, lay out, remove
 await page.locator('.nx-sidebar__add').click()
