@@ -90,6 +90,40 @@ export interface WidgetInstance {
    */
   config: Record<string, unknown>
   span: WidgetSpan
+  /**
+   * Sits under the widget before it, in the same column, instead of starting
+   * a column of its own. Panels in a row share a height, so a short widget
+   * next to a tall one (the Calendar beside the graph) stretched into a box
+   * of empty space; stacking two short ones fills that height with content.
+   * The column's width is the first widget's `span`; a stacked widget's own
+   * span is kept, unused, for when it is unstacked.
+   *
+   * Optional and written only when true. An older build ignores it and draws
+   * the widget in a column of its own, which is the layout it had before.
+   */
+  stack?: boolean
+}
+
+/** A column on Home: one widget, and any stacked under it. */
+export interface WidgetColumn {
+  /** The column's width — its first widget's span. */
+  span: WidgetSpan
+  /** Indices into `Dashboard.widgets`, top to bottom. */
+  indices: number[]
+}
+
+/**
+ * The dashboard's widgets, grouped into columns. A `stack` on the first
+ * widget has nothing to sit under and starts a column like any other.
+ */
+export function widgetColumns(widgets: WidgetInstance[]): WidgetColumn[] {
+  const columns: WidgetColumn[] = []
+  widgets.forEach((w, i) => {
+    const last = columns[columns.length - 1]
+    if (w.stack && last) last.indices.push(i)
+    else columns.push({ span: w.span, indices: [i] })
+  })
+  return columns
 }
 
 /**
@@ -174,7 +208,8 @@ export function normaliseDashboard(raw: unknown): Dashboard {
       id,
       kind: item.kind,
       config: item.config && typeof item.config === 'object' ? item.config : {},
-      span: normaliseSpan(item.span)
+      span: normaliseSpan(item.span),
+      ...(item.stack === true && widgets.length > 0 ? { stack: true } : {})
     })
   }
 

@@ -106,12 +106,21 @@
 .nx-home__slot {
   display: flex;
   flex-direction: column;
+  gap: var(--nx-space-3);
   min-width: 0;
+}
+
+/* A column is a slot; a widget in it is a cell. Most columns hold one. */
+.nx-home__cell {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 /* A readable floor rather than a share of the viewport: with an arbitrary
    number of widgets there is no row height to divide up. */
-.nx-home__slot .nx-panel {
+.nx-home__cell .nx-panel {
   flex: 1 1 auto;
   min-height: 240px;
   max-height: 460px;
@@ -119,8 +128,8 @@
 
 /* The capture box is a control, not a readout — it should be exactly as tall
    as it needs to be. */
-.nx-home__slot:has(.nx-home__capture) .nx-panel,
-.nx-home__slot:has(.nx-review-strip) .nx-panel,
+.nx-home__cell:has(.nx-home__capture) .nx-panel,
+.nx-home__cell:has(.nx-review-strip) .nx-panel,
 .nx-home__bare-ctl + * {
   min-height: 0;
 }
@@ -128,7 +137,19 @@
 /* The graph sets its own height, from its S / M / L setting. The cap above
    would clip anything past it — including the default, once the panel header
    is added on top. */
-.nx-home__slot:has(.nx-graph, .nx-graph__placeholder, .nx-graph__empty) .nx-panel {
+.nx-home__cell:has(.nx-graph, .nx-graph__placeholder, .nx-graph__empty) .nx-panel {
+  max-height: none;
+}
+
+/* A stack splits its column's height evenly, and asks the row for no more
+   than a floor per widget — the tall neighbour sets the height, the stack
+   fills it. A list too long for its share scrolls inside its panel. */
+.nx-home__slot.is-stack > .nx-home__cell {
+  flex: 1 1 0;
+}
+
+.nx-home__slot.is-stack .nx-panel {
+  min-height: 140px;
   max-height: none;
 }
 
@@ -155,6 +176,11 @@
   line-height: 1;
   padding: 3px 6px;
   cursor: pointer;
+}
+
+.nx-home__wctl button.is-on {
+  border-color: var(--nx-accent);
+  color: var(--nx-accent);
 }
 
 .nx-home__wctl button:hover {
@@ -220,6 +246,11 @@
 @media (max-width: 1100px) {
   .nx-home__slot {
     grid-column: span 12 !important;
+  }
+
+  /* Full width, a stack has no neighbour to take its height from. */
+  .nx-home__slot.is-stack .nx-panel {
+    min-height: 240px;
   }
 }
 

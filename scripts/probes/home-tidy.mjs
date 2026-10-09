@@ -128,8 +128,9 @@ await page.evaluate(async (port) => {
     { id: 'w-briefing', kind: 'briefing', config: {}, span: 4 },
     { id: 'w-habits', kind: 'habits', config: {}, span: 4 },
     { id: 'w-graph', kind: 'graph', config: { tags: true, folders: true, colour: 'none', size: 'M' }, span: 6 },
-    { id: 'w-calendar', kind: 'calendar', config: {}, span: 4 },
-    { id: 'w-pinned', kind: 'pinned', config: {}, span: 2 }
+    // Calendar with Pinned stacked under it, sharing the graph's height.
+    { id: 'w-calendar', kind: 'calendar', config: {}, span: 6 },
+    { id: 'w-pinned', kind: 'pinned', config: {}, span: 6, stack: true }
   ] }))
 }, port)
 

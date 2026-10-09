@@ -439,21 +439,19 @@ to the Lesson, `reviewsDue` in the briefing) is next.
   models (downloads stripped by `scripts/strip-glb.py`). **Next**: a scene
   pool in the app that rotates each lock, from the keep list in the notes.
 
-## Next — queued, in no fixed order
+## Wave 10b — Home stacks (shipped)
 
-**Home: rows of unequal content.** Wave 10 made panels in a row share a
-height. Next to a tall widget (the graph at M is 460px), a short one stretches
-to match: the Calendar's seven day columns become long empty bars, and Pinned
-is a box of space under three lines. Equal heights are the right rule; the
-fix is filling the space, not undoing the rule. Options, in order of
-preference:
-- Let a short widget stack: a Home "column" slot, so Calendar and something
-  beneath it (Pinned, Due for review, Stale) share the graph's height.
-- Give the Calendar something worth the height: an hour grid (08–22) so
-  events sit at their times, which only reads at that height anyway.
-- Per-widget "natural height" opt-out (`align-self: start`) for widgets that
-  should never stretch, as a fallback.
-Screenshot from 2026-10-07: graph M + Calendar + Pinned row.
+- **A widget can stack under the one before it** (`stack` on the instance,
+  `widgetColumns()` in `shared/widgets.ts`). A stacked column takes its top
+  widget's width and splits the row's height evenly, so the Calendar and
+  Pinned beside the graph fill its height instead of stretching into empty
+  space. Edit Home: ⤒ stacks / unstacks; ← → move a whole column from its
+  top widget, or move within the stack (up past the top takes the top's
+  place, down past the bottom leaves the stack). Older builds ignore the
+  flag and draw each widget in its own column.
+- `scripts/probes/home-tidy.mjs` shoots graph M beside Calendar + Pinned.
+
+## Next — queued, in no fixed order
 
 **Lasso and tools on the canvas.** A left-button drag on empty canvas draws
 a freehand lasso; every card whose centre lies inside is selected, and

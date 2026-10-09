@@ -1665,7 +1665,10 @@ function addReviewWidgetToHome(): void {
   const widgets = [...dashboard.widgets]
   // A full-width strip under the capture box, so it is seen in the morning
   // without breaking whatever row comes after it.
-  const at = widgets.findIndex((w) => w.kind === 'capture')
+  // After anything stacked under the capture box, so the strip does not cut
+  // a column in two.
+  let at = widgets.findIndex((w) => w.kind === 'capture')
+  while (at >= 0 && widgets[at + 1]?.stack) at++
   widgets.splice(at + 1, 0, { id: 'w-review', kind: 'review', config: {}, span: 12 })
   setDashboard(JSON.stringify({ ...dashboard, widgets }))
 }

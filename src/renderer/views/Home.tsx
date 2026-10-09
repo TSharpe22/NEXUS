@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import toast from 'react-hot-toast'
 import type { Dashboard, WidgetInstance, WidgetSpan } from '@shared/widgets'
-import { DEFAULT_DASHBOARD, WIDGET_SPANS, normaliseDashboard } from '@shared/widgets'
+import { DEFAULT_DASHBOARD, WIDGET_SPANS, normaliseDashboard, widgetColumns } from '@shared/widgets'
 import { dayOfYear, fromISO, isoWeek } from '@shared/date-range'
 import { dayStartLabel } from '@shared/day'
 import { useAppStore, useToday, useWallToday } from '../store/app-store'
@@ -69,21 +69,26 @@ function DayHeader() {
 // One widget in its frame
 // ------------------------------------------------------------------
 
-function WidgetSlot({
+function WidgetCell({
   instance,
   ctx,
   editing,
+  canStack,
   onRemove,
   onMove,
   onSpan,
+  onStack,
   onConfig
 }: {
   instance: WidgetInstance
   ctx: WidgetContext
   editing: boolean
+  /** Not the first widget, so there is something to stack under. */
+  canStack: boolean
   onRemove: () => void
   onMove: (delta: -1 | 1) => void
   onSpan: (span: WidgetSpan) => void
+  onStack: (stack: boolean) => void
   onConfig: (next: Record<string, unknown>) => void
 }) {
   const definition = widgetFor(instance.kind)
@@ -96,18 +101,32 @@ function WidgetSlot({
       <button title="Move later" aria-label="Move later" onClick={() => onMove(1)}>
         →
       </button>
-      <select
-        className="nx-select"
-        value={instance.span}
-        aria-label="Width"
-        onChange={(e) => onSpan(Number(e.target.value) as WidgetSpan)}
-      >
-        {WIDGET_SPANS.map((s) => (
-          <option key={s.span} value={s.span}>
-            {s.label}
-          </option>
-        ))}
-      </select>
+      {canStack && (
+        <button
+          className={instance.stack ? 'is-on' : undefined}
+          title={instance.stack ? 'Unstack: give it a column of its own' : 'Stack under the widget before'}
+          aria-label={instance.stack ? 'Unstack' : 'Stack under the widget before'}
+          aria-pressed={!!instance.stack}
+          onClick={() => onStack(!instance.stack)}
+        >
+          ⤒
+        </button>
+      )}
+      {/* A stacked widget takes its column's width, so it has none to set. */}
+      {!instance.stack && (
+        <select
+          className="nx-select"
+          value={instance.span}
+          aria-label="Width"
+          onChange={(e) => onSpan(Number(e.target.value) as WidgetSpan)}
+        >
+          {WIDGET_SPANS.map((s) => (
+            <option key={s.span} value={s.span}>
+              {s.label}
+            </option>
+          ))}
+        </select>
+      )}
       <button
         className="nx-home__wctl-x"
         title="Remove from Home"
@@ -129,7 +148,7 @@ function WidgetSlot({
    */
   if (!definition) {
     return (
-      <div className="nx-home__slot" style={{ gridColumn: `span ${instance.span}` }}>
+      <div className="nx-home__cell">
         <Panel title={instance.kind} actions={controls}>
           <div className="nx-home__hint nx-type-data">
             No widget registered for “{instance.kind}”. It has been left in place.
@@ -144,7 +163,7 @@ function WidgetSlot({
   )
 
   return (
-    <div className="nx-home__slot" style={{ gridColumn: `span ${instance.span}` }}>
+    <div className="nx-home__cell">
       {definition.frame === 'bare' ? (
         <>
           {editing && <div className="nx-home__bare-ctl">{controls}</div>}
@@ -327,17 +346,58 @@ export function Home() {
   )
 
   const widgets = dashboard?.widgets ?? []
+  const columns = widgetColumns(widgets)
 
+  /**
+   * Earlier / later, column-aware. The first widget in a column moves the
+   * whole column past its neighbour. One stacked under it moves within the
+   * stack: up past the top takes the top's place (and the column's width),
+   * and down past the bottom leaves the stack for a column of its own.
+   */
   const move = (index: number, delta: -1 | 1) => {
-    const next = [...widgets]
-    const to = index + delta
-    if (to < 0 || to >= next.length) return
-    ;[next[index], next[to]] = [next[to], next[index]]
+    const c = columns.findIndex((col) => col.indices.includes(index))
+    const column = columns[c]
+    const at = column.indices.indexOf(index)
+    let next: WidgetInstance[]
+
+    if (at === 0) {
+      const to = c + delta
+      if (to < 0 || to >= columns.length) return
+      const order = [...columns]
+      ;[order[c], order[to]] = [order[to], order[c]]
+      next = order.flatMap((col) => col.indices.map((i) => widgets[i]))
+    } else {
+      next = [...widgets]
+      const isLast = at === column.indices.length - 1
+      if (delta === 1 && isLast) {
+        next[index] = { ...widgets[index], stack: undefined }
+      } else if (delta === -1 && at === 1) {
+        const top = column.indices[0]
+        next[top] = { ...widgets[index], stack: undefined, span: widgets[top].span }
+        next[index] = { ...widgets[top], stack: true }
+      } else {
+        const to = index + delta
+        ;[next[index], next[to]] = [next[to], next[index]]
+      }
+    }
     void persist({ version: 1, widgets: next })
   }
 
-  const remove = (index: number) =>
-    void persist({ version: 1, widgets: widgets.filter((_, i) => i !== index) })
+  /** Removing the top of a stack hands its place and width to the next one down. */
+  const remove = (index: number) => {
+    const next = widgets.map((w, i) =>
+      i === index + 1 && w.stack && !widgets[index].stack
+        ? { ...w, stack: undefined, span: widgets[index].span }
+        : w
+    )
+    void persist({ version: 1, widgets: next.filter((_, i) => i !== index) })
+  }
+
+  const setStack = (index: number, stack: boolean) =>
+    void persist({
+      version: 1,
+      widgets: widgets.map((w, i) => (i === index ? { ...w, stack: stack || undefined } : w))
+    })
 
   const setSpan = (index: number, span: WidgetSpan) =>
     void persist({
@@ -441,17 +501,27 @@ export function Home() {
       )}
 
       <div className={`nx-home__grid ${editing ? 'is-editing' : ''}`}>
-        {widgets.map((instance, index) => (
-          <WidgetSlot
-            key={instance.id}
-            instance={instance}
-            ctx={ctx}
-            editing={editing}
-            onRemove={() => remove(index)}
-            onMove={(delta) => move(index, delta)}
-            onSpan={(span) => setSpan(index, span)}
-            onConfig={(next) => setConfig(index, next)}
-          />
+        {columns.map((column) => (
+          <div
+            key={widgets[column.indices[0]].id}
+            className={`nx-home__slot ${column.indices.length > 1 ? 'is-stack' : ''}`}
+            style={{ gridColumn: `span ${column.span}` }}
+          >
+            {column.indices.map((index) => (
+              <WidgetCell
+                key={widgets[index].id}
+                instance={widgets[index]}
+                ctx={ctx}
+                editing={editing}
+                canStack={index > 0}
+                onRemove={() => remove(index)}
+                onMove={(delta) => move(index, delta)}
+                onSpan={(span) => setSpan(index, span)}
+                onStack={(stack) => setStack(index, stack)}
+                onConfig={(next) => setConfig(index, next)}
+              />
+            ))}
+          </div>
         ))}
 
         {widgets.length === 0 && (
