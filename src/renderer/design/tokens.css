@@ -71,6 +71,8 @@
   --nx-accent-tint: rgba(105, 180, 138, 0.14);
   --nx-accent-tint-soft: rgba(105, 180, 138, 0.07);
   --nx-accent-line: rgba(105, 180, 138, 0.55);
+  /* Text on a solid accent fill (a primary button, an active chip). */
+  --nx-on-accent: #05100a;
 
   /* Typography */
   --nx-font-sans: 'Chakra Petch', -apple-system, 'Segoe UI', sans-serif;
@@ -282,15 +284,15 @@ button {
 }
 .nx-tag-chip--info {
   --nx-tag-color: var(--nx-info);
-  --nx-tag-tint: rgba(126, 163, 201, 0.08);
+  --nx-tag-tint: color-mix(in srgb, var(--nx-info) 8%, transparent);
 }
 .nx-tag-chip--success {
   --nx-tag-color: var(--nx-success);
-  --nx-tag-tint: rgba(105, 147, 101, 0.08);
+  --nx-tag-tint: color-mix(in srgb, var(--nx-success) 8%, transparent);
 }
 .nx-tag-chip--critical {
   --nx-tag-color: var(--nx-critical);
-  --nx-tag-tint: rgba(217, 96, 79, 0.08);
+  --nx-tag-tint: color-mix(in srgb, var(--nx-critical) 8%, transparent);
 }
 
 /* Active = this tag is filtering the list. Per DESIGN.md a selection reads as

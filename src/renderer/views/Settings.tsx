@@ -54,6 +54,7 @@ export function Settings() {
   const [showRestore, setShowRestore] = useState(false)
   const prefs = useAppStore((s) => s.prefs)
   const setCaptureTarget = useAppStore((s) => s.setCaptureTarget)
+  const setTheme = useAppStore((s) => s.setTheme)
   const setDayStartHour = useAppStore((s) => s.setDayStartHour)
   const setTaskSection = useAppStore((s) => s.setTaskSection)
   const setCaptureAccelerator = useAppStore((s) => s.setCaptureAccelerator)
@@ -338,6 +339,26 @@ export function Settings() {
           >
             {reclaiming ? 'Deleting…' : 'Delete them'}
           </Button>
+        </div>
+      </Panel>
+
+      <Panel title="Appearance">
+        <div className="nx-settings__row">
+          <div>
+            <div className="nx-type-body">Theme</div>
+            <div className="nx-type-data">
+              The original look, or Miami: night-indigo with neon blue, pink and purple. The Kairos
+              sim lab has the same switch.
+            </div>
+          </div>
+          <select
+            className="nx-select nx-settings__select"
+            value={prefs.theme}
+            onChange={(e) => void setTheme(e.target.value === 'miami' ? 'miami' : 'default')}
+          >
+            <option value="default">Original</option>
+            <option value="miami">Miami</option>
+          </select>
         </div>
       </Panel>
 

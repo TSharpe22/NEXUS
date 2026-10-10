@@ -307,6 +307,8 @@ function CommandPage({ id }: { id: string }) {
         remindersUpcoming: () => window.api.reminders.upcoming(),
         reviewCounts: (today) => window.api.review.counts(today),
         tradingSnapshot: (today) => window.api.trading.snapshot(today),
+        practiceSessions: (limit) => window.api.trading.sessions(limit),
+        practiceSession: (id) => window.api.trading.session(id),
         habitCandidates: () => window.api.habits.candidates(),
         habitDays: (typeId, dateKey, booleanKey, from, to) =>
           window.api.habits.days(typeId, dateKey, booleanKey, from, to)
@@ -337,6 +339,11 @@ function CommandPage({ id }: { id: string }) {
         },
         openBriefingPage: async () => {
           const page = await window.api.briefing.openPage()
+          await useAppStore.getState().refresh()
+          openPage(page.id)
+        },
+        openPracticeNote: async (sessionId) => {
+          const page = await window.api.trading.sessionNote(sessionId)
           await useAppStore.getState().refresh()
           openPage(page.id)
         }

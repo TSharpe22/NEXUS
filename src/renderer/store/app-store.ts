@@ -1,10 +1,11 @@
 import { create } from 'zustand'
 import type { ViewDef, ViewDraft } from '@shared/views'
 import type { CanvasListItem } from '@shared/canvas'
-import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, TypeDef } from '@shared/types'
+import type { CaptureTarget, Folder, Page, PageListItem, Preferences, Tag, TagWithCount, Theme, TypeDef } from '@shared/types'
 import { DEFAULT_DAY_START_HOUR, logicalDateISO } from '@shared/day'
 import { localDateISO } from '@shared/journal-date'
 import { flushPendingWrites } from '../pending-writes'
+import { applyTheme } from '../theme'
 import type { CommandIndex } from '@shared/commands'
 import { HOME_ID, normaliseCommands } from '@shared/commands'
 
@@ -160,6 +161,8 @@ interface AppState {
   setTaskSection: (name: string) => Promise<void>
   /** The target the capture box opens on. */
   setCaptureTarget: (target: CaptureTarget) => Promise<void>
+  /** The app's look; applied at once. */
+  setTheme: (theme: Theme) => Promise<void>
   /** The system-wide capture key; '' turns it off. */
   setCaptureAccelerator: (accelerator: string) => Promise<void>
   /** Open the inbox page, making it on first use. */
@@ -325,6 +328,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   saveStatus: 'idle',
 
   prefs: {
+    theme: 'default',
     dayStartHour: DEFAULT_DAY_START_HOUR,
     taskSection: 'Tasks',
     captureTarget: 'task',
@@ -353,6 +357,13 @@ export const useAppStore = create<AppState>((set, get) => ({
   setCaptureTarget: async (target) => {
     const stored = await window.api.prefs.setCaptureTarget(target)
     set((state) => ({ prefs: { ...state.prefs, captureTarget: stored } }))
+  },
+
+  setTheme: async (theme) => {
+    applyTheme(theme)
+    const stored = await window.api.prefs.setTheme(theme)
+    applyTheme(stored)
+    set((state) => ({ prefs: { ...state.prefs, theme: stored } }))
   },
 
   setCaptureAccelerator: async (accelerator) => {
@@ -444,6 +455,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       // Same for a type deleted while it was filtering the list.
       activeTypeFilter: state.activeTypeFilter.filter((id) => types.some((t) => t.id === id))
     }))
+    applyTheme(prefs.theme)
     // `prefs` has just come off disk, and the hour it carries may not be the
     // default the store started with — the first boot after this line runs is
     // the only chance to notice before the next tick.

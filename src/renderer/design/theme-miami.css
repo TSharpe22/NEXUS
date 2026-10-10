@@ -1,0 +1,106 @@
+/* ----------------------------------------------------------------
+   Miami: a retro neon theme, switched on in Settings → Appearance.
+   The default look (tokens.css) stays the default.
+
+   Clean neon, not full synthwave: night-indigo surfaces, neon blue as the
+   working accent (links, focus, selection, primary buttons), hot pink and
+   purple as decoration only (the wordmark, the selected nav rule, panel
+   titles, a faint haze behind everything). Glow is kept to things that are
+   active or focused, so long sessions stay easy on the eyes.
+
+   Every text colour clears WCAG AA (4.5:1) on every surface; the dimmest,
+   --nx-text-dim on a raised panel, is 4.65:1. Change a colour here and
+   re-check it.
+   ---------------------------------------------------------------- */
+
+:root[data-theme='miami'] {
+  --nx-bg: #0c0a1c;
+  --nx-surface: #141129;
+  --nx-surface-raised: #1c1838;
+  --nx-surface-sunken: #090717;
+
+  --nx-border: #29244f;
+  --nx-border-2: #3a3370;
+
+  --nx-text: #f0ecff;
+  --nx-text-muted: #aca5d8;
+  --nx-text-dim: #8580b5;
+
+  --nx-row-line: #1b1834;
+  --nx-row-hover: #221d44;
+
+  --nx-success: #3ad9a0;
+  --nx-info: #5aa9ff;
+  --nx-warning: #ffb86c;
+  --nx-warning-tint: rgba(255, 184, 108, 0.12);
+  --nx-critical: #ff5c74;
+  --nx-critical-tint: rgba(255, 92, 116, 0.12);
+  --nx-critical-line: rgba(255, 92, 116, 0.45);
+  --nx-habit-missed-tint: rgba(255, 92, 116, 0.06);
+  --nx-habit-missed-line: rgba(255, 92, 116, 0.26);
+
+  /* Neon blue does the work. */
+  --nx-accent: #38e1ff;
+  --nx-accent-hover: #7aecff;
+  --nx-accent-pressed: #13c2e3;
+  --nx-accent-tint: rgba(56, 225, 255, 0.14);
+  --nx-accent-tint-soft: rgba(56, 225, 255, 0.07);
+  --nx-accent-line: rgba(56, 225, 255, 0.55);
+  --nx-on-accent: #061018;
+
+  /* Pink and purple decorate. Defined only in this theme. */
+  --nx-neon-pink: #ff4fcf;
+  --nx-neon-purple: #b78cff;
+  --nx-glow: 0 0 10px rgba(56, 225, 255, 0.35);
+  --nx-glow-pink: 0 0 12px rgba(255, 79, 207, 0.45);
+
+  color-scheme: dark;
+}
+
+/* A faint dusk haze in the gaps between panels: purple from the top right,
+   pink from the bottom left. Panels are opaque, so text never sits on it. */
+:root[data-theme='miami'] body {
+  background:
+    radial-gradient(1100px 560px at 88% -12%, rgba(183, 140, 255, 0.11), transparent 62%),
+    radial-gradient(900px 520px at -8% 112%, rgba(255, 79, 207, 0.08), transparent 60%),
+    var(--nx-bg);
+  background-attachment: fixed;
+}
+
+/* The wordmark: blue into pink, with a soft glow. */
+:root[data-theme='miami'] .nx-sidebar__logo,
+:root[data-theme='miami'] .nx-applock__logo {
+  background: linear-gradient(90deg, var(--nx-accent) 0%, var(--nx-neon-purple) 55%, var(--nx-neon-pink) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 6px rgba(255, 79, 207, 0.35));
+}
+
+/* Where you are: a pink rule beside the selected nav item. */
+:root[data-theme='miami'] .nx-nav-item--selected .nx-nav-item__rule {
+  background: var(--nx-neon-pink);
+  box-shadow: var(--nx-glow-pink);
+}
+
+/* Section and panel titles in neon purple. */
+:root[data-theme='miami'] .nx-panel__title {
+  color: var(--nx-neon-purple);
+}
+
+/* Focus and primary actions glow; nothing else does. */
+:root[data-theme='miami'] :focus-visible {
+  box-shadow: var(--nx-glow);
+}
+
+:root[data-theme='miami'] .nx-button--primary:hover:not(:disabled) {
+  box-shadow: var(--nx-glow);
+}
+
+:root[data-theme='miami'] .nx-panel:hover {
+  border-color: var(--nx-border-2);
+}
+
+:root[data-theme='miami'] ::selection {
+  background: rgba(255, 79, 207, 0.28);
+}

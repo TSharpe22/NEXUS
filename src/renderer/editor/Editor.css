@@ -279,7 +279,7 @@
 
 /* Text selected across blocks reads in the app's own colour. */
 .bn-editor ::selection {
-  background: rgba(105, 180, 138, 0.32);
+  background: color-mix(in srgb, var(--nx-accent) 32%, transparent);
 }
 
 /* BlockNote eases a block's margin when it moves and its font size when its

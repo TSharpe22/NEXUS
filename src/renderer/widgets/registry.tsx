@@ -27,6 +27,8 @@ import {
   TradingPortfolioWidget,
   TradingPracticeWidget,
   TradingSource,
+  TradingPracticeSource,
+  TradingSessionsWidget,
   TradingStrategiesWidget,
   TradingTesterWidget
 } from './trading'
@@ -313,8 +315,18 @@ WIDGET_DEFINITIONS.push(
     defaultSpan: 6,
     frame: 'panel',
     title: () => 'Practice',
-    actions: mock,
+    actions: (ctx) => <TradingPracticeSource ctx={ctx} />,
     Component: TradingPracticeWidget
+  },
+  {
+    kind: 'trading.sessions',
+    label: 'Trading: practice sessions',
+    hint: 'Sim-lab sessions: the report, and a note for each',
+    defaultSpan: 7,
+    frame: 'panel',
+    title: () => 'Practice sessions',
+    actions: () => <TradingSource real />,
+    Component: TradingSessionsWidget
   }
 )
 

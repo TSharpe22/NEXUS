@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Local-first personal knowledge management",
   "author": "TSharpe22",
+  "homepage": "https://github.com/TSharpe22/NEXUS",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
@@ -24,7 +25,9 @@
     "check:calendar": "node scripts/check-calendar.mjs",
     "check:learning": "electron-vite build && xvfb-run -a node scripts/check-learning.mjs",
     "check:command": "electron-vite build && xvfb-run -a node scripts/check-command.mjs",
-    "check:phone": "electron-vite build && xvfb-run -a node scripts/check-phone.mjs"
+    "check:phone": "electron-vite build && xvfb-run -a node scripts/check-phone.mjs",
+    "check:practice": "electron-vite build && xvfb-run -a node scripts/check-practice.mjs",
+    "check:theme": "electron-vite build && xvfb-run -a node scripts/check-theme.mjs"
   },
   "dependencies": {
     "@blocknote/ariakit": "^0.55.0",

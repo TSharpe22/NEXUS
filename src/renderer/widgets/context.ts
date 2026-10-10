@@ -20,7 +20,7 @@ import type {
 } from '@shared/types'
 import type { TrackerMode } from '../store/app-store'
 import type { CommandPage } from '@shared/commands'
-import type { TradingSnapshot } from '@shared/trading'
+import type { PracticeSessionReport, PracticeSessionSummary, TradingSnapshot } from '@shared/trading'
 
 /**
  * Everything a widget is allowed to do.
@@ -102,6 +102,9 @@ export interface WidgetContext {
     reviewCounts(today: string): Promise<ReviewCount[]>
     /** The trading ledger, read-only. Simulated until `trading.db` exists. */
     tradingSnapshot(today: string): Promise<TradingSnapshot>
+    /** Sim-lab sessions from trading.db, newest first. */
+    practiceSessions(limit?: number): Promise<PracticeSessionSummary[]>
+    practiceSession(id: number): Promise<PracticeSessionReport | null>
     habitCandidates(): Promise<HabitCandidate[]>
     habitDays(
       typeId: string,
@@ -128,6 +131,8 @@ export interface WidgetContext {
     addBriefingToEntry(): Promise<void>
     /** Open today's Briefing page, making it if the briefing has arrived. */
     openBriefingPage(): Promise<void>
+    /** Open the note about a practice session, writing it (with its report) if there isn't one. */
+    openPracticeNote(sessionId: number): Promise<void>
   }
 }
 

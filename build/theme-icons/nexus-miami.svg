@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- The Nexus mark (build/icon.png) in the Miami palette (theme-miami.css). -->
+  <defs>
+    <linearGradient id="neon" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#38e1ff"/><stop offset=".55" stop-color="#b78cff"/><stop offset="1" stop-color="#ff4fcf"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="90" fill="#0c0a1c"/>
+  <path d="M256 110L402 256L256 402L110 256Z" fill="none" stroke="url(#neon)" stroke-width="12"/>
+  <circle cx="256" cy="256" r="43" fill="#ff4fcf"/>
+</svg>

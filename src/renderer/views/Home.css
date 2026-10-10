@@ -401,7 +401,7 @@ button.nx-home__entry:hover {
   width: 100%;
   margin-top: var(--nx-space-2);
   padding: 6px var(--nx-space-3);
-  border: 1px solid rgba(217, 96, 79, 0.35);
+  border: 1px solid color-mix(in srgb, var(--nx-critical) 35%, transparent);
   background: var(--nx-critical-tint);
   border-radius: var(--nx-radius-sm);
   color: var(--nx-text);

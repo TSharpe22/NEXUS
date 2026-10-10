@@ -1,7 +1,10 @@
 import { ipcMain, dialog, shell, BrowserWindow, clipboard } from 'electron'
 import { simulateTrading } from '@shared/trading'
+import { ledgerPractice, ledgerSession, ledgerSessions } from './trading-db'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { applyTitleBarTheme } from './titlebar'
+import { applyAppIcon } from './app-icon'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
@@ -516,6 +519,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle('prefs:get', () => {
     try {
       return {
+        theme: repo.getTheme(),
         dayStartHour: repo.getDayStartHour(),
         taskSection: repo.getTaskSection(),
         captureTarget: repo.getCaptureTarget(),
@@ -542,13 +546,47 @@ export function registerIpcHandlers(): void {
     }
   })
 
-  // The trading ledger, read-only. `trading.db` does not exist yet, so this
-  // is the simulation in its place (TRADING.md); the widgets cannot tell.
+  // The trading ledger, read-only. The simulation stands in for every part
+  // Kairos doesn't write yet (TRADING.md); the parts it does — practice, so
+  // far — come from trading.db, and the snapshot says which (`real`).
   ipcMain.handle('trading:snapshot', (_, today: string) => {
     try {
-      return simulateTrading(String(today))
+      const snap = simulateTrading(String(today))
+      const practice = ledgerPractice()
+      return practice ? { ...snap, practice, real: { ...snap.real, practice: true } } : snap
     } catch (e) {
       rethrow('trading:snapshot', e)
+    }
+  })
+
+  // Sim-lab sessions from trading.db, each with the note written about it.
+  ipcMain.handle('trading:sessions', (_, limit?: number) => {
+    try {
+      const sessions = ledgerSessions(Math.max(1, Math.min(200, Number(limit) || 20)))
+      const notes = repo.practiceNoteIds(sessions.map((s) => s.id))
+      return sessions.map((s) => ({ ...s, noteId: notes.get(s.id) ?? null }))
+    } catch (e) {
+      rethrow('trading:sessions', e)
+    }
+  })
+
+  ipcMain.handle('trading:session', (_, id: number) => {
+    try {
+      const r = ledgerSession(Number(id))
+      return r ? { ...r, noteId: repo.practiceNoteIds([r.id]).get(r.id) ?? null } : null
+    } catch (e) {
+      rethrow('trading:session', e)
+    }
+  })
+
+  // Open the note about a session, writing it first if there isn't one.
+  ipcMain.handle('trading:sessionNote', (_, id: number) => {
+    try {
+      const r = ledgerSession(Number(id))
+      if (!r) throw new Error(`practice session ${id} is not in trading.db`)
+      return repo.getPageById(repo.practiceNote(r))
+    } catch (e) {
+      rethrow('trading:sessionNote', e)
     }
   })
 
@@ -588,6 +626,17 @@ export function registerIpcHandlers(): void {
       return repo.setTaskSection(String(name))
     } catch (e) {
       rethrow('prefs:setTaskSection', e)
+    }
+  })
+
+  ipcMain.handle('prefs:setTheme', (_, theme: string) => {
+    try {
+      const applied = repo.setTheme(String(theme))
+      applyTitleBarTheme(applied)
+      applyAppIcon(applied)
+      return applied
+    } catch (e) {
+      rethrow('prefs:setTheme', e)
     }
   })
 

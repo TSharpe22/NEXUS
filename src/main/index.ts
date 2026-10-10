@@ -4,6 +4,8 @@ import { pathToFileURL } from 'url'
 import { existsSync } from 'fs'
 import { initDatabase, closeDatabase, getDataDir } from './database'
 import { registerIpcHandlers } from './ipc'
+import { overlayFor, usesOverlay } from './titlebar'
+import { applyAppIcon, themeIconPath } from './app-icon'
 import {
   ensureSearchIndex,
   ensureTaskIndex,
@@ -11,6 +13,7 @@ import {
   ensureCanvasRefs,
   getCaptureAccelerator,
   getSetting,
+  getTheme,
   setSetting
 } from './repo'
 import { flushPending as flushMirror } from './mirror'
@@ -102,9 +105,11 @@ function createWindow(): void {
     height: stored?.height ?? 820,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 18 },
+    ...(usesOverlay
+      ? { titleBarStyle: 'hidden' as const, titleBarOverlay: overlayFor(getTheme()), autoHideMenuBar: true }
+      : { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 } }),
     backgroundColor: '#121316',
+    ...(process.platform === 'linux' ? { icon: themeIconPath(getTheme()) } : {}),
     show: false,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
@@ -116,6 +121,7 @@ function createWindow(): void {
   mainWindow = win
 
   if (stored?.maximized) win.maximize()
+  applyAppIcon(getTheme())
 
   win.on('ready-to-show', () => win.show())
 

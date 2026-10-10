@@ -15,7 +15,7 @@
 
 .nx-button--primary {
   background: var(--nx-accent);
-  color: #05100a;
+  color: var(--nx-on-accent);
 }
 
 .nx-button--primary:hover:not(:disabled) {

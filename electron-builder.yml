@@ -13,6 +13,14 @@ files:
   - out/**
   - package.json
 
+# The theme-matched app icons (main/app-icon.ts), outside the asar so the
+# desktop entries can copy them.
+extraResources:
+  - from: build/theme-icons
+    to: theme-icons
+    filter:
+      - '*.png'
+
 # better-sqlite3 ships a native .node binding. dlopen cannot read it from
 # inside an asar archive, so it has to stay unpacked on disk.
 asarUnpack:
