@@ -6,6 +6,9 @@
 > the calls made along the way that a phase document has no place to record.
 >
 > Read with `NEXUS.md` (what Nexus is) and `PHASES.md` (where it is going).
+>
+> **Paused as of 2026-10-10** for a stabilization period — see `STABILIZE.md`.
+> Nothing below is cancelled.
 
 ---
 

@@ -19,6 +19,9 @@
 >   for the reasoning behind the initial direction.
 > - **`ROADMAP.md`** — the near-term order of work: what has to be true before
 >   Phase 1 starts, and the calls made along the way.
+> - **`STABILIZE.md`** — **current posture (Oct 2026): fixing, not adding.**
+>   Candidate bugs, security items and polish. Read before starting any work;
+>   it says what is in and out of scope right now.
 > - **`TRADING.md`** — planning reference for the trading portfolio, the
 >   `trading.db` data layer, the practice sim, and the future read-only
 >   trading view in Nexus. Not a phase; not scheduled.
