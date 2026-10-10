@@ -1,0 +1,122 @@
+<title>Nexus Vault Types</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* Layout: a short summary strip, then the types grouped by what they're for, one row per type. Single dark Miami look, matching Nexus's miami theme. */
+  :root{
+    --bg:#0c0a1c; --panel:#141129; --line:#29244f; --text:#f0ecff; --muted:#aca5d8;
+    --blue:#38e1ff; --violet:#b78cff; --pink:#ff4fcf; --amber:#ffb86c;
+    --display:'Chakra Petch',system-ui,sans-serif; --body:'IBM Plex Sans',system-ui,sans-serif; --mono:'IBM Plex Mono',ui-monospace,monospace;
+    color-scheme:dark;
+  }
+  body{background:var(--bg); color:var(--text); font:15px/1.6 var(--body); padding:32px 20px 64px}
+  .wrap{max-width:980px; margin:0 auto; display:grid; gap:36px}
+  h1{font:600 34px/1.1 var(--display); margin:0; letter-spacing:.02em;
+     background:linear-gradient(90deg,var(--blue),var(--violet) 55%,var(--pink)); -webkit-background-clip:text; background-clip:text; color:transparent}
+  .lede{color:var(--muted); max-width:62ch; margin:8px 0 0}
+  .stats{display:flex; flex-wrap:wrap; gap:28px; font-family:var(--mono); font-variant-numeric:tabular-nums}
+  .stats b{display:block; font:500 26px/1 var(--display); color:var(--text)}
+  .stats span{font-size:12px; color:var(--muted); letter-spacing:.06em; text-transform:uppercase}
+  h2{font:600 13px/1 var(--display); letter-spacing:.14em; text-transform:uppercase; color:var(--violet); margin:0 0 4px}
+  .group p.note{color:var(--muted); margin:0 0 12px; font-size:14px}
+  .table{overflow-x:auto; border:1px solid var(--line); background:var(--panel)}
+  table{border-collapse:collapse; width:100%; min-width:720px}
+  th,td{text-align:left; padding:12px 14px; vertical-align:top; border-top:1px solid var(--line); font-size:14px}
+  th{font:500 11px/1 var(--mono); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); border-top:0}
+  td.name{font:600 16px/1.3 var(--display); white-space:nowrap}
+  td.n{font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--blue); text-align:right; width:56px}
+  .pill{display:inline-block; font:12px/1 var(--mono); padding:4px 7px; border:1px solid var(--line); color:var(--text); margin:0 4px 4px 0}
+  .pill i{font-style:normal; color:var(--muted)}
+  .sec{font-family:var(--mono); font-size:12.5px; color:var(--muted)}
+  .flag{color:var(--amber)}
+  .other{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px}
+  .other div{border:1px solid var(--line); padding:14px; background:var(--panel); min-width:0}
+  .other b{font:600 15px var(--display); display:block}
+  .other span{color:var(--muted); font-size:13.5px}
+  footer{color:var(--muted); font:12px var(--mono)}
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Nexus vault types</h1>
+    <p class="lede">Every page type in your Nexus vault as of 10 Oct 2026: what properties it carries, what its pages hold, and how many exist. Read straight from the vault database, without changing anything.</p>
+  </header>
+
+  <div class="stats">
+    <div><b>9</b><span>types</span></div>
+    <div><b>45</b><span>live pages</span></div>
+    <div><b>5</b><span>folders</span></div>
+    <div><b>29/32</b><span>tasks done</span></div>
+  </div>
+
+  <section class="group">
+    <h2>Daily logs</h2>
+    <p class="note">One page per day, titled "Type — YYYY-MM-DD", with a Date and a Done checkbox. These work as habit check-offs.</p>
+    <div class="table"><table>
+      <tr><th>Type</th><th>Pages</th><th>Properties</th><th>What's inside</th><th>Range</th></tr>
+      <tr><td class="name">Training</td><td class="n">7</td>
+        <td><span class="pill">Date <i>date</i></span><span class="pill">Done <i>bool</i></span><span class="pill">Areas Worked <i>multi-select</i></span></td>
+        <td class="sec">Has a template. Body has three sections: Warm Up, Working Sets, Conditioning. Has a "Training Log" table view and the "Training Plan Q4-26" canvas.<br><span class="flag">Areas Worked hasn't been filled on any page yet.</span></td>
+        <td class="sec">8 Sep – 8 Oct</td></tr>
+      <tr><td class="name">Trading</td><td class="n">4</td>
+        <td><span class="pill">Date <i>date</i></span><span class="pill">Done <i>bool</i></span></td>
+        <td class="sec">No template, and the page bodies are empty, so for now it's only a "did I trade" check-off.<br><span class="flag">The trading reports (about 90 PDFs by quarter and eval) live in Desktop/Trading Reports, outside Nexus.</span></td>
+        <td class="sec">5 – 9 Oct</td></tr>
+      <tr><td class="name">Early Wake Up</td><td class="n">3</td>
+        <td><span class="pill">Date <i>date</i></span><span class="pill">Done <i>bool</i></span></td>
+        <td class="sec">Check-off only, empty body. Overlaps the "Waking Early" checkbox on the Note type.</td>
+        <td class="sec">5 – 9 Oct</td></tr>
+      <tr><td class="name">Meditation</td><td class="n">1</td>
+        <td><span class="pill">Date <i>date</i></span><span class="pill">Done <i>bool</i></span></td>
+        <td class="sec">Check-off only, empty body.</td>
+        <td class="sec">1 Oct</td></tr>
+    </table></div>
+  </section>
+
+  <section class="group">
+    <h2>Writing</h2>
+    <p class="note">The pages where most of the text is.</p>
+    <div class="table"><table>
+      <tr><th>Type</th><th>Pages</th><th>Properties</th><th>What's inside</th><th>Range</th></tr>
+      <tr><td class="name">Journal</td><td class="n">19</td>
+        <td><span class="pill">Date <i>date</i></span></td>
+        <td class="sec">Has a template and its own folder. Titled "Entry — Fri 9 Oct 2026". Sections: Briefing, Tasks, Notes, What am I grateful for?, Plans for tomorrow?</td>
+        <td class="sec">19 Aug – 9 Oct</td></tr>
+      <tr><td class="name">Briefing</td><td class="n">3</td>
+        <td><span class="pill">Date <i>date</i></span></td>
+        <td class="sec">Saved under Plans/Briefings. Titled "Fri 9 Oct · briefing". Bold labels in the body: Training, Plan, Calendar, Reminders.</td>
+        <td class="sec">7 – 9 Oct</td></tr>
+      <tr><td class="name">Note</td><td class="n">5</td>
+        <td><span class="pill">Date <i>date</i></span><span class="pill">Waking Early <i>bool</i></span></td>
+        <td class="sec">The built-in default type. Holds Inbox, NEXUS Development, Edge of the Abyss Media, and others.</td>
+        <td class="sec">21 Aug – 1 Sep</td></tr>
+    </table></div>
+  </section>
+
+  <section class="group">
+    <h2>Planning</h2>
+    <p class="note">Longer horizons. Each has a template in the Templates folder.</p>
+    <div class="table"><table>
+      <tr><th>Type</th><th>Pages</th><th>Properties</th><th>What's inside</th><th>Range</th></tr>
+      <tr><td class="name">Week</td><td class="n">2</td>
+        <td><span class="pill">Date <i>date</i></span></td>
+        <td class="sec">Saved in the Weeks folder. Two sections: Plan, Review. One real week so far (5 Oct) plus the template.</td>
+        <td class="sec">from 5 Oct</td></tr>
+      <tr><td class="name">Quarter</td><td class="n">1</td>
+        <td><span class="pill">Quarter <i>text</i></span></td>
+        <td class="sec">Only the template exists so far. It has five areas (Body, Trading, MMA, Spanish, Systems), each with Direction, Floor, and Signal, followed by a Milestones checklist.</td>
+        <td class="sec">template only</td></tr>
+    </table></div>
+  </section>
+
+  <section class="group">
+    <h2>Other things in the vault</h2>
+    <div class="other">
+      <div><b>Folders</b><span>Templates, Journal, Plans, Weeks, Briefings</span></div>
+      <div><b>Views</b><span>Training Log (table), and one called "New view" (table) that was never renamed</span></div>
+      <div><b>Canvas</b><span>Training Plan Q4-26</span></div>
+      <div><b>Tags</b><span>None created yet</span></div>
+    </div>
+  </section>
+
+  <footer>Source: ~/.config/nexus/data/nexus.db, opened read-only · 10 Oct 2026</footer>
+</div>
