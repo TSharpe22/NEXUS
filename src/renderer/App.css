@@ -397,3 +397,30 @@ body .nx-menu__item:active:not(:disabled) {
   gap: 6px;
   min-width: 0;
 }
+
+/* The window frame (main/titlebar.ts). Off macOS the system title bar is
+   gone: the top bar is what you drag the window by, and it is exactly the
+   overlay's height so the window buttons sit inside it. The right padding
+   clears those buttons; the env() values only exist while the overlay does,
+   so on macOS the padding is the usual one. */
+.nx-topbar {
+  height: 49px;
+  box-sizing: border-box;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-right: calc(var(--nx-space-6) + 100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw));
+  background: var(--nx-bg);
+  -webkit-app-region: drag;
+  user-select: none;
+}
+.nx-sidebar__head {
+  -webkit-app-region: drag;
+}
+.nx-topbar button,
+.nx-topbar a,
+.nx-topbar input,
+.nx-topbar select,
+.nx-topbar [role='button'],
+.nx-sidebar__head button {
+  -webkit-app-region: no-drag;
+}

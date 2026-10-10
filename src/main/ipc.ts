@@ -3,6 +3,8 @@ import { simulateTrading } from '@shared/trading'
 import { ledgerPractice, ledgerSession, ledgerSessions } from './trading-db'
 import { readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join } from 'path'
+import { applyTitleBarTheme } from './titlebar'
+import { applyAppIcon } from './app-icon'
 import * as repo from './repo'
 import * as io from './io'
 import * as mirror from './mirror'
@@ -629,7 +631,10 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle('prefs:setTheme', (_, theme: string) => {
     try {
-      return repo.setTheme(String(theme))
+      const applied = repo.setTheme(String(theme))
+      applyTitleBarTheme(applied)
+      applyAppIcon(applied)
+      return applied
     } catch (e) {
       rethrow('prefs:setTheme', e)
     }
