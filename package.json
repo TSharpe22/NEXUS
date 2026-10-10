@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "description": "Local-first personal knowledge management",
   "author": "TSharpe22",
+  "homepage": "https://github.com/TSharpe22/NEXUS",
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
